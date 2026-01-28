@@ -1,0 +1,52 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# Zed
+.zed/
+*.zed
+
+# Node
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+.pnp.*
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.Python
+
+build/
+dist/
+*.egg-info/
+.eggs/
+
+.venv/
+venv/
+ENV/
+env/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Jupyter
+.ipynb_checkpoints/
