@@ -27,7 +27,7 @@ If you host on GitHub later:
 3) Run the skill:
 
 ```
-/example-skill:example
+/example-skill:plan-validation
 ```
 
 ## Repo layout
