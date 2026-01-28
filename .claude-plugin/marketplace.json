@@ -1,0 +1,13 @@
+{
+  "name": "wezzard-skills",
+  "owner": {
+    "name": "wezzard"
+  },
+  "plugins": [
+    {
+      "name": "example-skill",
+      "source": "./plugins/example-skill",
+      "description": "Starter skill plugin you can copy and customize."
+    }
+  ]
+}
