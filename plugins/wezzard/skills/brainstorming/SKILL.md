@@ -13,7 +13,7 @@ Start by understanding the current project context, then ask questions one at a 
 
 ## The Process
 
-**Understanding the idea:**
+**Understanding the Idea:**
 
 - Check out the current project state first (files, docs, recent commits)
 - Ask questions one at a time to refine the idea
@@ -21,7 +21,7 @@ Start by understanding the current project context, then ask questions one at a 
 - Only one question per message - if a topic needs more exploration, break it into multiple questions
 - Focus on understanding: purpose, constraints, success criteria
 
-**Exploring approaches:**
+**Exploring Approaches:**
 
 - Propose 2-3 different approaches with trade-offs
 - Use `WebSearch` to gather ground truth on relevant technologies, especially for rapidly changing libraries or APIs
@@ -35,13 +35,17 @@ Start by understanding the current project context, then ask questions one at a 
 - **Resolve Conflicts:** When findings contradict, reason about the conflict based on source authority and recency.
 - **No Hallucinations:** Do not jump to conclusions without validation. If uncertain, verify with a search or ask the user.
 
-**Presenting the design:**
+**Presenting the Design:**
 
 - Once you believe you understand what you're building, present the design
 - Break it into sections of 200-300 words
 - Ask after each section whether it looks right so far
 - Cover: architecture, components, data flow, error handling, testing
 - Be ready to go back and clarify if something doesn't make sense
+
+**Update the Plan:**
+
+If you are in plan mode, you SHALL use the wezzard:update-plan skill update the plan file.
 
 ## Key Principles
 
