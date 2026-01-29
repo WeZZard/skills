@@ -5,9 +5,9 @@
   },
   "plugins": [
     {
-      "name": "example-skill",
-      "source": "./plugins/example-skill",
-      "description": "Starter skill plugin you can copy and customize."
+      "name": "wezzard",
+      "source": "./plugins/wezzard",
+      "description": "WeZZard's Claude Code skills: brainstorming, planning, execution, error recovery"
     }
   ]
 }

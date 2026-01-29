@@ -1,74 +1,80 @@
 # Claude Code Skill Marketplace
 
-This repository is a standalone Claude Code plugin marketplace. Each "skill" is packaged as its own plugin.
+This repository is a standalone Claude Code plugin marketplace containing WeZZard's skills collection.
 
 ## Quick start
 
 From inside Claude Code:
 
-1) Add this marketplace (local dev):
+1. Add this marketplace (local dev):
 
-```
+```bash
 /plugin marketplace add ./
 ```
 
 If you host on GitHub later:
 
-```
-/plugin marketplace add owner/repo
-```
-
-2) Install a skill plugin:
-
-```
-/plugin install example-skill@wezzard-skills
+```bash
+/plugin marketplace add WeZZard/skills
 ```
 
-3) Run the skill:
+1. Install the plugin:
 
+```bash
+/plugin install wezzard@wezzard-skills
 ```
-/example-skill:plan-validation
+
+1. Run a skill:
+
+```bash
+/wezzard:brainstorming
+/wezzard:update-plan
+/wezzard:execute-plan
+/wezzard:recover-from-errors
 ```
+
+## Available Skills
+
+| Skill                 | Description                                                        |
+| --------------------- | ------------------------------------------------------------------ |
+| `brainstorming`       | Explore user intent, requirements and design before implementation |
+| `update-plan`         | Create and update plan files with structured templates             |
+| `execute-plan`        | Execute a plan file step by step                                   |
+| `recover-from-errors` | Recover from errors during execution                               |
 
 ## Repo layout
 
-```
+```text
 .claude-plugin/marketplace.json
-plugins/<plugin-name>/.claude-plugin/plugin.json
-plugins/<plugin-name>/skills/<skill-name>/SKILL.md
-templates/skill-plugin/...
+plugins/wezzard/.claude-plugin/plugin.json
+plugins/wezzard/skills/<skill-name>/SKILL.md
 ```
 
 Notes:
+
 - Only `plugin.json` lives inside `.claude-plugin/`. All other folders stay at the plugin root.
-- Skills are namespaced as `/plugin-name:skill-name`.
+- Skills are namespaced as `/wezzard:<skill-name>`.
 
-## Add a new skill plugin
+## Add a new skill
 
-1) Copy the template:
+1. Create a new skill directory:
 
+```bash
+mkdir -p plugins/wezzard/skills/<skill-name>
 ```
-cp -R templates/skill-plugin plugins/<plugin-name>
+
+1. Create the skill definition:
+
+```text
+plugins/wezzard/skills/<skill-name>/SKILL.md
 ```
-
-2) Update the plugin manifest:
-
-- `plugins/<plugin-name>/.claude-plugin/plugin.json`
-
-3) Update the skill definition:
-
-- `plugins/<plugin-name>/skills/<skill-name>/SKILL.md`
 
 Frontmatter should include at least `name` and `description`. You can add `disable-model-invocation: true` to make it manual-only.
 
-4) Add the plugin entry to the marketplace:
+1. Test locally:
 
-- `.claude-plugin/marketplace.json`
-
-5) Test locally:
-
-```
-claude --plugin-dir ./plugins/<plugin-name>
+```bash
+claude --plugin-dir ./plugins/wezzard
 ```
 
 ## Distribution tips
