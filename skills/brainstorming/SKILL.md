@@ -16,11 +16,17 @@ Start by understanding the current project context, then ask questions one at a 
 **Understanding the idea:**
 
 - Check out the current project state first (files, docs, recent commits)
-- Use `WebSearch` to gather ground truth on relevant technologies, especially for rapidly changing libraries or APIs
 - Ask questions one at a time to refine the idea
 - Prefer multiple choice questions when possible, but open-ended is fine too
 - Only one question per message - if a topic needs more exploration, break it into multiple questions
 - Focus on understanding: purpose, constraints, success criteria
+
+**Exploring approaches:**
+
+- Propose 2-3 different approaches with trade-offs
+- Use `WebSearch` to gather ground truth on relevant technologies, especially for rapidly changing libraries or APIs
+- Present options conversationally with your recommendation and reasoning
+- Lead with your recommended option and explain why
 
 **Validating Information:**
 
@@ -28,12 +34,6 @@ Start by understanding the current project context, then ask questions one at a 
 - **Check Recency:** Explicitly check the date and time of information. Discard outdated info.
 - **Resolve Conflicts:** When findings contradict, reason about the conflict based on source authority and recency.
 - **No Hallucinations:** Do not jump to conclusions without validation. If uncertain, verify with a search or ask the user.
-
-**Exploring approaches:**
-
-- Propose 2-3 different approaches with trade-offs
-- Present options conversationally with your recommendation and reasoning
-- Lead with your recommended option and explain why
 
 **Presenting the design:**
 

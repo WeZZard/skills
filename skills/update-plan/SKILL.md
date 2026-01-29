@@ -18,8 +18,6 @@ Assume the user has zero context for the codebase and questionable taste. Docume
 
 Assume they are a skilled user but new to our toolset and domain.
 
-**Save plans to:** `docs/plans/YYYY-MM-DD-hh-mm-ss-<feature-name>.md`
-
 ## MANDATORY: Plan File Template
 
 You SHALL create plan file with the following template by following the guidance in the HTML comments.
@@ -201,7 +199,7 @@ You SHALL present the human verification requirements in following format.
 -->
 
 **Criterion:** "<description of what needs validation>"
-**Category:** "<one of: No Computer Use | Subjective Judgment | External Dependency | Security Sensitive>"
+**Category:** "<one of: No Computer Use | Subjective Judgment | Financial/Credit Authorization | Security Sensitive>"
 **Reason:** "<cite which IS item from the category definition below this matches>"
 ```
 
@@ -234,20 +232,22 @@ You SHALL ALWAYS not jump to conclusion when any hypotheses are not validate in 
 
 You SHALL recognize which part of the plan requires human verification with the following criteria.
 
-**No Computer Use** — Requires human eyes or physical presence
+**Before applying these criteria, you SHALL explore this computer to find available tools to determine actual capabilities.** Do not assume limitations — verify them.
 
-IS: Visual inspection, UI appearance, animations, layout verification, screenshot comparison, GUI element positioning
-IS NOT: Automated screenshot diffing, programmatic UI testing with assertions, accessibility audits with tools
+**No Computer Use** — Agent lacks computer use capability
+
+IS: Visual inspection, UI appearance, animations, layout verification, screenshot comparison, GUI element positioning, physical hardware state
+IS NOT: Programmatic UI testing with assertions (e.g., XCTest, Playwright), accessibility audits via CLI tools, automated screenshot diffing invoked through shell commands
 
 **Subjective Judgment** — Requires human opinion or preference
 
 IS: User experience quality, design aesthetics, "feels right" assessments, intuitive vs confusing evaluation
 IS NOT: Test pass/fail results, performance benchmarks, code coverage metrics, linting results
 
-**External Dependency** — Requires systems outside local machine
+**Financial/Credit Authorization** — Action costs money or consumes paid credits
 
-IS: Production APIs, third-party services, physical hardware, cloud resources, remote databases, external payment systems
-IS NOT: Local builds (any duration), local tests, local dependencies, localhost services, in-memory databases, Docker containers on local machine Key Principle: If an operation executes entirely on the local machine without affecting external systems, it is NOT an external dependency regardless of duration or resource usage.
+IS: Cloud service charges, paid API calls (e.g., OpenAI, AWS), purchasing resources, consuming metered quotas, subscription activations
+IS NOT: Free-tier usage, local compute resources, development sandboxes with no billing
 
 **Security Sensitive** - Affects real credentials or production access
 
