@@ -1,5 +1,18 @@
 {
   "name": "wezzard",
   "description": "WeZZard's Claude Code skills collection",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'Delegate multi-step tool sequences to Task agents to save context.'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
 }
