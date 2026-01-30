@@ -50,3 +50,12 @@ pip-delete-this-directory.txt
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Astro
+website/dist/
+website/.astro/
+
+# Environment
+.env
+.env.local
+.env.*.local

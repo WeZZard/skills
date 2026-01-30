@@ -82,3 +82,39 @@ claude --plugin-dir ./plugins/wezzard
 - Relative plugin sources work when the marketplace is added via Git (local path or repo).
 - If you distribute via a direct URL to `marketplace.json`, use Git or GitHub sources instead of relative paths.
 - Plugins are copied to a cache on install, so do not reference files outside the plugin directory.
+
+## Website
+
+The `website/` directory contains a static site that showcases the skills with LLM-generated explanations.
+
+### Setup
+
+```bash
+cd website
+npm install
+```
+
+### Generate skill content
+
+Requires `DEEPSEEK_API_KEY` environment variable:
+
+```bash
+export DEEPSEEK_API_KEY=your-api-key
+npm run generate
+```
+
+This reads each `SKILL.md` and generates user-friendly descriptions with workflow diagrams. Generated content is cached in `src/content/generated/` — only regenerated when source changes.
+
+### Development
+
+```bash
+npm run dev
+```
+
+### Build
+
+```bash
+npm run build
+```
+
+Output goes to `website/dist/`.

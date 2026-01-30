@@ -1,0 +1,41 @@
+{
+  "sourceHash": "7cbb32a4bcedc7e0",
+  "generatedAt": "2026-01-29T16:50:24.388Z",
+  "skill": {
+    "name": "execute-plan",
+    "tagline": "Execute written plans step-by-step with built-in human verification gates",
+    "summary": "This skill helps you implement written plans by loading them and executing tasks in sequence. It includes automatic verification steps and will pause for human approval when needed. The skill stops immediately if it encounters blockers or unclear instructions rather than guessing.",
+    "workflow": {
+      "mermaid": "graph TD\n    A[Start: Load Plan File] --> B[Execute Next Task]\n    B --> C{Task requires human verification?}\n    C -->|Yes| D[Stop & Ask for Human Approval]\n    D --> E{Get Feedback}\n    E -->|Approved| B\n    C -->|No| F[Mark Task as in_progress]\n    F --> G[Follow Steps Exactly]\n    G --> H[Run Verifications]\n    H --> I[Mark Task as completed]\n    I --> J{More tasks?}\n    J -->|Yes| B\n    J -->|No| K[Plan Complete]\n    E -->|Changes Needed| F\n    subgraph \"Stop Conditions\"\n        L[Missing Dependency]\n        M[Test Fails]\n        N[Unclear Instruction]\n        O[Critical Plan Gaps]\n        P[Repeated Verification Failures]\n    end\n    B -->|Encounter Stop Condition| L\n    L --> D",
+      "steps": [
+        {
+          "name": "Load Plan File",
+          "description": "Read and load the written plan file to understand what needs to be executed"
+        },
+        {
+          "name": "Execute Tasks Sequentially",
+          "description": "Process each task in order, marking progress and following steps exactly as written"
+        },
+        {
+          "name": "Run Verifications",
+          "description": "Perform verification checks as specified in the plan to ensure correctness"
+        },
+        {
+          "name": "Request Human Verification",
+          "description": "Pause execution and ask for human approval when tasks require verification gates"
+        },
+        {
+          "name": "Handle Feedback",
+          "description": "Apply changes based on human feedback and continue with execution"
+        }
+      ]
+    },
+    "principles": [
+      "Execute with human verification gate",
+      "Follow plan steps exactly without skipping verifications",
+      "Stop immediately when blocked and ask for clarification rather than guessing",
+      "Review plan critically before execution",
+      "Reference other skills when the plan specifies to do so"
+    ]
+  }
+}

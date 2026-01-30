@@ -1,0 +1,31 @@
+{
+  "sourceHash": "af8d726383e5437f",
+  "generatedAt": "2026-01-29T16:50:35.216Z",
+  "skill": {
+    "name": "recover-from-errors",
+    "tagline": "Stay on track when tools fail by checking your plan first before trying fixes.",
+    "summary": "This skill helps you recover from errors without losing sight of your original goal. When a tool call fails, it guides you to check your plan to see if the action was actually required. This prevents you from guessing solutions that might take you off course.",
+    "workflow": {
+      "mermaid": "graph TD\n    A[Tool Call Fails] --> B{Check the Plan}\n    B --> C[Verify Alignment]\n    C --> D{Is action part of plan?}\n    D -- Yes --> E[Analyze & Fix Specific Issue]\n    D -- No --> F[Stop & Re-read Plan]\n    F --> G[Get Back on Track]",
+      "steps": [
+        {
+          "name": "Check the Plan",
+          "description": "Immediately look up the session's plan file to understand the context of the current operation."
+        },
+        {
+          "name": "Verify Alignment",
+          "description": "Determine if the failed tool call is actually required by the current step in the plan."
+        },
+        {
+          "name": "Re-align to the Plan",
+          "description": "If the action is part of the plan, fix the specific issue. If not, stop and get back to the specified tasks."
+        }
+      ]
+    },
+    "principles": [
+      "Prevent goal drift by avoiding guesses when tools fail",
+      "Always verify if a failing action is required by the plan before attempting fixes",
+      "Stop and re-read the plan if you've drifted from the specified tasks"
+    ]
+  }
+}

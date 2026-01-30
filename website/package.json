@@ -1,0 +1,20 @@
+{
+  "name": "website",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "generate": "tsx scripts/generate-content.ts",
+    "dev": "astro dev",
+    "build": "npm run generate && astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "astro": "^5.17.1"
+  },
+  "devDependencies": {
+    "gray-matter": "^4.0.3",
+    "openai": "^6.17.0",
+    "tsx": "^4.21.0"
+  }
+}
