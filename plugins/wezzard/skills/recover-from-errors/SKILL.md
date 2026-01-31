@@ -1,6 +1,6 @@
 ---
 name: recover-from-errors
-description: You SHALL use when you continually encounter errors or unexpected issues during plan execution.
+description: You MUST invoke this skill immediately when you encounter repeated errors, unexpected failures, or blockers during plan execution. Trigger after 2+ consecutive failures or when stuck.
 ---
 
 # Recover from Errors

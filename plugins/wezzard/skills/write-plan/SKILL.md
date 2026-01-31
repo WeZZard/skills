@@ -1,11 +1,11 @@
 ---
-name: update-plan
-description: You SHALL use the update-plan skill when update the plan file.
+name: write-plan
+description:  You MUST invoke this skill immediately before any Write or Edit to the Claude Code plan mode session's plan file.
 ---
 
 # Update Plan
 
-**Announce at start:** "I'm using the update-plan skill to plan."
+**Announce at start:** "I'm using the write-plan skill to plan."
 
 ## Operating assumptions
 

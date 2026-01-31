@@ -2,9 +2,9 @@
   "sourceHash": "a6050111c228b6b0",
   "generatedAt": "2026-01-29T16:50:50.279Z",
   "skill": {
-    "name": "update-plan",
+    "name": "write-plan",
     "tagline": "Create detailed, structured plans for code changes with clear tasks and verification steps",
-    "summary": "The update-plan skill helps you create comprehensive development plans for codebase changes. It structures your work into clear tasks, identifies what needs human verification, and ensures thorough testing. This skill is designed for users who need systematic guidance when making changes to unfamiliar codebases.",
+    "summary": "The write-plan skill helps you create comprehensive development plans for codebase changes. It structures your work into clear tasks, identifies what needs human verification, and ensures thorough testing. This skill is designed for users who need systematic guidance when making changes to unfamiliar codebases.",
     "workflow": {
       "mermaid": "graph TD\n    A[Start: Announce skill use] --> B[Analyze requirements and context]\n    B --> C[Create plan using template]\n    C --> D[Define tasks with dependencies]\n    D --> E[Add required sections]\n    E --> F[Identify hypotheses]\n    F --> G[Mark human verification needs]\n    G --> H[Plan ready for execution]",
       "steps": [

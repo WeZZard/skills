@@ -28,7 +28,7 @@ If you host on GitHub later:
 
 ```bash
 /wezzard:brainstorming
-/wezzard:update-plan
+/wezzard:write-plan
 /wezzard:execute-plan
 /wezzard:recover-from-errors
 ```
@@ -38,7 +38,7 @@ If you host on GitHub later:
 | Skill                 | Description                                                        |
 | --------------------- | ------------------------------------------------------------------ |
 | `brainstorming`       | Explore user intent, requirements and design before implementation |
-| `update-plan`         | Create and update plan files with structured templates             |
+| `write-plan`         | Create and update plan files with structured templates             |
 | `execute-plan`        | Execute a plan file step by step                                   |
 | `recover-from-errors` | Recover from errors during execution                               |
 

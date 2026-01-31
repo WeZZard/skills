@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: You SHALL use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation.
+description: You MUST invoke this skill immediately before any creative work: creating features, building components, adding functionality, or modifying behavior. Never begin implementation without brainstorming first. This is mandatory for all feature requests and code changes.
 ---
 
 # Brainstorming Ideas Into Designs
@@ -45,7 +45,7 @@ Start by understanding the current project context, then ask questions one at a 
 
 **Update the Plan:**
 
-If you are in plan mode, you SHALL use the wezzard:update-plan skill update the plan file.
+If you are in plan mode, you SHALL use the wezzard:write-plan skill update the plan file.
 
 ## Key Principles
 
