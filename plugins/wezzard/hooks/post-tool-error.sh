@@ -6,20 +6,15 @@ set -euo pipefail
 # Read tool result from stdin
 input=$(cat)
 
-# Check for error indicators in the result
-# Look for common error patterns: "error", "failed", "Error:", exit codes, etc.
-has_error=false
+# Check for error indicators using jq for reliable JSON parsing
+# The tool_response object contains error information
+is_error=$(echo "$input" | jq -r '
+    (.tool_response.error // false) or
+    (.tool_response.success == false) or
+    (.tool_response.is_error // false)
+' 2>/dev/null || echo "false")
 
-# Check for error field or error patterns
-if echo "$input" | grep -qi '"error"[[:space:]]*:[[:space:]]*"[^"]\+"\|"error"[[:space:]]*:[[:space:]]*true'; then
-    has_error=true
-elif echo "$input" | grep -qi '"exitCode"[[:space:]]*:[[:space:]]*[1-9]\|"exit_code"[[:space:]]*:[[:space:]]*[1-9]'; then
-    has_error=true
-elif echo "$input" | grep -qi '"status"[[:space:]]*:[[:space:]]*"failed"\|"status"[[:space:]]*:[[:space:]]*"error"'; then
-    has_error=true
-fi
-
-if [ "$has_error" = "false" ]; then
+if [ "$is_error" != "true" ]; then
     # No error detected, output empty JSON
     echo '{}'
     exit 0
@@ -30,7 +25,7 @@ cat <<'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "PostToolUse",
-    "additionalContext": "<TOOL_ERROR_DETECTED>\nA tool call may have failed.\n\nIf you encounter repeated failures (2+ consecutive) or feel stuck, consider using:\n\n**wezzard:recover-from-errors** - This skill helps you systematically diagnose and recover from errors.\n</TOOL_ERROR_DETECTED>"
+    "additionalContext": "<EXTREMELY_IMPORTANT>\nA tool call may have failed.\n\nIf you encounter repeated failures (2+ consecutive) or feel stuck, consider using:\n\n**wezzard:recover-from-errors** - This skill helps you systematically diagnose and recover from errors.\n</EXTREMELY_IMPORTANT>"
   }
 }
 EOF
