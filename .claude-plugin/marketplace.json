@@ -8,6 +8,11 @@
       "name": "wezzard",
       "source": "./plugins/wezzard",
       "description": "WeZZard's Claude Code skills: brainstorming, planning, execution, error recovery"
+    },
+    {
+      "name": "recall",
+      "source": "./plugins/recall",
+      "description": "Recall debugging skills: capture sessions, analyze with voice/screen/trace correlation, and system diagnostics"
     }
   ]
 }

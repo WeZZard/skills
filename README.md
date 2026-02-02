@@ -1,6 +1,18 @@
 # Claude Code Skill Marketplace
 
-This repository is a standalone Claude Code plugin marketplace containing WeZZard's skills collection.
+This repository is a standalone Claude Code plugin marketplace containing WeZZard skills collection.
+
+## Prerequisites
+
+This repository uses **Git LFS** to store large binary files. Install Git LFS before cloning:
+
+```bash
+# macOS
+brew install git-lfs
+
+# Then initialize
+git lfs install
+```
 
 ## Quick start
 
@@ -18,29 +30,50 @@ If you host on GitHub later:
 /plugin marketplace add WeZZard/skills
 ```
 
-1. Install the plugin:
+2. Install plugins:
 
 ```bash
 /plugin install wezzard@wezzard-skills
+/plugin install recall@wezzard-skills
 ```
 
-1. Run a skill:
+3. Run a skill:
 
 ```bash
+# wezzard plugin skills
 /wezzard:brainstorming
 /wezzard:write-plan
 /wezzard:execute-plan
 /wezzard:recover-from-errors
+
+# recall plugin skills
+/recall:run
+/recall:analyze
+/recall:ada-doctor
 ```
 
-## Available Skills
+## Available Plugins
+
+### wezzard
+
+Development workflow skills for planning and execution.
 
 | Skill                 | Description                                                        |
 | --------------------- | ------------------------------------------------------------------ |
 | `brainstorming`       | Explore user intent, requirements and design before implementation |
-| `write-plan`         | Create and update plan files with structured templates             |
+| `write-plan`          | Create and update plan files with structured templates             |
 | `execute-plan`        | Execute a plan file step by step                                   |
 | `recover-from-errors` | Recover from errors during execution                               |
+
+### recall
+
+Debugging skills that capture and analyze program execution with voice, screen, and trace correlation. Includes binaries (~126MB, stored via Git LFS).
+
+| Skill        | Description                                                                      |
+| ------------ | -------------------------------------------------------------------------------- |
+| `run`        | Capture a debugging session with voice narration, screen recording, and tracing  |
+| `analyze`    | Analyze captured sessions using voice-first intent extraction and evidence correlation |
+| `ada-doctor` | Run system diagnostics to verify Recall dependencies and configuration           |
 
 ## Repo layout
 
@@ -48,33 +81,38 @@ If you host on GitHub later:
 .claude-plugin/marketplace.json
 plugins/wezzard/.claude-plugin/plugin.json
 plugins/wezzard/skills/<skill-name>/SKILL.md
+plugins/recall/.claude-plugin/plugin.json
+plugins/recall/bin/                          # Git LFS
+plugins/recall/lib/                          # Git LFS
+plugins/recall/skills/<skill-name>/SKILL.md
 ```
 
 Notes:
 
 - Only `plugin.json` lives inside `.claude-plugin/`. All other folders stay at the plugin root.
-- Skills are namespaced as `/wezzard:<skill-name>`.
+- Skills are namespaced as `/<plugin-name>:<skill-name>`.
+- The recall plugin includes binaries tracked by Git LFS.
 
 ## Add a new skill
 
 1. Create a new skill directory:
 
 ```bash
-mkdir -p plugins/wezzard/skills/<skill-name>
+mkdir -p plugins/<plugin-name>/skills/<skill-name>
 ```
 
-1. Create the skill definition:
+2. Create the skill definition:
 
 ```text
-plugins/wezzard/skills/<skill-name>/SKILL.md
+plugins/<plugin-name>/skills/<skill-name>/SKILL.md
 ```
 
 Frontmatter should include at least `name` and `description`. You can add `disable-model-invocation: true` to make it manual-only.
 
-1. Test locally:
+3. Test locally:
 
 ```bash
-claude --plugin-dir ./plugins/wezzard
+claude --plugin-dir ./plugins/<plugin-name>
 ```
 
 ## Distribution tips
@@ -103,7 +141,7 @@ export DEEPSEEK_API_KEY=your-api-key
 npm run generate
 ```
 
-This reads each `SKILL.md` and generates user-friendly descriptions with workflow diagrams. Generated content is cached in `src/content/generated/` — only regenerated when source changes.
+This reads each `SKILL.md` and generates user-friendly descriptions with workflow diagrams. Generated content is cached in `src/content/generated/` - only regenerated when source changes.
 
 ### Development
 

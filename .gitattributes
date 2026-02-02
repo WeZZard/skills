@@ -1,0 +1,2 @@
+plugins/recall/bin/* filter=lfs diff=lfs merge=lfs -text
+plugins/recall/lib/* filter=lfs diff=lfs merge=lfs -text
