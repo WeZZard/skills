@@ -2,18 +2,6 @@
 
 This repository is a standalone Claude Code plugin marketplace containing WeZZard skills collection.
 
-## Prerequisites
-
-This repository uses **Git LFS** to store large binary files. Install Git LFS before cloning:
-
-```bash
-# macOS
-brew install git-lfs
-
-# Then initialize
-git lfs install
-```
-
 ## Quick start
 
 From inside Claude Code:
@@ -67,7 +55,7 @@ Development workflow skills for planning and execution.
 
 ### recall
 
-Debugging skills that capture and analyze program execution with voice, screen, and trace correlation. Includes binaries (~126MB, stored via Git LFS).
+Debugging skills that capture and analyze program execution with voice, screen, and trace correlation. **Automatically fetched from [GitHub Releases](https://github.com/WeZZard/Recall/releases)**.
 
 | Skill        | Description                                                                      |
 | ------------ | -------------------------------------------------------------------------------- |
@@ -81,17 +69,13 @@ Debugging skills that capture and analyze program execution with voice, screen, 
 .claude-plugin/marketplace.json
 plugins/wezzard/.claude-plugin/plugin.json
 plugins/wezzard/skills/<skill-name>/SKILL.md
-plugins/recall/.claude-plugin/plugin.json
-plugins/recall/bin/                          # Git LFS
-plugins/recall/lib/                          # Git LFS
-plugins/recall/skills/<skill-name>/SKILL.md
 ```
 
 Notes:
 
 - Only `plugin.json` lives inside `.claude-plugin/`. All other folders stay at the plugin root.
 - Skills are namespaced as `/<plugin-name>:<skill-name>`.
-- The recall plugin includes binaries tracked by Git LFS.
+- The recall plugin is fetched from GitHub Releases (not stored in this repo).
 
 ## Add a new skill
 

@@ -1,2 +1,2 @@
-plugins/recall/bin/* filter=lfs diff=lfs merge=lfs -text
-plugins/recall/lib/* filter=lfs diff=lfs merge=lfs -text
+# Recall plugin binaries are now fetched from GitHub releases
+# No longer tracked via Git LFS
