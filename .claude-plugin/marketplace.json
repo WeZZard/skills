@@ -5,8 +5,8 @@
   },
   "plugins": [
     {
-      "name": "wezzard",
-      "source": "./plugins/wezzard",
+      "name": "intelligence-scale",
+      "source": "./plugins/intelligence-scale",
       "description": "WeZZard's Claude Code skills: brainstorming, planning, execution, error recovery"
     },
     {
