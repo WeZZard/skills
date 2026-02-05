@@ -8,11 +8,6 @@
       "name": "intelligence-scale",
       "source": "./plugins/intelligence-scale",
       "description": "WeZZard's Claude Code skills: brainstorming, planning, execution, error recovery"
-    },
-    {
-      "name": "recall",
-      "source": "https://github.com/WeZZard/Recall/releases/latest/download/recall-plugin-latest-macos.zip",
-      "description": "Recall debugging skills: capture sessions, analyze with voice/screen/trace correlation, and system diagnostics"
     }
   ]
 }
