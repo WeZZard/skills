@@ -25,7 +25,7 @@ cat <<'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "PostToolUse",
-    "additionalContext": "<EXTREMELY_IMPORTANT>\nA tool call may have failed.\n\nIf you encounter repeated failures (2+ consecutive) or feel stuck, consider using:\n\n**wezzard:recover-from-errors** - This skill helps you systematically diagnose and recover from errors.\n</EXTREMELY_IMPORTANT>"
+    "additionalContext": "<EXTREMELY_IMPORTANT>\nA tool call may have failed.\n\nIf you encounter repeated failures (2+ consecutive) or feel stuck, consider using:\n\n**intelligence-scale:recover-from-errors** - This skill helps you systematically diagnose and recover from errors.\n</EXTREMELY_IMPORTANT>"
   }
 }
 EOF

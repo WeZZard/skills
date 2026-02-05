@@ -20,7 +20,7 @@ cat <<'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "PreToolUse",
-    "additionalContext": "<EXTREMELY_IMPORTANT>\nYou are spawning a Plan subagent.\n\n**MANDATORY:** The Plan agent MUST use these skills:\n\n1. **wezzard:write-plan** - Use this skill to create and update the plan file with proper structure\n2. **wezzard:recover-from-errors** - Use this skill if encountering repeated failures or blockers\n\nThe Plan agent should invoke the write-plan skill BEFORE writing any plan content.\n</EXTREMELY_IMPORTANT>"
+    "additionalContext": "<EXTREMELY_IMPORTANT>\nYou are spawning a Plan subagent.\n\n**MANDATORY:** The Plan agent MUST use these skills:\n\n1. **intelligence-scale:write-plan** - Use this skill to create and update the plan file with proper structure\n2. **intelligence-scale:recover-from-errors** - Use this skill if encountering repeated failures or blockers\n\nThe Plan agent should invoke the write-plan skill BEFORE writing any plan content.\n</EXTREMELY_IMPORTANT>"
   }
 }
 EOF

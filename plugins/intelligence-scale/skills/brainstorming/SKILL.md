@@ -45,7 +45,7 @@ Start by understanding the current project context, then ask questions one at a 
 
 **Update the Plan:**
 
-If you are in plan mode, you SHALL use the wezzard:write-plan skill update the plan file.
+If you are in plan mode, you SHALL use the intelligence-scale:write-plan skill update the plan file.
 
 ## Key Principles
 

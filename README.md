@@ -29,10 +29,10 @@ If you host on GitHub later:
 
 ```bash
 # wezzard plugin skills
-/wezzard:brainstorming
-/wezzard:write-plan
-/wezzard:execute-plan
-/wezzard:recover-from-errors
+/intelligence-scale:brainstorming
+/intelligence-scale:write-plan
+/intelligence-scale:execute-plan
+/intelligence-scale:recover-from-errors
 
 # recall plugin skills
 /recall:run
