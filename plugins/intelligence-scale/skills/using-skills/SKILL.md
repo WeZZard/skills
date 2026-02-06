@@ -46,8 +46,9 @@ When multiple skills could apply, use this order:
 
 1. **Process skills first** (brainstorming, recover-from-errors) - these determine HOW to approach the task
 2. **Implementation skills second** (write-plan, execute-plan) - these guide execution
+3. **Verification skills last** (review) - these confirm execution results
 
-"Let's build X" → brainstorming first, then write-plan, then execute-plan.
+"Let's build X" → brainstorming first, then write-plan, then execute-plan, then review.
 "Fix this bug" → recover-from-errors if stuck, brainstorming if unclear.
 
 ## Available Skills
@@ -57,6 +58,7 @@ When multiple skills could apply, use this order:
 | `brainstorming` | BEFORE any creative work: features, components, modifications |
 | `write-plan` | After brainstorming, to create structured implementation plan |
 | `execute-plan` | When you have a finalized plan file ready to implement |
+| `review` | After plan execution completes, to verify all changes were implemented |
 | `recover-from-errors` | After 2+ consecutive failures or when stuck |
 
 ## Skill Types
