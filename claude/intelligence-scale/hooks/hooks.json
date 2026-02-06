@@ -12,29 +12,31 @@
         ]
       }
     ],
-    "PreToolUse": [
+    "PostToolUse": [
       {
         "matcher": "EnterPlanMode",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-plan-mode.sh",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Task",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/pre-plan-agent.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-plan-mode.sh",
             "timeout": 5
           }
         ]
       }
     ],
-    "PostToolUse": [
+    "SubagentStop": [
+      {
+        "matcher": "Plan",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-plan-agent.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
       {
         "matcher": ".*",
         "hooks": [
@@ -51,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Delegate multi-step tool sequences to Task agents to save context.'",
+            "command": "echo 'You **MUST** spawn subagents to parallelize independent tasks and offload multi-step research sequences from the main context.'",
             "timeout": 5
           }
         ]
