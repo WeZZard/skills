@@ -11,7 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Load .env from project root
 config({ path: join(__dirname, "../../.env") });
 
-const SKILLS_DIR = join(__dirname, "../../plugins/wezzard/skills");
+const SKILLS_DIR = join(__dirname, "../../claude/intelligence-scale/skills");
 const OUTPUT_DIR = join(__dirname, "../src/content/generated");
 
 interface SkillGenerated {

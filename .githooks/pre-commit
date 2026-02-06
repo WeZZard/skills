@@ -1,0 +1,95 @@
+#!/bin/sh
+#
+# Auto-bump plugin patch version when plugin content changes are committed.
+# Install: git config core.hooksPath .githooks  (or run: sh scripts/setup.sh)
+#
+
+# --- Git LFS delegation (defensive, LFS not currently in use) ---
+if command -v git-lfs >/dev/null 2>&1; then
+    git lfs pre-commit "$@" 2>/dev/null || true
+fi
+
+# --- Skip during rebase to avoid multiple version bumps ---
+GIT_DIR="$(git rev-parse --git-dir)"
+if [ -d "$GIT_DIR/rebase-merge" ] || [ -d "$GIT_DIR/rebase-apply" ]; then
+    exit 0
+fi
+
+# --- Plugin version auto-bump ---
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+PLUGIN_BASE="$REPO_ROOT/claude"
+
+[ -d "$PLUGIN_BASE" ] || exit 0
+
+STAGED_FILES=$(git diff --cached --name-only)
+
+for plugin_dir in "$PLUGIN_BASE"/*/; do
+    [ -d "$plugin_dir" ] || continue
+
+    plugin_name=$(basename "$plugin_dir")
+    plugin_json="$plugin_dir.claude-plugin/plugin.json"
+    relative_plugin_json="claude/$plugin_name/.claude-plugin/plugin.json"
+
+    [ -f "$plugin_json" ] || continue
+
+    has_content_changes=false
+    for f in $STAGED_FILES; do
+        case "$f" in
+            claude/$plugin_name/*)
+                has_content_changes=true
+                break
+                ;;
+        esac
+    done
+
+    if [ "$has_content_changes" = true ]; then
+        current_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$plugin_json")
+
+        if [ -z "$current_version" ]; then
+            echo "[auto-bump] WARNING: Could not read version from $relative_plugin_json, skipping"
+            continue
+        fi
+
+        # Get the HEAD version, trying the current path first
+        head_version=$(git show HEAD:"$relative_plugin_json" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+
+        # If not found at current path, look for a rename source
+        if [ -z "$head_version" ]; then
+            old_path=$(git diff --cached -M --diff-filter=R --name-status 2>/dev/null | awk -F'\t' -v new="$relative_plugin_json" '$NF == new {print $(NF-1)}')
+            if [ -n "$old_path" ]; then
+                head_version=$(git show HEAD:"$old_path" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+            fi
+        fi
+
+        # New plugin (no HEAD version at all) — respect the initial version
+        if [ -z "$head_version" ]; then
+            continue
+        fi
+
+        # Version was manually changed — respect it
+        if [ "$head_version" != "$current_version" ]; then
+            continue
+        fi
+
+        # Auto-bump patch version
+        major=$(echo "$current_version" | cut -d. -f1)
+        minor=$(echo "$current_version" | cut -d. -f2)
+        patch=$(echo "$current_version" | cut -d. -f3)
+
+        case "$major$minor$patch" in
+            *[!0-9]*)
+                echo "[auto-bump] WARNING: Non-numeric version in $current_version, skipping"
+                continue
+                ;;
+        esac
+
+        new_patch=$((patch + 1))
+        new_version="$major.$minor.$new_patch"
+
+        sed -i '' "s/\"version\"[[:space:]]*:[[:space:]]*\"$current_version\"/\"version\": \"$new_version\"/" "$plugin_json"
+
+        git add "$plugin_json"
+
+        echo "[auto-bump] $plugin_name: $current_version -> $new_version"
+    fi
+done

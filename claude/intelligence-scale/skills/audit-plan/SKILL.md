@@ -1,9 +1,9 @@
 ---
-name: review
-description: You MUST invoke this skill immediately after plan execution completes to verify that all planned changes were implemented correctly. Always use this skill as the final step of a plan-based workflow.
+name: audit-plan
+description: Invoke after plan execution completes to verify all planned changes were implemented correctly. Use as the final step of a plan-based workflow.
 ---
 
-# Review Plan Execution
+# Audit Plan Execution
 
 ## Overview
 
@@ -11,7 +11,7 @@ Verify that every task in the session plan file was implemented correctly by com
 
 **Core principle:** Trust evidence, not assumptions. Check every task.
 
-**Announce at start:** "I'm using the review skill to verify plan execution."
+**Announce at start:** "I'm using the audit-plan skill to verify plan execution."
 
 ## The Process
 
@@ -34,7 +34,7 @@ For each task in the plan:
 Present a structured summary:
 
 ```
-## Review Summary
+## Audit Summary
 
 | # | Task | Status | Evidence |
 |---|------|--------|----------|

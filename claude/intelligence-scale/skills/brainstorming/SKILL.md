@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: You MUST invoke this skill immediately before any creative work: creating features, building components, adding functionality, or modifying behavior. Never begin implementation without brainstorming first. This is mandatory for all feature requests and code changes.
+description: You **MUST** invoke this skill when the user wants to explore ideas, discuss approaches, research a topic, or has been stuck on a problem. Always brainstorm before beginning implementation.
 ---
 
 # Brainstorming Ideas Into Designs
@@ -45,7 +45,8 @@ Start by understanding the current project context, then ask questions one at a 
 
 **Update the Plan:**
 
-If you are in plan mode, you SHALL use the intelligence-scale:write-plan skill update the plan file.
+If you are in plan mode, you **MUST** use the intelligence-scale:write-plan skill update the plan file.
+If you are **NOT** in plan mode, do nothing in this step.
 
 ## Key Principles
 

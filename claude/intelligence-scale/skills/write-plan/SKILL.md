@@ -1,6 +1,6 @@
 ---
 name: write-plan
-description:  You MUST invoke this skill immediately before any Write or Edit to the Claude Code plan mode session's plan file.
+description:  You **MUST** invoke this skill before update the plan file of the Claude Code session.
 ---
 
 # Update Plan
@@ -43,15 +43,15 @@ You SHALL create plan file with the following template by following the guidance
 
 <!-- You SHALL always list the tasks.
 
-**DO** illustrate with one of the following forms:
+**DO** output with one of the following forms:
 
-- workflow diagram with ordered task number and name if non-linear and graph/tree-level dependencies are appeared
-- ordered list with task number and name if linear dependencies are appeared
+- Workflow diagram with ordered task number and name if non-linear and graph-level dependencies are appeared.
+- Ordered list or cascaded ordered list with task number and name if linear/tree dependencies are appeared. DO NOT connect list items with `|` in this case.
 
 **DO NOT** illustrate with any of the following forms:
 
-- unordered list
-- dedicated text descriptions
+- Unordered list
+- Dedicated text descriptions
 -->
 
 ## Verification
@@ -81,11 +81,11 @@ You SHALL NOT just illustrate the project structure before OR after the changes 
 
 **DO NOT** illustrate with any of the following forms:
 
-- diagrams
-- ordered list
-- unordered list
-- table
-- dedicated text descriptions
+- Diagrams
+- Ordered list
+- Unordered list
+- Table
+- Dedicated text descriptions
 -->
 ```
 
@@ -102,14 +102,14 @@ You SHALL NOT just illustrate the tech stack before OR after the changes and ill
 
 **DO** illustrate with one of the following forms:
 
-- diagrams
-- ordered list
+- Diagrams
+- Ordered list
 
 **DO NOT** illustrate with any of the following forms:
 
-- unordered list
-- table
-- dedicated text descriptions
+- Unordered list
+- Table
+- Dedicated text descriptions
 -->
 ```
 
@@ -126,14 +126,14 @@ You SHALL NOT just illustrate the architecture before OR after the changes and i
 
 **DO** illustrate with one of the following forms:
 
-- diagrams
+- Diagrams
 
 **DO NOT** illustrate with any of the following forms:
 
-- ordered list
-- unordered list
-- table
-- dedicated text descriptions
+- Ordered list
+- Unordered list
+- Table
+- Dedicated text descriptions
 -->
 ```
 
@@ -148,11 +148,11 @@ You SHALL use the following template when the algorithm design if new algorithms
 
 **DO** illustrate with one of the following forms:
 
-- diagrams
+- Diagrams
 
 **DO NOT** illustrate with any of the following forms:
 
-- dedicated text descriptions
+- Dedicated text descriptions
 
 Formulae are allowed if can be expressed in markdown.
 -->

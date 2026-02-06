@@ -19,14 +19,9 @@ Load plan, execute tasks, raise human verification gate if necessary.
 
 1. Read plan file
 
-### Step 2: Execute Tasks
+### Step 2: Execute Tasks by Maximizing the Parallelism
 
-For each task:
-
-1. Mark as in_progress
-2. Follow each step exactly
-3. Run verifications as specified
-4. Mark as completed
+You **MUST** execute the tasks with subagents by maximizing the parallelism but also take the tasks dependencies into consideration.
 
 ### Step 3: Raise Human Verification Gate If Neccessary
 

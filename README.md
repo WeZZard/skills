@@ -67,8 +67,8 @@ Debugging skills that capture and analyze program execution with voice, screen, 
 
 ```text
 .claude-plugin/marketplace.json
-plugins/wezzard/.claude-plugin/plugin.json
-plugins/wezzard/skills/<skill-name>/SKILL.md
+claude/intelligence-scale/.claude-plugin/plugin.json
+claude/<plugin-name>/skills/<skill-name>/SKILL.md
 ```
 
 Notes:
@@ -82,13 +82,13 @@ Notes:
 1. Create a new skill directory:
 
 ```bash
-mkdir -p plugins/<plugin-name>/skills/<skill-name>
+mkdir -p claude/<plugin-name>/skills/<skill-name>
 ```
 
 2. Create the skill definition:
 
 ```text
-plugins/<plugin-name>/skills/<skill-name>/SKILL.md
+claude/<plugin-name>/skills/<skill-name>/SKILL.md
 ```
 
 Frontmatter should include at least `name` and `description`. You can add `disable-model-invocation: true` to make it manual-only.
@@ -96,7 +96,7 @@ Frontmatter should include at least `name` and `description`. You can add `disab
 3. Test locally:
 
 ```bash
-claude --plugin-dir ./plugins/<plugin-name>
+claude --plugin-dir ./claude/<plugin-name>
 ```
 
 ## Distribution tips
@@ -104,6 +104,16 @@ claude --plugin-dir ./plugins/<plugin-name>
 - Relative plugin sources work when the marketplace is added via Git (local path or repo).
 - If you distribute via a direct URL to `marketplace.json`, use Git or GitHub sources instead of relative paths.
 - Plugins are copied to a cache on install, so do not reference files outside the plugin directory.
+
+## Development setup
+
+After cloning, run the setup script to enable automatic plugin version bumping:
+
+```bash
+sh scripts/setup.sh
+```
+
+This configures Git to use tracked hooks from `.githooks/`. When you commit changes to any plugin under `claude/`, the patch version in its `plugin.json` is automatically incremented. To set major or minor versions manually, edit `plugin.json` and stage it before committing — the hook respects manually staged version changes.
 
 ## Website
 
