@@ -1,6 +1,6 @@
 ---
 name: write-plan
-description:  You **MUST** invoke this skill before update the plan file of the Claude Code session.
+description:  You MUST invoke this skill before update the plan file of the Claude Code session.
 ---
 
 # Update Plan

@@ -1,6 +1,6 @@
 ---
 name: audit-plan
-description: Invoke after plan execution completes to verify all planned changes were implemented correctly. Use as the final step of a plan-based workflow.
+description: You MUST invoke after plan execution completes to verify all planned changes were implemented correctly. Use as the final step of a plan-based workflow.
 ---
 
 # Audit Plan Execution

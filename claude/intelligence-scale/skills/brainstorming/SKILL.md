@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: You **MUST** invoke this skill when the user wants to explore ideas, discuss approaches, research a topic, or has been stuck on a problem. Always brainstorm before beginning implementation.
+description: You MUST invoke this skill when the user wants to explore ideas, discuss approaches, research a topic, or has been stuck on a problem. Always brainstorm before beginning implementation.
 ---
 
 # Brainstorming Ideas Into Designs
