@@ -1,5 +1,7 @@
 ---
 import Base from "../layouts/Base.astro";
+import InstallBanner from "../components/InstallBanner.astro";
+import SkillCard from "../components/SkillCard.astro";
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 
@@ -8,13 +10,14 @@ interface SkillData {
   generatedAt: string;
   skill: {
     name: string;
+    displayName: string;
     tagline: string;
-    summary: string;
+    shortSummary: string;
+    fullSummary: string;
+    highlights: Array<{ title: string; description: string }>;
     workflow: {
-      mermaid: string;
-      steps: Array<{ name: string; description: string }>;
+      steps: Array<{ name: string; description: string; details?: string }>;
     };
-    principles: string[];
   };
 }
 
@@ -28,340 +31,187 @@ if (existsSync(generatedDir)) {
     return JSON.parse(content) as SkillData;
   });
 }
+
+// Sort skills by name for consistent ordering
+skills.sort((a, b) => a.skill.name.localeCompare(b.skill.name));
 ---
 
 <Base title="Skills">
-  <div class="hero-section">
-    <div class="hero-bg"></div>
+  <!-- Hero Section -->
+  <section class="hero">
     <div class="container">
-      <header class="hero">
-        <p class="hero-eyebrow">Claude Code Skills</p>
-        <h1>Build better with<br /><span class="gradient-text">structured workflows</span></h1>
-        <p class="hero-description">
-          A collection of skills for AI-assisted development. Plan, execute, and iterate with confidence.
-        </p>
-      </header>
+      <p class="hero-eyebrow">Claude Code Skills</p>
+      <h1>Build better with<br /><span class="hero-accent">structured workflows</span></h1>
+      <p class="hero-description">
+        A curated collection of skills for AI-assisted development.
+        Plan thoughtfully, execute precisely, and iterate with confidence.
+      </p>
     </div>
-  </div>
+  </section>
 
   <div class="container">
+    <!-- Installation Banner -->
+    <section class="install-section">
+      <InstallBanner />
+    </section>
+
+    <!-- Skills Grid -->
     {
       skills.length === 0 ? (
-        <div class="empty-state">
+        <section class="empty-state">
           <p>
             No skills generated yet. Run <code>npm run generate</code> to create skill content.
           </p>
-        </div>
+        </section>
       ) : (
         <section class="skills-section">
-          <div class="section-header">
+          <header class="section-header">
             <h2>Available Skills</h2>
-            <p>Click any skill to learn more about how it works</p>
-          </div>
+            <p>Explore each skill to learn how it can enhance your development workflow</p>
+          </header>
+
           <div class="skills-grid">
             {skills.map((s, index) => (
-              <a href={`/skills/${s.skill.name}`} class="skill-card" style={`--delay: ${index * 50}ms`}>
-                <div class="skill-card-inner">
-                  <div class="skill-badge">{index + 1}</div>
-                  <h3>{s.skill.name}</h3>
-                  <p class="skill-tagline">{s.skill.tagline}</p>
-                  <p class="skill-summary">{s.skill.summary}</p>
-                  <span class="skill-link">
-                    Learn more
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M5 12h14M12 5l7 7-7 7" />
-                    </svg>
-                  </span>
-                </div>
-              </a>
+              <SkillCard
+                name={s.skill.name}
+                displayName={s.skill.displayName}
+                tagline={s.skill.tagline}
+                shortSummary={s.skill.shortSummary}
+                index={index}
+              />
             ))}
           </div>
         </section>
       )
     }
-
-    <section class="install-section">
-      <div class="install-card">
-        <div class="install-content">
-          <h2>Get started</h2>
-          <p>Add the marketplace to Claude Code and install the skills plugin.</p>
-        </div>
-        <div class="install-commands">
-          <div class="command-row">
-            <span class="command-label">Add marketplace</span>
-            <code>/plugin marketplace add WeZZard/skills</code>
-          </div>
-          <div class="command-row">
-            <span class="command-label">Install plugin</span>
-            <code>/plugin install wezzard@wezzard-skills</code>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <footer class="footer">
-      <p>Made with Claude Code</p>
-    </footer>
   </div>
 </Base>
 
 <style>
-  .hero-section {
-    position: relative;
-    padding: 6rem 0 4rem;
-    overflow: hidden;
-  }
-
-  .hero-bg {
-    position: absolute;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(16, 163, 127, 0.08), transparent),
-      radial-gradient(ellipse 60% 40% at 80% 60%, rgba(16, 163, 127, 0.04), transparent),
-      radial-gradient(ellipse 40% 30% at 20% 80%, rgba(99, 102, 241, 0.03), transparent);
-    pointer-events: none;
-  }
-
+  /* Hero Section */
   .hero {
-    position: relative;
+    padding: var(--space-16) 0 var(--space-12);
     text-align: center;
-    max-width: 720px;
-    margin: 0 auto;
+    background: linear-gradient(
+      180deg,
+      var(--color-bg) 0%,
+      var(--color-bg-alt) 100%
+    );
+    border-bottom: 1px solid var(--color-border-subtle);
   }
 
   .hero-eyebrow {
-    font-size: 0.875rem;
-    font-weight: 500;
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 600;
     color: var(--color-accent);
-    margin-bottom: 1.5rem;
-    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    margin-bottom: var(--space-4);
   }
 
   .hero h1 {
-    margin-bottom: 1.5rem;
+    font-family: var(--font-display);
+    font-size: var(--text-5xl);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    color: var(--color-text);
+    margin-bottom: var(--space-6);
+    max-width: 700px;
+    margin-left: auto;
+    margin-right: auto;
   }
 
-  .gradient-text {
-    background: linear-gradient(135deg, #10a37f 0%, #059669 50%, #0d9488 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+  .hero-accent {
+    color: var(--color-accent);
+    font-style: italic;
   }
 
   .hero-description {
-    font-size: 1.125rem;
+    font-size: var(--text-lg);
     color: var(--color-text-muted);
-    line-height: 1.7;
-    max-width: 480px;
+    line-height: var(--leading-relaxed);
+    max-width: 520px;
     margin: 0 auto;
   }
 
+  /* Install Section */
+  .install-section {
+    margin-top: calc(-1 * var(--space-8));
+    margin-bottom: var(--space-12);
+    position: relative;
+    z-index: 10;
+  }
+
+  /* Empty State */
   .empty-state {
     background: var(--color-surface);
-    padding: 4rem;
-    border-radius: 16px;
+    padding: var(--space-12);
+    border-radius: var(--radius-xl);
     text-align: center;
     border: 1px solid var(--color-border);
+    margin-bottom: var(--space-12);
   }
 
   .empty-state p {
     color: var(--color-text-muted);
+    font-size: var(--text-base);
   }
 
+  /* Skills Section */
   .skills-section {
-    padding: 2rem 0 4rem;
+    padding: var(--space-8) 0 var(--space-16);
   }
 
   .section-header {
-    margin-bottom: 2.5rem;
+    text-align: center;
+    margin-bottom: var(--space-10);
   }
 
   .section-header h2 {
-    font-size: 1.5rem;
-    margin-bottom: 0.5rem;
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: var(--space-2);
   }
 
   .section-header p {
+    font-size: var(--text-base);
     color: var(--color-text-muted);
   }
 
   .skills-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1.25rem;
+    gap: var(--space-6);
   }
 
   @media (max-width: 768px) {
+    .hero {
+      padding: var(--space-12) 0 var(--space-10);
+    }
+
+    .hero h1 {
+      font-size: var(--text-3xl);
+    }
+
+    .hero-description {
+      font-size: var(--text-base);
+    }
+
+    .install-section {
+      margin-top: calc(-1 * var(--space-6));
+    }
+
     .skills-grid {
       grid-template-columns: 1fr;
+      gap: var(--space-4);
     }
-  }
 
-  .skill-card {
-    display: block;
-    color: inherit;
-    text-decoration: none;
-    animation: fadeIn 0.4s ease forwards;
-    animation-delay: var(--delay);
-    opacity: 0;
-  }
-
-  @keyframes fadeIn {
-    to {
-      opacity: 1;
+    .skills-section {
+      padding: var(--space-6) 0 var(--space-12);
     }
-  }
-
-  .skill-card-inner {
-    background: var(--color-surface-elevated);
-    padding: 1.75rem;
-    border-radius: 16px;
-    border: 1px solid var(--color-border);
-    transition: all 0.2s ease;
-    height: 100%;
-    position: relative;
-  }
-
-  .skill-card:hover .skill-card-inner {
-    border-color: var(--color-accent);
-    box-shadow: var(--shadow-lg), 0 0 0 1px var(--color-accent-soft);
-    transform: translateY(-2px);
-  }
-
-  .skill-badge {
-    position: absolute;
-    top: 1.75rem;
-    right: 1.75rem;
-    width: 28px;
-    height: 28px;
-    background: var(--color-accent-softer);
-    color: var(--color-accent);
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.8rem;
-    font-weight: 600;
-  }
-
-  .skill-card h3 {
-    font-size: 1.125rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-    color: var(--color-text);
-  }
-
-  .skill-tagline {
-    font-size: 0.9rem;
-    color: var(--color-accent);
-    font-weight: 500;
-    margin-bottom: 0.75rem;
-  }
-
-  .skill-summary {
-    font-size: 0.9rem;
-    color: var(--color-text-muted);
-    line-height: 1.6;
-    margin-bottom: 1.25rem;
-  }
-
-  .skill-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-text-muted);
-    transition: color 0.15s ease;
-  }
-
-  .skill-card:hover .skill-link {
-    color: var(--color-accent);
-  }
-
-  .skill-link svg {
-    transition: transform 0.15s ease;
-  }
-
-  .skill-card:hover .skill-link svg {
-    transform: translateX(3px);
-  }
-
-  .install-section {
-    padding: 2rem 0 4rem;
-  }
-
-  .install-card {
-    background: var(--color-surface);
-    border-radius: 20px;
-    padding: 2.5rem;
-    display: flex;
-    gap: 3rem;
-    align-items: flex-start;
-    border: 1px solid var(--color-border);
-  }
-
-  @media (max-width: 768px) {
-    .install-card {
-      flex-direction: column;
-      gap: 2rem;
-    }
-  }
-
-  .install-content {
-    flex: 1;
-  }
-
-  .install-content h2 {
-    font-size: 1.25rem;
-    margin-bottom: 0.5rem;
-  }
-
-  .install-content p {
-    color: var(--color-text-muted);
-    font-size: 0.95rem;
-  }
-
-  .install-commands {
-    flex: 1.5;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .command-row {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    background: var(--color-surface-elevated);
-    padding: 0.875rem 1.25rem;
-    border-radius: 12px;
-    border: 1px solid var(--color-border);
-  }
-
-  .command-label {
-    font-size: 0.8rem;
-    color: var(--color-text-light);
-    white-space: nowrap;
-    min-width: 100px;
-  }
-
-  .command-row code {
-    font-size: 0.875rem;
-    background: none;
-    border: none;
-    padding: 0;
-    color: var(--color-text);
-  }
-
-  .footer {
-    padding: 3rem 0;
-    text-align: center;
-    border-top: 1px solid var(--color-border);
-  }
-
-  .footer p {
-    font-size: 0.875rem;
-    color: var(--color-text-light);
   }
 </style>

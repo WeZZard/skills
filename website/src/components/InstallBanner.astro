@@ -1,0 +1,217 @@
+---
+/**
+ * InstallBanner Component
+ * Elegant installation instructions card with copy-to-clipboard
+ */
+---
+
+<section class="install-banner">
+  <div class="install-content">
+    <div class="install-header">
+      <span class="install-icon">⚡</span>
+      <div>
+        <h2>Get Started</h2>
+        <p>Add the marketplace and install the skills plugin in Claude Code</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="install-commands">
+    <div class="command-group">
+      <span class="command-step">1</span>
+      <div class="command-content">
+        <span class="command-label">Add marketplace</span>
+        <div class="command-box">
+          <code>/plugin marketplace add WeZZard/skills</code>
+          <button class="copy-btn" data-command="/plugin marketplace add WeZZard/skills" aria-label="Copy command">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span class="copy-text">Copy</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="command-group">
+      <span class="command-step">2</span>
+      <div class="command-content">
+        <span class="command-label">Install plugin</span>
+        <div class="command-box">
+          <code>/plugin install wezzard@wezzard-skills</code>
+          <button class="copy-btn" data-command="/plugin install wezzard@wezzard-skills" aria-label="Copy command">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span class="copy-text">Copy</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  document.querySelectorAll(".install-banner .copy-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const command = btn.getAttribute("data-command");
+      if (command) {
+        navigator.clipboard.writeText(command);
+        const text = btn.querySelector(".copy-text");
+        if (text) {
+          text.textContent = "Copied!";
+          setTimeout(() => (text.textContent = "Copy"), 1500);
+        }
+      }
+    });
+  });
+</script>
+
+<style>
+  .install-banner {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    padding: var(--space-8);
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: var(--space-8);
+    align-items: start;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .install-header {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+  }
+
+  .install-icon {
+    font-size: var(--text-2xl);
+    line-height: 1;
+  }
+
+  .install-header h2 {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 600;
+    margin-bottom: var(--space-2);
+    color: var(--color-text);
+  }
+
+  .install-header p {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    line-height: var(--leading-relaxed);
+  }
+
+  .install-commands {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .command-group {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+  }
+
+  .command-step {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    margin-top: 2px;
+  }
+
+  .command-content {
+    flex: 1;
+  }
+
+  .command-label {
+    display: block;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+  }
+
+  .command-box {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    background: var(--color-earth-100);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-subtle);
+  }
+
+  .command-box code {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--color-text);
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  .copy-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: var(--color-accent);
+    border: none;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    color: white;
+    font-size: var(--text-xs);
+    font-weight: 500;
+    transition: background var(--transition-fast);
+    white-space: nowrap;
+  }
+
+  .copy-btn:hover {
+    background: var(--color-accent-hover);
+  }
+
+  .copy-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  @media (max-width: 768px) {
+    .install-banner {
+      grid-template-columns: 1fr;
+      gap: var(--space-6);
+      padding: var(--space-6);
+    }
+
+    .command-box {
+      flex-wrap: wrap;
+    }
+
+    .command-box code {
+      width: 100%;
+      font-size: var(--text-xs);
+    }
+
+    .copy-btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+</style>

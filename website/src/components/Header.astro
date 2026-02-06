@@ -1,0 +1,80 @@
+---
+/**
+ * Header Component
+ * Minimal header with logo/brand - expandable for future navigation
+ */
+---
+
+<header class="site-header">
+  <div class="header-container">
+    <a href="/" class="brand">
+      <span class="brand-icon">✦</span>
+      <span class="brand-text">WeZZard Skills</span>
+    </a>
+
+    <!-- Placeholder for future navigation -->
+    <nav class="nav-placeholder" aria-label="Main navigation">
+      <!-- Future: Platform tabs (Claude Code, OpenCloud, etc.) -->
+    </nav>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--color-bg);
+    border-bottom: 1px solid var(--color-border);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .header-container {
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: var(--space-4) var(--space-6);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    text-decoration: none;
+    color: var(--color-text);
+    transition: opacity var(--transition-fast);
+  }
+
+  .brand:hover {
+    opacity: 0.8;
+  }
+
+  .brand-icon {
+    font-size: var(--text-lg);
+    color: var(--color-accent);
+  }
+
+  .brand-text {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .nav-placeholder {
+    /* Reserved for future navigation items */
+  }
+
+  @media (max-width: 768px) {
+    .header-container {
+      padding: var(--space-3) var(--space-4);
+    }
+
+    .brand-text {
+      font-size: var(--text-base);
+    }
+  }
+</style>

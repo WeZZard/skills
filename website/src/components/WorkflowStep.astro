@@ -1,0 +1,162 @@
+---
+/**
+ * WorkflowStep Component
+ * Step card with connecting line for workflow visualization
+ */
+
+interface Props {
+  stepNumber: number;
+  name: string;
+  description: string;
+  details?: string;
+  isLast: boolean;
+}
+
+const { stepNumber, name, description, details, isLast } = Astro.props;
+---
+
+<div class="workflow-step" style={`--delay: ${stepNumber * 120}ms`}>
+  <!-- Step indicator with connecting line -->
+  <div class="step-indicator">
+    <div class="step-number">
+      <span>{stepNumber}</span>
+    </div>
+    {!isLast && <div class="step-line"></div>}
+  </div>
+
+  <!-- Step content -->
+  <article class="step-content">
+    <h3 class="step-name">{name}</h3>
+    <p class="step-description">{description}</p>
+    {details && (
+      <p class="step-details">{details}</p>
+    )}
+  </article>
+</div>
+
+<style>
+  .workflow-step {
+    display: flex;
+    gap: var(--space-5);
+    animation: fadeInLeft 0.5s ease forwards;
+    animation-delay: var(--delay);
+    opacity: 0;
+  }
+
+  @keyframes fadeInLeft {
+    from {
+      opacity: 0;
+      transform: translateX(-12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .step-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .step-number {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-sm), 0 0 0 4px var(--color-accent-softer);
+    position: relative;
+    z-index: 1;
+  }
+
+  .step-number span {
+    font-family: var(--font-display);
+    font-size: var(--text-base);
+    font-weight: 600;
+    color: white;
+  }
+
+  .step-line {
+    width: 2px;
+    flex: 1;
+    min-height: 40px;
+    background: linear-gradient(
+      180deg,
+      var(--color-accent) 0%,
+      var(--color-earth-200) 100%
+    );
+    margin-top: var(--space-2);
+    border-radius: var(--radius-full);
+  }
+
+  .step-content {
+    flex: 1;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5) var(--space-6);
+    margin-bottom: var(--space-4);
+    transition: all var(--transition-base);
+  }
+
+  .step-content:hover {
+    border-color: var(--color-accent);
+    box-shadow: var(--shadow-md);
+  }
+
+  .step-name {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: var(--space-2);
+    line-height: var(--leading-snug);
+  }
+
+  .step-description {
+    font-size: var(--text-base);
+    color: var(--color-text-secondary);
+    line-height: var(--leading-relaxed);
+    margin-bottom: var(--space-3);
+  }
+
+  .step-details {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    line-height: var(--leading-relaxed);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  @media (max-width: 768px) {
+    .workflow-step {
+      gap: var(--space-4);
+    }
+
+    .step-number {
+      width: 36px;
+      height: 36px;
+    }
+
+    .step-number span {
+      font-size: var(--text-sm);
+    }
+
+    .step-content {
+      padding: var(--space-4) var(--space-5);
+    }
+
+    .step-name {
+      font-size: var(--text-base);
+    }
+
+    .step-description {
+      font-size: var(--text-sm);
+    }
+  }
+</style>

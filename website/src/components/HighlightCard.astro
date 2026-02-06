@@ -1,0 +1,90 @@
+---
+/**
+ * HighlightCard Component
+ * Editorial-style card for displaying skill highlights
+ */
+
+interface Props {
+  title: string;
+  description: string;
+  index: number;
+}
+
+const { title, description, index } = Astro.props;
+
+// Alternate accent colors for visual variety
+const accentColors = ['accent', 'secondary'];
+const accentColor = accentColors[index % accentColors.length];
+---
+
+<article class="highlight-card" style={`--accent-var: var(--color-${accentColor}); --accent-soft-var: var(--color-${accentColor}-soft); --delay: ${index * 100}ms`}>
+  <div class="highlight-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+    </svg>
+  </div>
+  <h3 class="highlight-title">{title}</h3>
+  <p class="highlight-description">{description}</p>
+</article>
+
+<style>
+  .highlight-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    transition: all var(--transition-base);
+    animation: fadeIn 0.4s ease forwards;
+    animation-delay: var(--delay);
+    opacity: 0;
+  }
+
+  @keyframes fadeIn {
+    to {
+      opacity: 1;
+    }
+  }
+
+  .highlight-card:hover {
+    border-color: var(--accent-var);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+  }
+
+  .highlight-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--accent-soft-var);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: var(--space-4);
+    color: var(--accent-var);
+  }
+
+  .highlight-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: var(--space-2);
+    line-height: var(--leading-snug);
+  }
+
+  .highlight-description {
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    line-height: var(--leading-relaxed);
+  }
+
+  @media (max-width: 768px) {
+    .highlight-card {
+      padding: var(--space-5);
+    }
+
+    .highlight-title {
+      font-size: var(--text-base);
+    }
+  }
+</style>

@@ -1,4 +1,8 @@
 ---
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import "../styles/variables.css";
+
 interface Props {
   title: string;
   description?: string;
@@ -17,124 +21,136 @@ const { title, description = "Claude Code skills by WeZZard" } = Astro.props;
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
-    <style is:global>
-      :root {
-        --color-bg: #ffffff;
-        --color-bg-tint: linear-gradient(
-          180deg,
-          rgba(16, 163, 127, 0.03) 0%,
-          rgba(255, 255, 255, 0) 50%
-        );
-        --color-surface: #fafafa;
-        --color-surface-elevated: #ffffff;
-        --color-border: rgba(0, 0, 0, 0.06);
-        --color-border-subtle: rgba(0, 0, 0, 0.04);
-        --color-text: #171717;
-        --color-text-secondary: #404040;
-        --color-text-muted: #737373;
-        --color-text-light: #a3a3a3;
-        --color-accent: #10a37f;
-        --color-accent-soft: rgba(16, 163, 127, 0.1);
-        --color-accent-softer: rgba(16, 163, 127, 0.05);
-        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.05);
-        --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.06);
-      }
-
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
-      html {
-        scroll-behavior: smooth;
-      }
-
-      body {
-        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
-          Roboto, sans-serif;
-        background: var(--color-bg);
-        color: var(--color-text);
-        line-height: 1.6;
-        min-height: 100vh;
-        font-size: 15px;
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
-      }
-
-      a {
-        color: var(--color-accent);
-        text-decoration: none;
-        transition: opacity 0.15s ease;
-      }
-
-      a:hover {
-        opacity: 0.8;
-      }
-
-      .container {
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 0 2rem;
-      }
-
-      h1 {
-        font-weight: 600;
-        font-size: 3rem;
-        letter-spacing: -0.03em;
-        line-height: 1.1;
-        color: var(--color-text);
-      }
-
-      h2 {
-        font-weight: 600;
-        font-size: 1.125rem;
-        letter-spacing: -0.01em;
-        line-height: 1.4;
-        color: var(--color-text);
-      }
-
-      h3 {
-        font-weight: 500;
-        font-size: 1rem;
-        line-height: 1.5;
-      }
-
-      code {
-        font-family: "SF Mono", "Fira Code", Menlo, monospace;
-        background: var(--color-surface);
-        padding: 0.15em 0.4em;
-        border-radius: 5px;
-        font-size: 0.85em;
-        color: var(--color-text-secondary);
-        border: 1px solid var(--color-border-subtle);
-      }
-
-      pre {
-        background: var(--color-surface);
-        padding: 1.25rem 1.5rem;
-        border-radius: 12px;
-        overflow-x: auto;
-        border: 1px solid var(--color-border);
-      }
-
-      pre code {
-        background: none;
-        padding: 0;
-        border: none;
-        border-radius: 0;
-      }
-
-      ::selection {
-        background: var(--color-accent-soft);
-      }
-    </style>
   </head>
   <body>
-    <slot />
+    <Header />
+    <main class="main-content">
+      <slot />
+    </main>
+    <Footer />
   </body>
 </html>
+
+<style is:global>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--color-bg);
+    color: var(--color-text);
+    line-height: var(--leading-normal);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .main-content {
+    flex: 1;
+  }
+
+  /* Typography */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    color: var(--color-text);
+  }
+
+  h1 {
+    font-size: var(--text-4xl);
+  }
+
+  h2 {
+    font-size: var(--text-2xl);
+  }
+
+  h3 {
+    font-size: var(--text-xl);
+  }
+
+  p {
+    line-height: var(--leading-relaxed);
+  }
+
+  a {
+    color: var(--color-accent);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+  }
+
+  a:hover {
+    color: var(--color-accent-hover);
+  }
+
+  code {
+    font-family: var(--font-mono);
+    background: var(--color-earth-100);
+    padding: 0.15em 0.4em;
+    border-radius: var(--radius-sm);
+    font-size: 0.9em;
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border-subtle);
+  }
+
+  pre {
+    background: var(--color-earth-100);
+    padding: var(--space-5) var(--space-6);
+    border-radius: var(--radius-lg);
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+  }
+
+  pre code {
+    background: none;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+
+  /* Container utility */
+  .container {
+    max-width: var(--container-max);
+    margin: 0 auto;
+    padding: 0 var(--space-6);
+  }
+
+  .container-narrow {
+    max-width: var(--container-narrow);
+    margin: 0 auto;
+    padding: 0 var(--space-6);
+  }
+
+  @media (max-width: 768px) {
+    h1 {
+      font-size: var(--text-3xl);
+    }
+
+    h2 {
+      font-size: var(--text-xl);
+    }
+
+    .container,
+    .container-narrow {
+      padding: 0 var(--space-4);
+    }
+  }
+</style>

@@ -1,31 +1,48 @@
 {
-  "sourceHash": "af8d726383e5437f",
-  "generatedAt": "2026-01-29T16:50:35.216Z",
+  "sourceHash": "9cca97ccd2d11c46",
+  "generatedAt": "2026-02-06T21:03:38.938Z",
   "skill": {
     "name": "recover-from-errors",
-    "tagline": "Stay on track when tools fail by checking your plan first before trying fixes.",
-    "summary": "This skill helps you recover from errors without losing sight of your original goal. When a tool call fails, it guides you to check your plan to see if the action was actually required. This prevents you from guessing solutions that might take you off course.",
+    "displayName": "Recover From Errors",
+    "tagline": "Stay on track when tools fail by re-aligning with your plan instead of guessing.",
+    "shortSummary": "Prevents goal drift by checking your plan when tool calls fail repeatedly.",
+    "fullSummary": "This skill helps you recover from errors without losing sight of your original goal. When tool calls fail repeatedly, it guides you to check your plan and verify if the failing action is actually required. This prevents you from introducing noise by guessing alternative parameters or tools that could drift you away from your objective.",
+    "highlights": [
+      {
+        "title": "Prevents Goal Drift",
+        "description": "Stops you from guessing new parameters or alternative tools when errors occur, which often introduces noise and causes you to drift away from your original goal. Instead, it provides a structured approach to stay aligned with your plan."
+      },
+      {
+        "title": "Plan Verification",
+        "description": "Immediately directs you to look up the session's plan file to understand the context of the current operation. This ensures you have the right perspective before attempting any fixes or changes."
+      },
+      {
+        "title": "Action Alignment Check",
+        "description": "Helps you determine if the failing tool call is actually part of the tasks specified in your current plan. You ask yourself: 'Is this action explicitly required by the current step?' This simple question prevents unnecessary work."
+      },
+      {
+        "title": "Smart Recovery Path",
+        "description": "Provides clear guidance based on whether the failing action is part of the plan. If it is, you analyze and fix the specific issue. If it's not, you stop calling the tool and re-read the plan to get back on track."
+      }
+    ],
     "workflow": {
-      "mermaid": "graph TD\n    A[Tool Call Fails] --> B{Check the Plan}\n    B --> C[Verify Alignment]\n    C --> D{Is action part of plan?}\n    D -- Yes --> E[Analyze & Fix Specific Issue]\n    D -- No --> F[Stop & Re-read Plan]\n    F --> G[Get Back on Track]",
       "steps": [
         {
-          "name": "Check the Plan",
-          "description": "Immediately look up the session's plan file to understand the context of the current operation."
+          "name": "Check Plan",
+          "description": "Look up the plan file to verify the context of your current operation.",
+          "details": "Immediately reference the session's plan file to understand what you're supposed to be doing. This gives you the proper context before making any decisions about how to proceed after an error."
         },
         {
           "name": "Verify Alignment",
-          "description": "Determine if the failed tool call is actually required by the current step in the plan."
+          "description": "Determine if the failing tool call is actually required by your current plan step.",
+          "details": "Ask yourself: 'Is this action explicitly required by the current step in the plan?' This helps you identify if you've drifted from your intended tasks or if this is a legitimate error that needs fixing."
         },
         {
-          "name": "Re-align to the Plan",
-          "description": "If the action is part of the plan, fix the specific issue. If not, stop and get back to the specified tasks."
+          "name": "Re-align to Plan",
+          "description": "Take appropriate action based on whether the failing tool is part of your plan.",
+          "details": "If the action is part of your plan, analyze why it failed and fix the specific issue. If it's not part of your plan, stop calling the tool and re-read your plan to get back on track with your specified tasks."
         }
       ]
-    },
-    "principles": [
-      "Prevent goal drift by avoiding guesses when tools fail",
-      "Always verify if a failing action is required by the plan before attempting fixes",
-      "Stop and re-read the plan if you've drifted from the specified tasks"
-    ]
+    }
   }
 }

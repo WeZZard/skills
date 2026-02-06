@@ -14,19 +14,33 @@ config({ path: join(__dirname, "../../.env") });
 const SKILLS_DIR = join(__dirname, "../../claude/intelligence-scale/skills");
 const OUTPUT_DIR = join(__dirname, "../src/content/generated");
 
+// New schema for editorial redesign
 interface SkillGenerated {
   sourceHash: string;
   generatedAt: string;
   skill: {
     name: string;
+    displayName: string;
     tagline: string;
-    summary: string;
+    shortSummary: string;
+    fullSummary: string;
+    highlights: Array<{ title: string; description: string }>;
     workflow: {
-      mermaid: string;
-      steps: Array<{ name: string; description: string }>;
+      steps: Array<{ name: string; description: string; details?: string }>;
     };
-    principles: string[];
   };
+}
+
+/**
+ * Convert hyphenated skill name to Title Case display name
+ * "write-plan" → "Write Plan"
+ * "recover-from-errors" → "Recover From Errors"
+ */
+function toDisplayName(name: string): string {
+  return name
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function computeHash(content: string): string {
@@ -48,7 +62,9 @@ async function generateSkillContent(
   skillName: string,
   skillContent: string
 ): Promise<SkillGenerated["skill"]> {
-  const prompt = `You are analyzing a Claude Code skill definition. Generate a user-friendly explanation.
+  const displayName = toDisplayName(skillName);
+
+  const prompt = `You are analyzing a Claude Code skill definition. Generate a user-friendly explanation for a skill gallery website.
 
 Input SKILL.md:
 ---
@@ -57,21 +73,35 @@ ${skillContent}
 
 Output a JSON object with this exact structure:
 {
-  "tagline": "One sentence hook (max 80 chars)",
-  "summary": "2-3 sentence explanation for users unfamiliar with the skill",
+  "tagline": "One compelling sentence hook (max 80 chars) that captures the skill's essence",
+  "shortSummary": "One concise sentence (max 120 chars) for display on index cards",
+  "fullSummary": "2-3 sentences providing a complete overview for the detail page",
+  "highlights": [
+    {
+      "title": "Short highlight title (2-4 words)",
+      "description": "2-3 sentence explanation of this key feature or benefit"
+    }
+  ],
   "workflow": {
-    "mermaid": "A Mermaid flowchart diagram (graph TD format) showing the skill's process flow",
-    "steps": [{"name": "Step name", "description": "Brief description of what happens"}]
-  },
-  "principles": ["Key principle 1", "Key principle 2", ...]
+    "steps": [
+      {
+        "name": "Step name (2-4 words)",
+        "description": "Brief description (1 sentence)",
+        "details": "Extended explanation for detail page (2-3 sentences, optional)"
+      }
+    ]
+  }
 }
 
 Requirements:
-- Keep workflow diagram structure stable (same tasks = same structure)
-- Use simple, clear language
-- Focus on what the user experiences, not implementation details
-- The mermaid diagram should use graph TD format with descriptive node labels
-- Extract principles from the skill's key principles or guidelines section`;
+- tagline: Compelling, action-oriented hook
+- shortSummary: Ultra-concise for card display
+- fullSummary: Complete but accessible explanation
+- highlights: Extract 3-5 key features/benefits from the skill
+- workflow.steps: Clear sequential steps showing how the skill works
+- Use simple, clear language accessible to developers unfamiliar with the skill
+- Focus on user benefits and outcomes, not implementation details
+- Do NOT include any mermaid diagrams`;
 
   const response = await client.chat.completions.create({
     model: "deepseek-chat",
@@ -87,10 +117,12 @@ Requirements:
   const parsed = JSON.parse(content);
   return {
     name: skillName,
+    displayName,
     tagline: parsed.tagline,
-    summary: parsed.summary,
+    shortSummary: parsed.shortSummary,
+    fullSummary: parsed.fullSummary,
+    highlights: parsed.highlights,
     workflow: parsed.workflow,
-    principles: parsed.principles,
   };
 }
 

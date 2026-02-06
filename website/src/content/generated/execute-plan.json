@@ -1,41 +1,58 @@
 {
-  "sourceHash": "7cbb32a4bcedc7e0",
-  "generatedAt": "2026-01-29T16:50:24.388Z",
+  "sourceHash": "bc1d98d45d633004",
+  "generatedAt": "2026-02-06T21:03:23.717Z",
   "skill": {
     "name": "execute-plan",
-    "tagline": "Execute written plans step-by-step with built-in human verification gates",
-    "summary": "This skill helps you implement written plans by loading them and executing tasks in sequence. It includes automatic verification steps and will pause for human approval when needed. The skill stops immediately if it encounters blockers or unclear instructions rather than guessing.",
+    "displayName": "Execute Plan",
+    "tagline": "Turn your development plans into working code with automated execution and human oversight.",
+    "shortSummary": "Automatically executes development plans with parallel task processing and built-in verification gates.",
+    "fullSummary": "This skill automatically implements development plans by loading plan files and executing tasks in parallel while respecting dependencies. It includes built-in human verification gates for critical steps and stops execution when blockers are encountered, ensuring reliable implementation with proper oversight.",
+    "highlights": [
+      {
+        "title": "Parallel Task Execution",
+        "description": "Executes multiple development tasks simultaneously while respecting dependencies between them. This maximizes efficiency by working on independent tasks concurrently, significantly speeding up the implementation process."
+      },
+      {
+        "title": "Human Verification Gates",
+        "description": "Automatically pauses execution at critical points to request human verification before proceeding. This ensures important decisions receive proper oversight while maintaining automation for routine implementation steps."
+      },
+      {
+        "title": "Smart Block Detection",
+        "description": "Immediately stops execution when encountering blockers like missing dependencies, test failures, or unclear instructions. Instead of guessing, it asks for clarification, preventing wasted effort on incorrect implementations."
+      },
+      {
+        "title": "Plan-First Approach",
+        "description": "Requires a finalized plan file before starting implementation, ensuring you have a clear roadmap. It follows plan steps exactly and references other skills when specified, maintaining consistency with your development strategy."
+      }
+    ],
     "workflow": {
-      "mermaid": "graph TD\n    A[Start: Load Plan File] --> B[Execute Next Task]\n    B --> C{Task requires human verification?}\n    C -->|Yes| D[Stop & Ask for Human Approval]\n    D --> E{Get Feedback}\n    E -->|Approved| B\n    C -->|No| F[Mark Task as in_progress]\n    F --> G[Follow Steps Exactly]\n    G --> H[Run Verifications]\n    H --> I[Mark Task as completed]\n    I --> J{More tasks?}\n    J -->|Yes| B\n    J -->|No| K[Plan Complete]\n    E -->|Changes Needed| F\n    subgraph \"Stop Conditions\"\n        L[Missing Dependency]\n        M[Test Fails]\n        N[Unclear Instruction]\n        O[Critical Plan Gaps]\n        P[Repeated Verification Failures]\n    end\n    B -->|Encounter Stop Condition| L\n    L --> D",
       "steps": [
         {
-          "name": "Load Plan File",
-          "description": "Read and load the written plan file to understand what needs to be executed"
+          "name": "Load Plan",
+          "description": "Read and load the finalized development plan file.",
+          "details": "The skill begins by reading your complete plan file to understand the implementation roadmap. This ensures all execution follows your predefined strategy and requirements."
         },
         {
-          "name": "Execute Tasks Sequentially",
-          "description": "Process each task in order, marking progress and following steps exactly as written"
+          "name": "Execute Tasks",
+          "description": "Process development tasks in parallel while respecting dependencies.",
+          "details": "Tasks are executed simultaneously to maximize efficiency, with intelligent dependency management ensuring dependent tasks wait for prerequisites. This balances speed with proper execution order."
         },
         {
-          "name": "Run Verifications",
-          "description": "Perform verification checks as specified in the plan to ensure correctness"
-        },
-        {
-          "name": "Request Human Verification",
-          "description": "Pause execution and ask for human approval when tasks require verification gates"
+          "name": "Request Verification",
+          "description": "Pause execution for human approval at critical points.",
+          "details": "When tasks require verification or important decisions, execution stops and requests human confirmation. This maintains oversight while automating routine implementation work."
         },
         {
           "name": "Handle Feedback",
-          "description": "Apply changes based on human feedback and continue with execution"
+          "description": "Apply changes based on verification responses and continue.",
+          "details": "After receiving verification feedback, the skill applies any necessary changes and continues with remaining tasks. This cycle repeats until all plan items are completed."
+        },
+        {
+          "name": "Stop When Blocked",
+          "description": "Immediately halt execution when encountering blockers.",
+          "details": "If issues like missing dependencies, test failures, or unclear instructions arise, execution stops completely. This prevents wasted effort and ensures problems are addressed before proceeding."
         }
       ]
-    },
-    "principles": [
-      "Execute with human verification gate",
-      "Follow plan steps exactly without skipping verifications",
-      "Stop immediately when blocked and ask for clarification rather than guessing",
-      "Review plan critically before execution",
-      "Reference other skills when the plan specifies to do so"
-    ]
+    }
   }
 }

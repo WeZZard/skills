@@ -22,7 +22,7 @@ Verify that every task in the session plan file was implemented correctly by com
 
 ### Step 2: Verify Each Task
 
-For each task in the plan:
+For each task in the plan you **MUST** spawn subagents and send them in ONE message to:
 
 1. **Check file existence:** Glob/Read files the task was supposed to create or modify
 2. **Check file content:** Verify the changes match what the plan specified (exact code, structure, config values)
