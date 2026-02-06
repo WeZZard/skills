@@ -29,7 +29,7 @@ You SHALL create plan file with the following template by following the guidance
 > MANDATORY SUB-SKILL: You SHALL use intelligence-scale:execute-plan to execut this plan.
 > MANDATORY SUB-SKILL: You SHALL use intelligence-scale:review to review the result after the plan was executed.
 
-**Goal:** <!-- One sentence describing what this builds. Write in line. -->
+**Goal:** <!-- One sentence describing what this plan achieves. Write in line. -->
 
 <!-- Explain why we are here -->
 
@@ -53,6 +53,10 @@ You SHALL create plan file with the following template by following the guidance
 - unordered list
 - dedicated text descriptions
 -->
+
+## Verification
+
+<!-- You SHALL always list the verification steps. -->
 
 ```
 
@@ -154,38 +158,51 @@ Formulae are allowed if can be expressed in markdown.
 -->
 ```
 
-**Testing:**
+**Verification:**
 
 You SHALL use the following template when the plan involves codes, configurations or prompts addition, removal and changes.
 
 ```markdown
-## Testing
+## Verification
 <!--
 You SHALL present testing in the following format. Multiple test files CAN be involved in the **Test Cases** sesion. Multiple test cases CAN be involved under one test file item in the test file list. At lest, but not limited to, one key assertion CAN be involved under each test case sub list.
 -->
 
-**Testing Approach:** [Automate | Manual]
+**Verification Approach:** [Automate | Manual | Hybrid: automate and manual]
+
+**Veritication Steps:**
+
+<!--
+1. Step 1
+2. Step 2
+3. Step 2
+-->
+
+<!-- AUTOMATE VERIFICATION BEGIN: Present the following contents when the automate verification approach is invovled -->
 
 **Testing Framework:** [the framework used for testing, only applicable for automate the testing approach]
 
 **Test Cases:**
 
 <!-- You SHALL present the test cases with the following nested list format.
-- ADD|MODIFY: [test_filename_1]
-    - ADD|MODIFY: [test_case_1]: [test_filename_1_test_case_1_description]
-        - ADD|MODIFY: [key assertion 1]
-        - ADD|MODIFY: [key assertion 2]
-        - ADD|MODIFY: [key assertion 3]
-- ADD|MODIFY: [test_filename_2]
-    - ADD|MODIFY: [test_case_2]: [test_filename_2_test_case_2_description]
-        - ADD|MODIFY: [key assertion 1]
-        - ADD|MODIFY: [key assertion 2]
-        - DELETE: [key assertion 3]
-    - DELETE: [test_case_3]: [test_filename_2_test_case_3_description]
-- DELETE: [test_filename_3]
+1. ADD|MODIFY: [test_filename_1]
+    1. ADD|MODIFY: [test_case_1]: [test_filename_1_test_case_1_description]
+        1. ADD|MODIFY: [key assertion 1]
+        2. ADD|MODIFY: [key assertion 2]
+        3. ADD|MODIFY: [key assertion 3]
+2. ADD|MODIFY: [test_filename_2]
+    1. ADD|MODIFY: [test_case_2]: [test_filename_2_test_case_2_description]
+        1. ADD|MODIFY: [key assertion 1]
+        2. ADD|MODIFY: [key assertion 2]
+        3. DELETE: [key assertion 3]
+    2. DELETE: [test_case_3]: [test_filename_2_test_case_3_description]
+3. DELETE: [test_filename_3]
 -->
 
 **Testing Steps:**
+
+<!-- AUTOMATE VERIFICATION END -->
+
 ```
 
 **Human Verification Gate:**
