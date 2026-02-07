@@ -7,6 +7,65 @@ I believe we can scale our intelligence with deterministic signals, natural lang
 """
 
 # ============================================================================
+# Diagram: Event markers on the rectangle edges
+# Each event has: id, edge (top/right/bottom/left), position (0-1), label
+# ============================================================================
+
+[[philosophy.events]]
+id = "SessionStart"
+edge = "top"
+position = 0.33
+label = "Session Start"
+
+[[philosophy.events]]
+id = "UserPromptSubmit"
+edge = "top"
+position = 0.67
+label = "User Prompt Submit"
+
+[[philosophy.events]]
+id = "PreToolUse"
+edge = "right"
+position = 0.25
+label = "Pre Tool Use"
+
+[[philosophy.events]]
+id = "PostToolUse"
+edge = "right"
+position = 0.5
+label = "Post Tool Use"
+
+[[philosophy.events]]
+id = "PostToolUseFailure"
+edge = "right"
+position = 0.75
+label = "Post Tool Use Failure"
+
+[[philosophy.events]]
+id = "ExitPlanMode"
+edge = "bottom"
+position = 0.33
+label = "Exit Plan Mode"
+
+[[philosophy.events]]
+id = "EnterPlanMode"
+edge = "bottom"
+position = 0.67
+label = "Enter Plan Mode"
+
+[[philosophy.events]]
+id = "SubagentStop"
+edge = "left"
+position = 0.33
+label = "Subagent Stop"
+
+[[philosophy.events]]
+id = "SubagentSpawn"
+edge = "left"
+position = 0.67
+label = "Subagent Spawn"
+
+# ============================================================================
 # Philosophy sections
 # Each section defines: title, content, highlight, additions, related_skills
 # ============================================================================
