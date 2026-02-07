@@ -1,18 +1,25 @@
 ---
 /**
  * WorkflowDiagram Component
- * Main container that orchestrates the SVG diagram, philosophy navigation,
- * and philosophy panels with progressive enhancement.
+ * Pure HTML/CSS implementation with interactive philosophy navigation.
+ * No SVG - uses positioned divs for markers, additions, and center content.
  */
-import WorkflowSVG from "./WorkflowSVG.astro";
-import PhilosophyPanel from "./PhilosophyPanel.astro";
 
 interface EventMarker {
   id: string;
   edge: "top" | "right" | "bottom" | "left";
-  position: number;
+  position: number; // 0-1 percentage along the edge
   label: string;
   tooltip: string;
+}
+
+interface Addition {
+  id: string;
+  event: string; // matches EventMarker.id
+  type: string;
+  label: string;
+  description: string;
+  effect: string;
 }
 
 interface Philosophy {
@@ -20,6 +27,7 @@ interface Philosophy {
   title: string;
   content: string;
   enhancedContent: string;
+  additions: Addition[];
   highlight: {
     type: string;
     title: string;
@@ -31,7 +39,7 @@ interface Philosophy {
       after: string;
     };
   };
-  relatedEvents: string[];
+  relatedEvents?: string[];
   relatedSkills: string[];
 }
 
@@ -52,16 +60,40 @@ const { diagram, philosophies } = diagramData;
 
 // First philosophy is the default
 const defaultId = philosophies.length > 0 ? philosophies[0].id : "";
+
+// Build events map: philosophy id -> all related event ids (from relatedEvents + additions)
+const eventsMap: Record<string, string[]> = {};
+philosophies.forEach((phil) => {
+  const events = new Set<string>(phil.relatedEvents || []);
+  phil.additions.forEach((add) => events.add(add.event));
+  eventsMap[phil.id] = Array.from(events);
+});
+
+// Helper to get edge color variables
+function getEdgeColor(edge: string): { main: string; soft: string } {
+  switch (edge) {
+    case "top":
+      return { main: "var(--color-accent)", soft: "var(--color-accent-soft)" };
+    case "right":
+      return { main: "var(--color-secondary)", soft: "var(--color-secondary-soft)" };
+    case "bottom":
+      return { main: "var(--color-earth-400)", soft: "var(--color-earth-100)" };
+    case "left":
+      return { main: "var(--color-text-muted)", soft: "rgba(122, 111, 96, 0.12)" };
+    default:
+      return { main: "var(--color-text)", soft: "var(--color-earth-100)" };
+  }
+}
 ---
 
 <section class="workflow-diagram" data-workflow-diagram>
-  <header class="philosophy-header">
-    <h2 class="philosophy-title">Design Philosophy</h2>
+  <header>
+    <h2>Design Philosophy</h2>
   </header>
 
-  {/* Philosophy navigation buttons — hidden without JS */}
+  {/* Philosophy navigation pills */}
   {philosophies.length > 1 && (
-    <nav class="philosophy-nav" aria-label="Design philosophy topics" data-philosophy-nav>
+    <nav class="philosophy-nav" aria-label="Design philosophy topics">
       {philosophies.map((phil) => (
         <button
           class:list={["philosophy-nav-btn", { "is-active": phil.id === defaultId }]}
@@ -75,25 +107,75 @@ const defaultId = philosophies.length > 0 ? philosophies[0].id : "";
     </nav>
   )}
 
-  <div class="workflow-layout">
-    {/* SVG Diagram */}
-    <div class="workflow-svg-container" data-workflow-svg-container>
-      <WorkflowSVG events={diagram.events} rect={diagram.rect} />
-    </div>
+  <div class="workflow-rect-wrapper">
+    <div class="workflow-rect" data-workflow-rect>
+      {/* Edge markers */}
+      {diagram.events.map((event) => {
+        const colors = getEdgeColor(event.edge);
+        return (
+          <div
+            class={`edge-marker edge-${event.edge}`}
+            data-event={event.id}
+            data-edge={event.edge}
+            style={`--marker-position: ${event.position * 100}%; --marker-color: ${colors.main}; --marker-color-soft: ${colors.soft};`}
+            role="button"
+            tabindex="0"
+            aria-label={event.tooltip}
+            title={event.tooltip}
+          >
+            <div class="marker-circle">
+              <div class="marker-dot"></div>
+            </div>
+            <div class="marker-label">{event.label}</div>
+          </div>
+        );
+      })}
 
-    {/* Philosophy Panels */}
-    <div class="workflow-panels" data-workflow-panels>
-      {philosophies.map((phil) => (
-        <PhilosophyPanel
-          id={phil.id}
-          title={phil.title}
-          content={phil.content}
-          enhancedContent={phil.enhancedContent}
-          highlight={phil.highlight}
-          relatedSkills={phil.relatedSkills}
-          isDefault={phil.id === defaultId}
-        />
-      ))}
+      {/* Addition callouts */}
+      {philosophies.map((phil) =>
+        phil.additions.map((addition) => {
+          const event = diagram.events.find((e) => e.id === addition.event);
+          if (!event) return null;
+          const colors = getEdgeColor(event.edge);
+          return (
+            <div
+              class={`addition-callout addition-${event.edge}`}
+              data-philosophy={phil.id}
+              data-addition={addition.id}
+              style={`--addition-position: ${event.position * 100}%; --addition-color: ${colors.main}; --addition-color-soft: ${colors.soft};`}
+              title={`${addition.description} — ${addition.effect}`}
+            >
+              {addition.label}
+            </div>
+          );
+        })
+      )}
+
+      {/* Center content area */}
+      <div class="center-content">
+        {philosophies.map((phil) => (
+          <div
+            class:list={["highlight-panel", { "is-active": phil.id === defaultId }]}
+            data-philosophy={phil.id}
+          >
+            <h4 class="highlight-title">{phil.highlight.title}</h4>
+            <p class="highlight-content">{phil.highlight.content}</p>
+            {phil.highlight.comparison && (
+              <div class="highlight-comparison">
+                <div class="comparison-item">
+                  <div class="comparison-label">{phil.highlight.comparison.before_label}</div>
+                  <div class="comparison-text">{phil.highlight.comparison.before}</div>
+                </div>
+                <div class="comparison-arrow">→</div>
+                <div class="comparison-item">
+                  <div class="comparison-label">{phil.highlight.comparison.after_label}</div>
+                  <div class="comparison-text">{phil.highlight.comparison.after}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   </div>
 
@@ -101,11 +183,7 @@ const defaultId = philosophies.length > 0 ? philosophies[0].id : "";
   <script
     type="application/json"
     data-philosophy-events
-    set:html={JSON.stringify(
-      Object.fromEntries(
-        philosophies.map((phil) => [phil.id, phil.relatedEvents || []])
-      )
-    )}
+    set:html={JSON.stringify(eventsMap)}
   />
 </section>
 
@@ -114,104 +192,90 @@ const defaultId = philosophies.length > 0 ? philosophies[0].id : "";
     const diagrams = document.querySelectorAll<HTMLElement>("[data-workflow-diagram]");
 
     diagrams.forEach((diagram) => {
-      const nav = diagram.querySelector<HTMLElement>("[data-philosophy-nav]");
       const buttons = diagram.querySelectorAll<HTMLButtonElement>("[data-philosophy-btn]");
-      const panels = diagram.querySelectorAll<HTMLElement>("[data-philosophy]");
-      const svgContainer = diagram.querySelector<HTMLElement>("[data-workflow-svg-container]");
-      const svg = svgContainer?.querySelector<SVGSVGElement>(".workflow-svg");
-      const eventMarkers = svg?.querySelectorAll<SVGGElement>("[data-event]");
+      const rect = diagram.querySelector<HTMLElement>("[data-workflow-rect]");
+      const markers = diagram.querySelectorAll<HTMLElement>("[data-event]");
+      const additions = diagram.querySelectorAll<HTMLElement>("[data-addition]");
+      const panels = diagram.querySelectorAll<HTMLElement>(".highlight-panel");
 
-      if (!buttons.length || !panels.length) return;
+      if (!buttons.length || !panels.length || !rect) return;
 
-      // Build a map: philosophy id -> related event ids
-      // We read this from the button data and the panel data attributes
-      // The relatedEvents are encoded in the component; we'll use a data attribute approach.
-      // Since Astro renders static HTML, we embed the mapping as a JSON script.
+      // Read embedded JSON mappings
       const mappingEl = diagram.querySelector<HTMLScriptElement>("[data-philosophy-events]");
-      let philosophyEventMap: Record<string, string[]> = {};
+      let eventsMap: Record<string, string[]> = {};
       if (mappingEl) {
         try {
-          philosophyEventMap = JSON.parse(mappingEl.textContent || "{}");
+          eventsMap = JSON.parse(mappingEl.textContent || "{}");
         } catch {
-          philosophyEventMap = {};
+          eventsMap = {};
         }
       }
 
-      function activatePhilosophy(philosophyId: string) {
-        // Update buttons
+      function activate(philId: string) {
+        // Toggle buttons
         buttons.forEach((btn) => {
-          const isActive = btn.dataset.philosophyBtn === philosophyId;
-          btn.classList.toggle("is-active", isActive);
-          btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+          const active = btn.dataset.philosophyBtn === philId;
+          btn.classList.toggle("is-active", active);
+          btn.setAttribute("aria-pressed", active ? "true" : "false");
         });
 
-        // Update panels
-        panels.forEach((panel) => {
-          const isActive = panel.dataset.philosophy === philosophyId;
-          panel.classList.toggle("is-active", isActive);
-          panel.setAttribute("aria-hidden", isActive ? "false" : "true");
+        // Toggle markers
+        const relatedEvents = eventsMap[philId] || [];
+        rect.classList.toggle("has-highlight", relatedEvents.length > 0);
+        markers.forEach((m) => {
+          m.classList.toggle("is-highlighted", relatedEvents.includes(m.dataset.event || ""));
         });
 
-        // Update SVG highlights
-        if (svg && eventMarkers) {
-          const relatedEvents = philosophyEventMap[philosophyId] || [];
-          const hasHighlights = relatedEvents.length > 0;
+        // Toggle additions
+        additions.forEach((a) => {
+          a.classList.toggle("is-active", a.dataset.philosophy === philId);
+        });
 
-          svg.classList.toggle("has-highlight", hasHighlights);
-
-          eventMarkers.forEach((marker) => {
-            const eventId = marker.dataset.event;
-            const isHighlighted = eventId ? relatedEvents.includes(eventId) : false;
-            marker.classList.toggle("is-highlighted", isHighlighted);
-          });
-        }
+        // Toggle panels
+        panels.forEach((p) => {
+          p.classList.toggle("is-active", p.dataset.philosophy === philId);
+        });
       }
 
       // Button click handlers
       buttons.forEach((btn) => {
         btn.addEventListener("click", () => {
           const philosophyId = btn.dataset.philosophyBtn;
-          if (philosophyId) {
-            activatePhilosophy(philosophyId);
-          }
+          if (philosophyId) activate(philosophyId);
         });
       });
 
-      // SVG event marker click handlers — activate the first philosophy that references this event
-      eventMarkers?.forEach((marker) => {
+      // Marker click: activate first philosophy that references this event
+      markers.forEach((marker) => {
         marker.addEventListener("click", () => {
           const eventId = marker.dataset.event;
           if (!eventId) return;
-
-          // Find the first philosophy that includes this event
-          for (const [philId, events] of Object.entries(philosophyEventMap)) {
+          for (const [philId, events] of Object.entries(eventsMap)) {
             if (events.includes(eventId)) {
-              activatePhilosophy(philId);
+              activate(philId);
               break;
             }
           }
         });
 
-        // Keyboard support for SVG markers
+        // Keyboard support
         marker.addEventListener("keydown", (e: KeyboardEvent) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            marker.dispatchEvent(new MouseEvent("click"));
+            marker.click();
           }
         });
       });
 
-      // Set initial state (first philosophy)
-      const firstBtn = buttons[0];
-      if (firstBtn?.dataset.philosophyBtn) {
-        activatePhilosophy(firstBtn.dataset.philosophyBtn);
+      // Initial state
+      if (buttons[0]?.dataset.philosophyBtn) {
+        activate(buttons[0].dataset.philosophyBtn);
       }
     });
   }
 
   // Run on initial load and on Astro page transitions
   document.addEventListener("astro:page-load", initWorkflowDiagram);
-  // Fallback for non-ViewTransitions
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initWorkflowDiagram);
   } else {
@@ -220,17 +284,17 @@ const defaultId = philosophies.length > 0 ? philosophies[0].id : "";
 </script>
 
 <style>
+  /* ---- Section Container ---- */
   .workflow-diagram {
     margin-bottom: var(--space-16);
   }
 
-  /* ---- Section Header ---- */
-  .philosophy-header {
+  .workflow-diagram > header {
     padding-left: var(--space-6);
     margin-bottom: var(--space-6);
   }
 
-  .philosophy-title {
+  .workflow-diagram h2 {
     font-family: var(--font-display);
     font-size: var(--text-3xl);
     font-weight: 600;
@@ -247,7 +311,7 @@ const defaultId = philosophies.length > 0 ? philosophies[0].id : "";
     margin-bottom: var(--space-8);
   }
 
-  /* Hide nav without JS — progressive enhancement */
+  /* Hide nav without JS */
   :global(.no-js) .philosophy-nav {
     display: none;
   }
@@ -293,46 +357,331 @@ const defaultId = philosophies.length > 0 ? philosophies[0].id : "";
     outline-offset: 2px;
   }
 
-  /* ---- Layout: Diagram + Panel ---- */
-  .workflow-layout {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--space-8);
+  /* ---- Rectangle Wrapper ---- */
+  .workflow-rect-wrapper {
+    padding: var(--space-12) var(--space-6);
   }
 
-  .workflow-svg-container {
+  /* ---- The Rectangle ---- */
+  .workflow-rect {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-earth-100) 100%);
+    border: 1.5px solid var(--color-earth-300);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* ---- Edge Markers ---- */
+  .edge-marker {
+    position: absolute;
+    cursor: pointer;
+    transition:
+      opacity var(--transition-base),
+      transform var(--transition-base);
+  }
+
+  /* Top edge */
+  .edge-marker.edge-top {
+    left: var(--marker-position);
+    top: 0;
+    transform: translate(-50%, -50%);
+  }
+
+  .edge-marker.edge-top .marker-label {
+    position: absolute;
+    top: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  /* Right edge */
+  .edge-marker.edge-right {
+    right: 0;
+    top: var(--marker-position);
+    transform: translate(50%, -50%);
+  }
+
+  .edge-marker.edge-right .marker-label {
+    position: absolute;
+    left: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+  }
+
+  /* Bottom edge */
+  .edge-marker.edge-bottom {
+    left: var(--marker-position);
+    bottom: 0;
+    transform: translate(-50%, 50%);
+  }
+
+  .edge-marker.edge-bottom .marker-label {
+    position: absolute;
+    bottom: -24px;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  /* Left edge */
+  .edge-marker.edge-left {
+    left: 0;
+    top: var(--marker-position);
+    transform: translate(-50%, -50%);
+  }
+
+  .edge-marker.edge-left .marker-label {
+    position: absolute;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+  }
+
+  /* Marker circle */
+  .marker-circle {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--marker-color);
     background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-xl);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background var(--transition-base),
+      box-shadow var(--transition-base);
+  }
+
+  .marker-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--color-surface);
+    transition: background var(--transition-base);
+  }
+
+  /* Marker label */
+  .marker-label {
+    font-family: var(--font-body);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    transition: color var(--transition-base);
+  }
+
+  /* Highlighted state */
+  .edge-marker.is-highlighted .marker-circle {
+    background: var(--marker-color);
+    box-shadow: 0 0 12px var(--marker-color-soft);
+  }
+
+  .edge-marker.is-highlighted .marker-dot {
+    background: var(--color-surface);
+  }
+
+  .edge-marker.is-highlighted .marker-label {
+    color: var(--marker-color);
+  }
+
+  /* Dimmed state when has-highlight but not highlighted */
+  .workflow-rect.has-highlight .edge-marker:not(.is-highlighted) {
+    opacity: 0.3;
+  }
+
+  .edge-marker:hover {
+    transform: translate(-50%, -50%) scale(1.1);
+  }
+
+  .edge-marker.edge-right:hover {
+    transform: translate(50%, -50%) scale(1.1);
+  }
+
+  .edge-marker.edge-bottom:hover {
+    transform: translate(-50%, 50%) scale(1.1);
+  }
+
+  .edge-marker:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 4px;
+    border-radius: 50%;
+  }
+
+  /* ---- Addition Callouts ---- */
+  .addition-callout {
+    position: absolute;
+    font-family: var(--font-body);
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--addition-color);
+    background: var(--addition-color-soft);
+    border: 1px solid var(--addition-color);
+    border-radius: var(--radius-full);
+    padding: var(--space-1) var(--space-3);
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity var(--transition-base),
+      transform var(--transition-base);
+  }
+
+  .addition-callout.is-active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Top edge additions - position inward from top */
+  .addition-callout.addition-top {
+    left: var(--addition-position);
+    top: 40px;
+    transform: translateX(-50%) translateY(-8px);
+  }
+
+  .addition-callout.addition-top.is-active {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Right edge additions - position inward from right */
+  .addition-callout.addition-right {
+    right: 40px;
+    top: var(--addition-position);
+    transform: translateY(-50%) translateX(8px);
+  }
+
+  .addition-callout.addition-right.is-active {
+    transform: translateY(-50%) translateX(0);
+  }
+
+  /* Bottom edge additions - position inward from bottom */
+  .addition-callout.addition-bottom {
+    left: var(--addition-position);
+    bottom: 40px;
+    transform: translateX(-50%) translateY(8px);
+  }
+
+  .addition-callout.addition-bottom.is-active {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Left edge additions - position inward from left */
+  .addition-callout.addition-left {
+    left: 40px;
+    top: var(--addition-position);
+    transform: translateY(-50%) translateX(-8px);
+  }
+
+  .addition-callout.addition-left.is-active {
+    transform: translateY(-50%) translateX(0);
+  }
+
+  /* ---- Center Content ---- */
+  .center-content {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60%;
+    max-width: 500px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .highlight-panel {
+    display: none;
+    background: rgba(255, 253, 249, 0.92);
+    border: 1px solid var(--color-earth-200);
+    border-radius: var(--radius-lg);
     padding: var(--space-6);
-    overflow: hidden;
+    box-shadow: var(--shadow-md);
+    text-align: center;
   }
 
-  .workflow-panels {
-    min-width: 0;
+  .highlight-panel.is-active {
+    display: block;
+    animation: fadeIn var(--transition-base) ease-out;
   }
 
-  /* ---- Desktop: Side by Side ---- */
-  @media (min-width: 1024px) {
-    .workflow-layout {
-      grid-template-columns: 1fr 1fr;
-      gap: var(--space-10);
-      align-items: start;
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
     }
-
-    .workflow-svg-container {
-      position: sticky;
-      top: var(--space-6);
+    to {
+      opacity: 1;
+      transform: scale(1);
     }
   }
 
-  /* ---- Mobile Adjustments ---- */
+  .highlight-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: var(--space-3);
+    line-height: var(--leading-tight);
+  }
+
+  .highlight-content {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: var(--leading-relaxed);
+    margin-bottom: 0;
+  }
+
+  /* ---- Comparison Layout ---- */
+  .highlight-comparison {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: var(--space-4);
+    align-items: center;
+    margin-top: var(--space-4);
+  }
+
+  .comparison-item {
+    text-align: center;
+  }
+
+  .comparison-label {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: var(--space-2);
+  }
+
+  .comparison-text {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    color: var(--color-text-secondary);
+    line-height: var(--leading-relaxed);
+    background: var(--color-earth-50);
+    border: 1px solid var(--color-earth-200);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+  }
+
+  .comparison-arrow {
+    font-size: var(--text-xl);
+    color: var(--color-accent);
+    font-weight: 600;
+  }
+
+  /* ---- Responsive: Mobile ---- */
   @media (max-width: 768px) {
-    .philosophy-header {
+    .workflow-diagram > header {
       padding-left: var(--space-4);
     }
 
-    .philosophy-title {
+    .workflow-diagram h2 {
       font-size: var(--text-2xl);
     }
 
@@ -347,13 +696,47 @@ const defaultId = philosophies.length > 0 ? philosophies[0].id : "";
       padding: var(--space-1) var(--space-3);
     }
 
-    .workflow-svg-container {
-      padding: var(--space-4);
+    .workflow-rect-wrapper {
+      padding: var(--space-8) var(--space-4);
+    }
+
+    .workflow-rect {
+      aspect-ratio: auto;
+      min-height: 400px;
+    }
+
+    .marker-label {
+      font-size: 9px;
+    }
+
+    .center-content {
+      width: 80%;
+    }
+
+    .highlight-title {
+      font-size: var(--text-base);
+    }
+
+    .highlight-content {
+      font-size: var(--text-xs);
+    }
+
+    .highlight-comparison {
+      grid-template-columns: 1fr;
+      gap: var(--space-2);
+    }
+
+    .comparison-arrow {
+      transform: rotate(90deg);
     }
   }
 
-  /* ---- No-JS Fallback: show all panels, hide nav ---- */
-  :global(.no-js) .workflow-panels :global(.philosophy-panel) {
+  /* ---- No-JS Fallback ---- */
+  :global(.no-js) .highlight-panel:first-child {
     display: block;
+  }
+
+  :global(.no-js) .addition-callout {
+    display: none;
   }
 </style>
