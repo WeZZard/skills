@@ -21,7 +21,7 @@ If you host on GitHub later:
 2. Install plugins:
 
 ```bash
-/plugin install wezzard@wezzard-skills
+/plugin install intelligence-scale@wezzard-skills
 /plugin install walkthrough@wezzard-skills
 ```
 
