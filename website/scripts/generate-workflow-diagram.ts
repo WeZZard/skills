@@ -52,7 +52,9 @@ interface TomlSection {
 }
 
 interface WebsiteConfig {
-  skill_order?: string[];
+  skills?: {
+    order?: string[];
+  };
   philosophy: {
     events?: TomlEvent[];
     sections: TomlSection[];
@@ -251,7 +253,7 @@ function main() {
   });
 
   // Build output
-  const skillOrder = websiteConfig.skill_order;
+  const skillOrder = websiteConfig.skills?.order;
   const output: WorkflowDiagramData = {
     sourceHash: currentHash,
     generatedAt: new Date().toISOString(),

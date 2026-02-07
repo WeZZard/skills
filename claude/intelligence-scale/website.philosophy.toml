@@ -168,7 +168,8 @@ effect = "Prevents goal drift by prompting plan re-alignment"
 # Skills not listed here will appear after the ordered ones, alphabetically
 # ============================================================================
 
-skill_order = [
+[skills]
+order = [
   "using-skills",
   "brainstorming",
   "write-plan",
