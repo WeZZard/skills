@@ -1,0 +1,258 @@
+# Intelligence Scale - Skills Configuration
+# This file configures skill display content on the website
+
+[skills.using-skills]
+display_name = "Using Skills"
+tagline = "Master Claude's skills first—check before any action to ensure disciplined, effective workflows."
+short_summary = "Always invoke relevant skills before responding or acting to maintain structured, efficient workflows."
+full_summary = "This foundational skill ensures you always check for applicable skills before taking any action, including asking clarifying questions. It establishes a disciplined approach where skill invocation takes priority, preventing wasted time and ensuring you follow established workflows. By checking first, you guarantee that all tasks benefit from Claude's structured processes."
+
+[[skills.using-skills.highlights]]
+title = "Mandatory Skill Check"
+description = "You must invoke any skill that might apply—even with just a 1% chance—before responding or acting. This rule is non-negotiable and ensures you never skip essential workflows. Checking first prevents rationalization and keeps you on the most effective path."
+
+[[skills.using-skills.highlights]]
+title = "Prevents Rationalization"
+description = "Common thoughts like 'This is just a simple question' or 'I need more context first' are red flags that mean you should stop and check for skills. The skill provides a table of these rationalizations to help you recognize and avoid them. This discipline prevents wasted effort and ensures consistent application of best practices."
+
+[[skills.using-skills.highlights]]
+title = "Skill Priority Order"
+description = "When multiple skills could apply, follow this order: process skills (like brainstorming) first, then implementation skills (like write-plan), then verification skills (like review). This logical sequence ensures you approach tasks methodically, from planning through execution to validation."
+
+[[skills.using-skills.highlights]]
+title = "Rigid vs Flexible Skills"
+description = "Skills are categorized as rigid (must be followed exactly, like execute-plan) or flexible (principles can be adapted, like brainstorming). This distinction helps you understand when to stick strictly to the process versus when you can adjust based on context, balancing discipline with adaptability."
+
+[[skills.using-skills.workflow]]
+name = "Receive Request"
+description = "A user gives you a task or asks a question."
+details = "This could be any instruction, from a simple query to a complex development task. The key is to treat all user inputs as potential tasks that might require skill application."
+
+[[skills.using-skills.workflow]]
+name = "Check for Skills"
+description = "Immediately assess if any skills might apply to the situation."
+details = "Even if there's only a 1% chance a skill is relevant, you must invoke it using the Skill tool. Do not respond, ask clarifying questions, or take any other action before this check. This step is mandatory and non-negotiable."
+
+[[skills.using-skills.workflow]]
+name = "Invoke Skill"
+description = "Use the Skill tool to load and review the skill content."
+details = "If a skill applies, invoke it to see its current instructions. Follow the skill directly once loaded. If no skill applies after checking, you can proceed with your response or other actions."
+
+[[skills.using-skills.workflow]]
+name = "Follow Skill"
+description = "Execute the task according to the skill's guidance."
+details = "Adhere to the skill's workflow, whether it's rigid (follow exactly) or flexible (adapt principles). This ensures you use Claude's structured processes for optimal results, from brainstorming to execution and review."
+
+[skills.brainstorming]
+display_name = "Brainstorming"
+tagline = "Turn ideas into fully formed designs through collaborative dialogue"
+short_summary = "Brainstorm and refine ideas into detailed designs with structured questioning and validation"
+full_summary = "This skill helps you transform rough ideas into complete, validated designs through natural conversation. It guides you through understanding your project context, exploring different approaches, and validating information before presenting a detailed design in manageable sections. The process ensures you get a well-thought-out solution that meets your specific needs and constraints."
+
+[[skills.brainstorming.highlights]]
+title = "One Question at a Time"
+description = "The skill asks questions one at a time to avoid overwhelming you and ensure clear understanding. This focused approach helps refine your idea gradually while keeping the conversation natural and productive."
+
+[[skills.brainstorming.highlights]]
+title = "Multiple Approaches Explored"
+description = "Before settling on a solution, the skill presents 2-3 different approaches with clear trade-offs. This gives you options to consider and helps you make informed decisions about the best path forward."
+
+[[skills.brainstorming.highlights]]
+title = "Information Validation"
+description = "All external information is verified for credibility and recency before being used. The skill checks sources, dates, and resolves conflicts to ensure you're working with accurate, up-to-date information."
+
+[[skills.brainstorming.highlights]]
+title = "Incremental Design Review"
+description = "Designs are presented in small, manageable sections of 200-300 words. After each section, you're asked for feedback to ensure everything looks right before moving forward, preventing major rework later."
+
+[[skills.brainstorming.highlights]]
+title = "Project Context Aware"
+description = "The skill starts by understanding your current project state, including files, documentation, and recent changes. This context-aware approach ensures solutions fit seamlessly into your existing work."
+
+[[skills.brainstorming.workflow]]
+name = "Understand Context"
+description = "Review your current project state and ask focused questions to understand your idea."
+details = "The skill examines your project files, docs, and recent commits to understand where you're starting from. It then asks targeted questions one at a time to clarify your goals, constraints, and success criteria."
+
+[[skills.brainstorming.workflow]]
+name = "Explore Approaches"
+description = "Propose 2-3 different solutions with clear trade-offs and recommendations."
+details = "Based on your requirements, the skill presents multiple approaches with their pros and cons. It uses web search when needed to gather current information about technologies and provides a clear recommendation with reasoning."
+
+[[skills.brainstorming.workflow]]
+name = "Validate Information"
+description = "Verify all external information for credibility, recency, and accuracy."
+details = "Before using any information, the skill checks source credibility, dates, and resolves conflicting information. This ensures you're working with reliable, up-to-date facts rather than assumptions or outdated knowledge."
+
+[[skills.brainstorming.workflow]]
+name = "Present Design"
+description = "Break the complete design into manageable sections and validate each one."
+details = "The skill presents the final design in small sections covering architecture, components, data flow, and more. After each 200-300 word section, it asks for your feedback to ensure everything aligns with your vision before continuing."
+
+[[skills.brainstorming.workflow]]
+name = "Update Plan"
+description = "If in plan mode, automatically update your project plan with the new design."
+details = "When working with project plans, the skill seamlessly updates your plan file with the newly developed design, keeping your documentation current without requiring manual updates."
+
+[skills.write-plan]
+display_name = "Write Plan"
+tagline = "Create structured development plans with built-in verification and human oversight"
+short_summary = "Generates comprehensive project plans with verification steps and human review gates"
+full_summary = "The write-plan skill helps developers create detailed project plans before making changes. It ensures thorough documentation of files, hypotheses, and verification approaches while identifying when human review is needed. The skill produces structured plans with clear tasks and validation steps to guide development work."
+
+[[skills.write-plan.highlights]]
+title = "Mandatory Verification"
+description = "Every plan must include verification steps with clear approaches (automated, manual, or hybrid). The skill recognizes hypotheses that need validation and ensures they're addressed before proceeding with implementation."
+
+[[skills.write-plan.highlights]]
+title = "Human Review Gates"
+description = "Automatically identifies tasks requiring human verification based on four criteria: no computer use, subjective judgment, financial authorization, or security sensitivity. These tasks are prioritized at the start of the plan for early review."
+
+[[skills.write-plan.highlights]]
+title = "Structured Templates"
+description = "Uses standardized templates for plan components including project structure, tech stack, architecture, and algorithm design. This ensures consistency and completeness across all development plans."
+
+[[skills.write-plan.highlights]]
+title = "Task Organization"
+description = "Breaks down work into manageable tasks with clear dependencies and context awareness. Tasks are designed to be focused and appropriately sized for effective execution within context limitations."
+
+[[skills.write-plan.workflow]]
+name = "Skill Invocation"
+description = "The skill is invoked at the start of planning with a specific announcement."
+details = "Before updating any plan files, you must explicitly call the write-plan skill. This ensures the planning process follows the structured approach defined by the skill's requirements."
+
+[[skills.write-plan.workflow]]
+name = "Plan Creation"
+description = "Generates a comprehensive plan using the mandatory template structure."
+details = "Creates a plan document with sections for goals, tasks, and verification. The plan includes all necessary details assuming the user has zero context about the codebase, ensuring thorough documentation."
+
+[[skills.write-plan.workflow]]
+name = "Component Documentation"
+description = "Documents project structure, tech stack, and architecture changes using specific templates."
+details = "When changes affect these areas, the skill uses predefined templates to show both before and after states. This provides clear visualization of how the project will evolve."
+
+[[skills.write-plan.workflow]]
+name = "Verification Planning"
+description = "Identifies verification needs and creates detailed testing approaches."
+details = "Lists all verification steps needed to confirm the plan's success. This includes both automated testing approaches and manual verification requirements with specific test cases and assertions."
+
+[[skills.write-plan.workflow]]
+name = "Human Review Identification"
+description = "Flags tasks requiring human verification and prioritizes them in the plan."
+details = "Analyzes the plan to identify where human judgment is needed based on four specific criteria. These tasks are moved to the beginning of the plan to ensure early review and approval."
+
+[skills.execute-plan]
+display_name = "Execute Plan"
+tagline = "Turn your development plans into working code with automated execution and human oversight."
+short_summary = "Automatically executes development plans with parallel task processing and built-in verification gates."
+full_summary = "This skill transforms finalized development plans into implemented code through automated execution. It processes tasks in parallel while respecting dependencies, and includes human verification gates for critical steps. The system stops automatically when encountering blockers or unclear instructions, ensuring quality implementation."
+
+[[skills.execute-plan.highlights]]
+title = "Parallel Task Execution"
+description = "Maximizes development speed by processing multiple tasks simultaneously while respecting dependencies. This approach significantly reduces implementation time compared to sequential execution."
+
+[[skills.execute-plan.highlights]]
+title = "Human Verification Gates"
+description = "Automatically pauses execution at critical points to request human verification. This ensures important decisions receive proper oversight while maintaining automation efficiency."
+
+[[skills.execute-plan.highlights]]
+title = "Automatic Block Detection"
+description = "Stops execution immediately when encountering blockers like missing dependencies, test failures, or unclear instructions. Prevents wasted effort by asking for clarification rather than guessing."
+
+[[skills.execute-plan.highlights]]
+title = "Plan-First Approach"
+description = "Requires a finalized plan file before starting implementation, ensuring structured development. Follows plan steps exactly while maintaining flexibility for necessary adjustments."
+
+[[skills.execute-plan.workflow]]
+name = "Load Plan"
+description = "Read and validate the finalized development plan file."
+details = "The skill begins by loading the plan file to understand the implementation requirements. This ensures all tasks and dependencies are properly identified before execution begins."
+
+[[skills.execute-plan.workflow]]
+name = "Execute Tasks"
+description = "Process tasks in parallel while respecting dependencies."
+details = "Tasks are executed simultaneously to maximize efficiency, with careful attention to dependencies that require sequential processing. This balanced approach optimizes development speed."
+
+[[skills.execute-plan.workflow]]
+name = "Request Verification"
+description = "Pause execution for human verification when required."
+details = "At critical points specified in the plan, execution stops to request human verification. This ensures important decisions receive proper oversight before proceeding."
+
+[[skills.execute-plan.workflow]]
+name = "Handle Feedback"
+description = "Apply changes based on verification feedback and continue."
+details = "After receiving verification feedback, the skill applies any necessary changes and continues execution. This iterative process continues until all tasks are completed."
+
+[skills.audit-plan]
+display_name = "Audit Plan"
+tagline = "Verify every planned change was implemented correctly with evidence-based auditing"
+short_summary = "Audit plan execution by comparing planned tasks against actual system state with detailed verification"
+full_summary = "This skill automatically verifies that all tasks from a session plan were correctly implemented. It systematically checks file existence, content, deletions, and command outputs against the original plan specifications. The audit provides a structured report showing exactly what was implemented correctly and what discrepancies were found."
+
+[[skills.audit-plan.highlights]]
+title = "Evidence-Based Verification"
+description = "Trusts evidence over assumptions by checking actual files and system state. Every task in the plan is verified against real-world implementation, ensuring no changes are missed or incorrectly assumed to be complete."
+
+[[skills.audit-plan.highlights]]
+title = "Structured Audit Report"
+description = "Generates a clear summary table showing task-by-task status (Done/Partial/Missing) with evidence for each verdict. Issues are clearly documented so users can see exactly what needs attention without guesswork."
+
+[[skills.audit-plan.highlights]]
+title = "Comprehensive Task Checking"
+description = "Verifies file existence, content accuracy, proper deletions, and command outputs. The audit covers all aspects of implementation, from file creation to configuration changes and command execution."
+
+[[skills.audit-plan.highlights]]
+title = "Final Workflow Step"
+description = "Designed as the concluding step in plan-based workflows. After plan execution completes, this skill provides the verification needed to confirm successful implementation before considering work complete."
+
+[[skills.audit-plan.workflow]]
+name = "Load Plan"
+description = "Read the session plan file to extract all tasks and file references."
+details = "The skill begins by loading the plan file created during the planning session. It extracts the complete task list and all file references that need to be verified, ensuring the audit is based on the original specifications."
+
+[[skills.audit-plan.workflow]]
+name = "Verify Tasks"
+description = "Check each task against actual system state using multiple verification methods."
+details = "For every task in the plan, the skill checks file existence, content accuracy, proper deletions, and runs any verification commands. It uses subagents to perform these checks efficiently and thoroughly, ensuring comprehensive coverage."
+
+[[skills.audit-plan.workflow]]
+name = "Generate Report"
+description = "Create a structured summary showing implementation status and any issues found."
+details = "The skill presents a clear audit summary with a task-by-task status table and evidence for each verdict. It documents all discrepancies found but doesn't fix them, leaving decisions about next steps to the user."
+
+[skills.recover-from-errors]
+display_name = "Recover From Errors"
+tagline = "Stay on track when tools fail by re-aligning with your plan instead of guessing."
+short_summary = "Prevents goal drift by checking the plan after repeated tool failures."
+full_summary = "This skill helps you recover from errors without losing sight of your original goal. When tool calls fail repeatedly, it guides you to verify alignment with your plan and fix specific issues rather than guessing. This keeps your work focused and prevents unnecessary context noise."
+
+[[skills.recover-from-errors.highlights]]
+title = "Prevents Goal Drift"
+description = "Stops you from drifting away from your original objective when tools fail. Instead of guessing new parameters or alternative tools, you re-align with your plan to maintain focus."
+
+[[skills.recover-from-errors.highlights]]
+title = "Plan Verification"
+description = "Immediately checks your session's plan file to understand the context of the current operation. This ensures you're working on the right tasks and not introducing unrelated actions."
+
+[[skills.recover-from-errors.highlights]]
+title = "Smart Recovery Logic"
+description = "Provides clear decision logic: if the failing action is part of the plan, fix the specific issue; if not, stop and return to the plan. This prevents wasted effort on irrelevant tasks."
+
+[[skills.recover-from-errors.highlights]]
+title = "Error Analysis Focus"
+description = "Encourages analyzing why specific failures occurred rather than making random changes. This leads to more targeted solutions and cleaner execution."
+
+[[skills.recover-from-errors.workflow]]
+name = "Check Plan"
+description = "Look up the session's plan file to understand the current operation context."
+details = "Immediately reference the plan document to verify what you should be working on. This establishes the proper context before attempting recovery."
+
+[[skills.recover-from-errors.workflow]]
+name = "Verify Alignment"
+description = "Determine if the failing tool call is actually required by the current plan step."
+details = "Ask yourself if the action you attempted is explicitly needed for the current task. This helps identify whether you've drifted from the plan."
+
+[[skills.recover-from-errors.workflow]]
+name = "Re-align to Plan"
+description = "Take appropriate action based on whether the failing tool is part of the plan."
+details = "If the tool is part of the plan, analyze and fix the specific issue. If not, stop calling the tool and return to the plan's specified tasks to prevent further drift."

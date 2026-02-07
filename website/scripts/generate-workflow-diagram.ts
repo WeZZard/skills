@@ -19,7 +19,7 @@ config({ path: join(__dirname, "../../.env") });
 
 const PLUGIN_DIR = join(__dirname, "../../claude/intelligence-scale");
 const HOOKS_JSON = join(PLUGIN_DIR, "hooks/hooks.json");
-const WEBSITE_TOML = join(PLUGIN_DIR, "website.toml");
+const WEBSITE_TOML = join(PLUGIN_DIR, "website.philosophy.toml");
 const SKILLS_DIR = join(PLUGIN_DIR, "skills");
 const OUTPUT_DIR = join(__dirname, "../src/content/generated/workflow");
 
@@ -291,7 +291,7 @@ async function main() {
   // Read events from TOML config
   const tomlEvents = websiteConfig.philosophy.events || [];
   if (tomlEvents.length === 0) {
-    console.error("  ✗ No events defined in website.toml [philosophy.events]");
+    console.error("  ✗ No events defined in website.philosophy.toml [philosophy.events]");
     process.exit(1);
   }
   console.log(`  Found ${tomlEvents.length} diagram event(s) in TOML`);

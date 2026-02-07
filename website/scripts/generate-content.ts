@@ -2,14 +2,9 @@ import { createHash } from "crypto";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { config } from "dotenv";
-import matter from "gray-matter";
-import OpenAI from "openai";
+import TOML from "toml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// Load .env from project root
-config({ path: join(__dirname, "../../.env") });
 
 const PLUGINS_DIR = join(__dirname, "../../claude");
 const MARKETPLACE_JSON = join(__dirname, "../../.claude-plugin/marketplace.json");
@@ -20,19 +15,35 @@ const SKILLS_OUTPUT_DIR = join(__dirname, "../src/content/generated/skills");
 mkdirSync(PLUGINS_OUTPUT_DIR, { recursive: true });
 mkdirSync(SKILLS_OUTPUT_DIR, { recursive: true });
 
-// Marketplace configuration
+// --- Types ---
+
 interface MarketplaceConfig {
   name: string;
   owner: { name: string };
   plugins: Array<{ name: string; source: string; description: string }>;
 }
 
-function loadMarketplaceConfig(): MarketplaceConfig {
-  const content = readFileSync(MARKETPLACE_JSON, "utf-8");
-  return JSON.parse(content);
+interface PluginTomlConfig {
+  display_name: string;
+  tagline: string;
+  short_description: string;
+  full_description: string;
+  use_cases: Array<{ title: string; description: string }>;
 }
 
-// Plugin generated content schema
+interface SkillTomlEntry {
+  display_name: string;
+  tagline: string;
+  short_summary: string;
+  full_summary: string;
+  highlights: Array<{ title: string; description: string }>;
+  workflow: Array<{ name: string; description: string; details?: string }>;
+}
+
+interface SkillsTomlConfig {
+  skills: Record<string, SkillTomlEntry>;
+}
+
 interface PluginGenerated {
   sourceHash: string;
   generatedAt: string;
@@ -50,7 +61,6 @@ interface PluginGenerated {
   };
 }
 
-// Skill generated content schema
 interface SkillGenerated {
   sourceHash: string;
   generatedAt: string;
@@ -68,15 +78,7 @@ interface SkillGenerated {
   };
 }
 
-/**
- * Convert hyphenated name to Title Case display name
- */
-function toDisplayName(name: string): string {
-  return name
-    .split("-")
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
+// --- Utility functions ---
 
 function computeHash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
@@ -92,9 +94,13 @@ function getExistingHash(outputPath: string): string | null {
   }
 }
 
-/**
- * Discover all plugins in the claude directory
- */
+function loadMarketplaceConfig(): MarketplaceConfig {
+  const content = readFileSync(MARKETPLACE_JSON, "utf-8");
+  return JSON.parse(content);
+}
+
+// --- Plugin/Skill discovery ---
+
 function discoverPlugins(): Array<{ name: string; path: string; skillNames: string[] }> {
   const plugins: Array<{ name: string; path: string; skillNames: string[] }> = [];
 
@@ -133,160 +139,9 @@ function discoverPlugins(): Array<{ name: string; path: string; skillNames: stri
   return plugins;
 }
 
-async function generatePluginContent(
-  client: OpenAI,
-  pluginName: string,
-  pluginContent: string,
-  skillNames: string[],
-  marketplaceConfig: MarketplaceConfig
-): Promise<PluginGenerated["plugin"]> {
-  const { data: frontmatter } = matter(pluginContent);
-  const displayName = frontmatter.displayName || toDisplayName(pluginName);
-  const tagline = frontmatter.tagline || "";
-
-  // Generate install commands from marketplace config
-  const marketplaceName = marketplaceConfig.name;
-  const ownerName = marketplaceConfig.owner.name;
-  const marketplaceCommand = `/plugin marketplace add ${ownerName}/skills`;
-  const installCommand = `/plugin install ${pluginName}@${marketplaceName}`;
-
-  const prompt = `You are analyzing a Claude Code plugin definition. Generate a user-friendly explanation for a plugin gallery website.
-
-Input PLUGIN.md:
----
-${pluginContent}
----
-
-Skills in this plugin: ${skillNames.join(", ")}
-
-Output a JSON object with this exact structure:
-{
-  "shortDescription": "One concise sentence (max 120 chars) for display on index cards",
-  "fullDescription": "2-3 sentences providing a complete overview for the detail page",
-  "useCases": [
-    {
-      "title": "Use case title (2-4 words)",
-      "description": "1-2 sentence explanation of this use case"
-    }
-  ]
-}
-
-Requirements:
-- shortDescription: Ultra-concise for card display
-- fullDescription: Complete but accessible explanation
-- useCases: Extract 3-5 key use cases from the plugin content
-- Use simple, clear language accessible to developers
-- Focus on user benefits and outcomes`;
-
-  const response = await client.chat.completions.create({
-    model: "deepseek-chat",
-    messages: [{ role: "user", content: prompt }],
-    response_format: { type: "json_object" },
-    temperature: 0,
-    seed: 42,
-  });
-
-  const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error("No response from LLM");
-
-  const parsed = JSON.parse(content);
-  return {
-    name: pluginName,
-    displayName,
-    tagline,
-    shortDescription: parsed.shortDescription,
-    fullDescription: parsed.fullDescription,
-    useCases: parsed.useCases,
-    skillCount: skillNames.length,
-    skills: skillNames,
-    marketplaceCommand,
-    installCommand,
-  };
-}
-
-async function generateSkillContent(
-  client: OpenAI,
-  skillName: string,
-  pluginName: string,
-  skillContent: string
-): Promise<SkillGenerated["skill"]> {
-  const displayName = toDisplayName(skillName);
-
-  const prompt = `You are analyzing a Claude Code skill definition. Generate a user-friendly explanation for a skill gallery website.
-
-Input SKILL.md:
----
-${skillContent}
----
-
-Output a JSON object with this exact structure:
-{
-  "tagline": "One compelling sentence hook (max 80 chars) that captures the skill's essence",
-  "shortSummary": "One concise sentence (max 120 chars) for display on index cards",
-  "fullSummary": "2-3 sentences providing a complete overview for the detail page",
-  "highlights": [
-    {
-      "title": "Short highlight title (2-4 words)",
-      "description": "2-3 sentence explanation of this key feature or benefit"
-    }
-  ],
-  "workflow": {
-    "steps": [
-      {
-        "name": "Step name (2-4 words)",
-        "description": "Brief description (1 sentence)",
-        "details": "Extended explanation for detail page (2-3 sentences, optional)"
-      }
-    ]
-  }
-}
-
-Requirements:
-- tagline: Compelling, action-oriented hook
-- shortSummary: Ultra-concise for card display
-- fullSummary: Complete but accessible explanation
-- highlights: Extract 3-5 key features/benefits from the skill
-- workflow.steps: Clear sequential steps showing how the skill works
-- Use simple, clear language accessible to developers unfamiliar with the skill
-- Focus on user benefits and outcomes, not implementation details
-- Do NOT include any mermaid diagrams`;
-
-  const response = await client.chat.completions.create({
-    model: "deepseek-chat",
-    messages: [{ role: "user", content: prompt }],
-    response_format: { type: "json_object" },
-    temperature: 0,
-    seed: 42,
-  });
-
-  const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error("No response from LLM");
-
-  const parsed = JSON.parse(content);
-  return {
-    name: skillName,
-    displayName,
-    pluginName,
-    tagline: parsed.tagline,
-    shortSummary: parsed.shortSummary,
-    fullSummary: parsed.fullSummary,
-    highlights: parsed.highlights,
-    workflow: parsed.workflow,
-  };
-}
+// --- Main ---
 
 async function main() {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    console.error("Error: DEEPSEEK_API_KEY environment variable is required");
-    process.exit(1);
-  }
-
-  const client = new OpenAI({
-    apiKey,
-    baseURL: "https://api.deepseek.com/v1",
-  });
-
   const marketplaceConfig = loadMarketplaceConfig();
   const plugins = discoverPlugins();
   console.log(`Found ${plugins.length} plugin(s) to process\n`);
@@ -294,31 +149,54 @@ async function main() {
   for (const plugin of plugins) {
     console.log(`\n📦 Plugin: ${plugin.name} (${plugin.skillNames.length} skills)`);
 
-    // Process plugin
-    const pluginMdPath = join(plugin.path, "PLUGIN.md");
-    const pluginOutputPath = join(PLUGINS_OUTPUT_DIR, `${plugin.name}.json`);
+    // --- Load TOML configs ---
+    const pluginTomlPath = join(plugin.path, "website.plugin.toml");
+    const skillsTomlPath = join(plugin.path, "website.skills.toml");
 
-    const pluginRawContent = readFileSync(pluginMdPath, "utf-8");
-    const pluginCurrentHash = computeHash(pluginRawContent);
+    if (!existsSync(pluginTomlPath)) {
+      console.error(`  ✗ Missing ${pluginTomlPath}`);
+      continue;
+    }
+    if (!existsSync(skillsTomlPath)) {
+      console.error(`  ✗ Missing ${skillsTomlPath}`);
+      continue;
+    }
+
+    const pluginTomlRaw = readFileSync(pluginTomlPath, "utf-8");
+    const skillsTomlRaw = readFileSync(skillsTomlPath, "utf-8");
+    const pluginToml = TOML.parse(pluginTomlRaw) as unknown as PluginTomlConfig;
+    const skillsToml = TOML.parse(skillsTomlRaw) as unknown as SkillsTomlConfig;
+
+    // --- Process plugin ---
+    const pluginOutputPath = join(PLUGINS_OUTPUT_DIR, `${plugin.name}.json`);
+    const pluginCurrentHash = computeHash(pluginTomlRaw);
     const pluginExistingHash = getExistingHash(pluginOutputPath);
+
+    // Generate install commands from marketplace config
+    const ownerName = marketplaceConfig.owner.name;
+    const marketplaceCommand = `/plugin marketplace add ${ownerName}/skills`;
+    const installCommand = `/plugin install ${plugin.name}@${marketplaceConfig.name}`;
 
     if (pluginCurrentHash === pluginExistingHash) {
       console.log(`  ✓ Plugin unchanged (hash: ${pluginCurrentHash})`);
     } else {
-      console.log(`  ⟳ Generating plugin content...`);
+      console.log(`  ⟳ Generating plugin content from TOML...`);
       try {
-        const pluginData = await generatePluginContent(
-          client,
-          plugin.name,
-          pluginRawContent,
-          plugin.skillNames,
-          marketplaceConfig
-        );
-
         const output: PluginGenerated = {
           sourceHash: pluginCurrentHash,
           generatedAt: new Date().toISOString(),
-          plugin: pluginData,
+          plugin: {
+            name: plugin.name,
+            displayName: pluginToml.display_name,
+            tagline: pluginToml.tagline,
+            shortDescription: pluginToml.short_description,
+            fullDescription: pluginToml.full_description,
+            useCases: pluginToml.use_cases,
+            skillCount: plugin.skillNames.length,
+            skills: plugin.skillNames,
+            marketplaceCommand,
+            installCommand,
+          },
         };
 
         writeFileSync(pluginOutputPath, JSON.stringify(output, null, 2) + "\n");
@@ -328,42 +206,44 @@ async function main() {
       }
     }
 
-    // Process skills for this plugin
-    const skillsDir = join(plugin.path, "skills");
-
+    // --- Process skills ---
     for (const skillName of plugin.skillNames) {
-      const skillPath = join(skillsDir, skillName, "SKILL.md");
       const skillOutputPath = join(SKILLS_OUTPUT_DIR, `${skillName}.json`);
 
-      const skillRawContent = readFileSync(skillPath, "utf-8");
-      const skillCurrentHash = computeHash(skillRawContent);
+      // Hash the skill's TOML section content
+      const skillToml = skillsToml.skills?.[skillName];
+      if (!skillToml) {
+        console.error(`  ✗ ${skillName}: not found in website.skills.toml`);
+        continue;
+      }
+
+      // Use the full skills TOML raw + skill name as hash source for per-skill caching
+      const skillCurrentHash = computeHash(JSON.stringify(skillToml));
       const skillExistingHash = getExistingHash(skillOutputPath);
 
       if (skillCurrentHash === skillExistingHash) {
-        // Check if pluginName field exists in existing file
-        try {
-          const existing = JSON.parse(readFileSync(skillOutputPath, "utf-8"));
-          if (existing.skill?.pluginName === plugin.name) {
-            console.log(`  ✓ ${skillName}: unchanged (hash: ${skillCurrentHash})`);
-            continue;
-          }
-        } catch {}
+        console.log(`  ✓ ${skillName}: unchanged (hash: ${skillCurrentHash})`);
+        continue;
       }
 
-      console.log(`  ⟳ ${skillName}: generating...`);
+      console.log(`  ⟳ ${skillName}: generating from TOML...`);
 
       try {
-        const skillData = await generateSkillContent(
-          client,
-          skillName,
-          plugin.name,
-          skillRawContent
-        );
-
         const output: SkillGenerated = {
           sourceHash: skillCurrentHash,
           generatedAt: new Date().toISOString(),
-          skill: skillData,
+          skill: {
+            name: skillName,
+            displayName: skillToml.display_name,
+            pluginName: plugin.name,
+            tagline: skillToml.tagline,
+            shortSummary: skillToml.short_summary,
+            fullSummary: skillToml.full_summary,
+            highlights: skillToml.highlights,
+            workflow: {
+              steps: skillToml.workflow,
+            },
+          },
         };
 
         writeFileSync(skillOutputPath, JSON.stringify(output, null, 2) + "\n");
