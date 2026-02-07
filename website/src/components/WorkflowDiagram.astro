@@ -10,7 +10,6 @@ interface EventMarker {
   edge: "top" | "right" | "bottom" | "left";
   position: number; // 0-1 percentage along the edge
   label: string;
-  tooltip: string;
 }
 
 interface Addition {
@@ -121,7 +120,6 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
               <div class="marker-dot"></div>
             </div>
             <div class="marker-label">{event.label}</div>
-            <div class="marker-popover">{event.tooltip}</div>
           </div>
         );
       })}
@@ -367,10 +365,6 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
       opacity var(--transition-base);
   }
 
-  .edge-marker:hover {
-    z-index: 50;
-  }
-
   /* Top edge */
   .edge-marker.edge-top {
     left: var(--marker-position);
@@ -475,76 +469,6 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   .edge-marker.is-highlighted .marker-label {
     color: var(--marker-color);
-  }
-
-  /* ---- Marker Popover ---- */
-  .marker-popover {
-    position: absolute;
-    font-family: var(--font-body);
-    font-size: var(--text-xs);
-    font-weight: 400;
-    color: var(--color-surface);
-    background: var(--color-text);
-    border-radius: var(--radius-md);
-    padding: var(--space-2) var(--space-3);
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transform: scale(0.92);
-    transform-origin: center;
-    transition:
-      opacity 120ms ease-out,
-      transform 120ms ease-out;
-    z-index: 20;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
-  }
-
-  .edge-marker:hover .marker-popover {
-    opacity: 1;
-    transform: scale(1);
-    pointer-events: auto;
-  }
-
-  /* Popover positioning per edge */
-  .edge-marker.edge-top .marker-popover {
-    top: 24px;
-    left: 50%;
-    transform: translateX(-50%) scale(0.92);
-    transform-origin: top center;
-  }
-  .edge-marker.edge-top:hover .marker-popover {
-    transform: translateX(-50%) scale(1);
-  }
-
-  .edge-marker.edge-right .marker-popover {
-    left: auto;
-    right: 24px;
-    top: 50%;
-    transform: translateY(-50%) scale(0.92);
-    transform-origin: center right;
-  }
-  .edge-marker.edge-right:hover .marker-popover {
-    transform: translateY(-50%) scale(1);
-  }
-
-  .edge-marker.edge-bottom .marker-popover {
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%) scale(0.92);
-    transform-origin: bottom center;
-  }
-  .edge-marker.edge-bottom:hover .marker-popover {
-    transform: translateX(-50%) scale(1);
-  }
-
-  .edge-marker.edge-left .marker-popover {
-    left: 24px;
-    top: 50%;
-    transform: translateY(-50%) scale(0.92);
-    transform-origin: center left;
-  }
-  .edge-marker.edge-left:hover .marker-popover {
-    transform: translateY(-50%) scale(1);
   }
 
   /* All markers remain fully visible; highlighted ones get emphasis via bold border */
