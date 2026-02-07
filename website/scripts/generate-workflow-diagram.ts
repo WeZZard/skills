@@ -48,13 +48,6 @@ interface TomlAddition {
   effect: string;
 }
 
-interface TomlEvent {
-  id: string;
-  edge: "top" | "right" | "bottom" | "left";
-  position: number;
-  label: string;
-}
-
 interface TomlSection {
   title: string;
   content: string;
@@ -71,7 +64,6 @@ interface TomlSection {
 interface WebsiteConfig {
   philosophy: {
     intro: string;
-    events?: TomlEvent[];
     sections: TomlSection[];
   };
 }
@@ -180,6 +172,29 @@ function computeCombinedHash(
   return computeHash(combined);
 }
 
+// --- Diagram events (presentation layer — not configurable via TOML) ---
+// These represent the Claude Code hook lifecycle points displayed on the
+// workflow rectangle edges. They are part of the visual design, not content.
+
+interface DiagramEventDef {
+  id: string;
+  edge: "top" | "right" | "bottom" | "left";
+  position: number;
+  label: string;
+}
+
+const DIAGRAM_EVENTS: DiagramEventDef[] = [
+  { id: "SessionStart",       edge: "top",    position: 0.33, label: "Session Start" },
+  { id: "UserPromptSubmit",   edge: "top",    position: 0.67, label: "User Prompt Submit" },
+  { id: "PreToolUse",         edge: "right",  position: 0.25, label: "Pre Tool Use" },
+  { id: "PostToolUse",        edge: "right",  position: 0.50, label: "Post Tool Use" },
+  { id: "PostToolUseFailure", edge: "right",  position: 0.75, label: "Post Tool Use Failure" },
+  { id: "ExitPlanMode",       edge: "bottom", position: 0.33, label: "Exit Plan Mode" },
+  { id: "EnterPlanMode",      edge: "bottom", position: 0.67, label: "Enter Plan Mode" },
+  { id: "SubagentStop",       edge: "left",   position: 0.33, label: "Subagent Stop" },
+  { id: "SubagentSpawn",      edge: "left",   position: 0.67, label: "Subagent Spawn" },
+];
+
 // --- Build highlight from TOML config ---
 
 function buildHighlight(section: TomlSection): PhilosophyHighlight {
@@ -210,7 +225,7 @@ function buildHighlight(section: TomlSection): PhilosophyHighlight {
 
 async function generateTooltipsAndEnhancedContent(
   client: OpenAI,
-  events: TomlEvent[],
+  events: DiagramEventDef[],
   hooksConfig: HooksConfig,
   sections: TomlSection[],
   skills: Array<{ name: string; content: string }>
@@ -300,14 +315,7 @@ async function main() {
   console.log(`  Found ${Object.keys(hooksConfig.hooks).length} hook event(s)`);
   console.log(`  Found ${websiteConfig.philosophy.sections.length} philosophy section(s)`);
   console.log(`  Found ${skills.length} skill(s)`);
-
-  // Read events from TOML config
-  const tomlEvents = websiteConfig.philosophy.events || [];
-  if (tomlEvents.length === 0) {
-    console.error("  ✗ No events defined in website.toml [philosophy.events]");
-    process.exit(1);
-  }
-  console.log(`  Found ${tomlEvents.length} diagram event(s) in TOML`);
+  console.log(`  Using ${DIAGRAM_EVENTS.length} diagram event(s) (presentation layer)`);
 
   // Compute combined hash for cache invalidation
   const skillContents = skills.map((s) => s.content);
@@ -331,14 +339,14 @@ async function main() {
     const { tooltips, enhancedContents } =
       await generateTooltipsAndEnhancedContent(
         client,
-        tomlEvents,
+        DIAGRAM_EVENTS,
         hooksConfig,
         websiteConfig.philosophy.sections,
         skills
       );
 
     // Assemble diagram events with tooltips
-    const diagramEvents: DiagramEvent[] = tomlEvents.map((event) => ({
+    const diagramEvents: DiagramEvent[] = DIAGRAM_EVENTS.map((event) => ({
       ...event,
       tooltip: tooltips[event.id] || `${event.label} event`,
     }));

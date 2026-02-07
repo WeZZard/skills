@@ -1,6 +1,6 @@
 {
-  "sourceHash": "12093e17cd8676e4",
-  "generatedAt": "2026-02-07T08:06:55.636Z",
+  "sourceHash": "fe8879dbc3315b73",
+  "generatedAt": "2026-02-07T08:17:54.238Z",
   "diagram": {
     "events": [
       {
@@ -78,7 +78,7 @@
       "id": "addressing-the-review-burden",
       "title": "Addressing the Review Burden",
       "content": "The first challenge is the review burden. When executing long-running tasks, plans become too lengthy and difficult to understand. Even Claude Code might generate plans you can't fully grasp—especially when using it to explore unfamiliar territory.\n\nTraditional plans are built for humans who imagine based on existing situations: they describe the current state and what actions will change it. But living in this context can cause hallucinations in large language models.\n",
-      "enhancedContent": "Tackle the overwhelming review process when Claude Code generates complex, lengthy plans. Intelligence Scale transforms these into clear, manageable structures with explicit verification steps, making it easier for developers to understand and approve what's being implemented. Say goodbye to confusing plan reviews and hello to streamlined oversight.",
+      "enhancedContent": "Tired of deciphering complex, lengthy AI-generated plans? Intelligence Scale tackles this head-on by structuring plans with clear dependencies and explicit verification steps. This reduces cognitive load and makes even the most intricate development tasks easy to review and understand.",
       "additions": [
         {
           "id": "session-start-context",
@@ -109,7 +109,7 @@
       "id": "polished-plan-structure",
       "title": "Polished Plan Structure",
       "content": "Intelligence Scale uses a refined plan structure designed to reduce review pressure on human beings. Plans are organized with clear task dependencies, explicit verification steps, and human verification gates for subjective decisions.\n",
-      "enhancedContent": "Experience plans that are actually readable and actionable. Intelligence Scale organizes tasks with clear dependencies, built-in verification checkpoints, and human approval stages—all designed to reduce cognitive load. Developers can quickly grasp what's happening and confidently move projects forward.",
+      "enhancedContent": "Experience organized development workflows with Intelligence Scale's refined plan structure. Each plan features clear task dependencies, explicit verification checkpoints, and human-readable milestones. This structured approach transforms chaotic AI outputs into manageable, predictable development roadmaps.",
       "additions": [
         {
           "id": "enter-plan-mode-structure",
@@ -142,7 +142,7 @@
       "id": "maximizing-task-parallelism",
       "title": "Maximizing Task Parallelism",
       "content": "The latest Opus model excels at executing concurrent tasks. Intelligence Scale prompts Claude Code to maximize task parallelism whenever possible, spawning subagents for independent work while respecting task dependencies.\n",
-      "enhancedContent": "Unlock Claude Opus's full potential for concurrent execution. Intelligence Scale intelligently spawns subagents for independent work while maintaining proper coordination between parallel tasks. Watch your development workflows accelerate as multiple tasks progress simultaneously without conflicts.",
+      "enhancedContent": "Unlock Claude Code's full potential with intelligent parallel task execution. Intelligence Scale prompts the AI to spawn subagents for independent work while maintaining proper coordination. This means faster completion times and more efficient use of AI capabilities for complex projects.",
       "additions": [
         {
           "id": "user-prompt-parallelism",
@@ -174,7 +174,7 @@
       "id": "error-recovery",
       "title": "Error Recovery",
       "content": "While the latest Opus model has strong error resilience, recovering from errors still has common cases and edge cases that need attention. Intelligence Scale hints Claude Code to check the session plan when it encounters repeated errors, providing a structured path back to productive work.\n",
-      "enhancedContent": "Build resilience into your AI-assisted workflows. Intelligence Scale provides Claude Code with smart error recovery patterns that handle both common cases and edge scenarios. When things go wrong, the system automatically checks session plans and applies appropriate recovery strategies to keep projects on track.",
+      "enhancedContent": "Even the most advanced AI models encounter errors—Intelligence Scale handles them gracefully. The plugin guides Claude Code through common and edge-case error scenarios, checking session plans and applying targeted recovery strategies. This ensures your development workflow stays on track despite unexpected obstacles.",
       "additions": [
         {
           "id": "tool-failure-recovery",
@@ -204,7 +204,7 @@
       "id": "plan-execution-audit",
       "title": "Plan Execution Audit",
       "content": "When a plan is executed, some parts might not be fully implemented. The audit-plan skill verifies plan execution compliance, measuring the gap between the existing implementation and the goals described in the plan.\n",
-      "enhancedContent": "Ensure nothing falls through the cracks with automated compliance checking. The audit-plan skill measures the gap between planned goals and actual implementation, identifying what's missing or incomplete. Get confidence that your AI-generated plans are fully executed as intended.",
+      "enhancedContent": "Worried about incomplete implementations? Intelligence Scale's audit-plan skill measures the gap between your goals and actual execution. This verification step ensures plan compliance and identifies areas needing attention, giving you confidence that your project requirements are fully met.",
       "additions": [
         {
           "id": "subagent-stop-audit",

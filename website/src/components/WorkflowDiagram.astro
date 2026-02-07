@@ -118,9 +118,6 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
             data-event={event.id}
             data-edge={event.edge}
             style={`--marker-position: ${event.position * 100}%; --marker-color: ${colors.main}; --marker-color-soft: ${colors.soft};`}
-            role="button"
-            tabindex="0"
-            aria-label={event.tooltip}
             title={event.tooltip}
           >
             <div class="marker-circle">
@@ -245,28 +242,6 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
         });
       });
 
-      // Marker click: activate first philosophy that references this event
-      markers.forEach((marker) => {
-        marker.addEventListener("click", () => {
-          const eventId = marker.dataset.event;
-          if (!eventId) return;
-          for (const [philId, events] of Object.entries(eventsMap)) {
-            if (events.includes(eventId)) {
-              activate(philId);
-              break;
-            }
-          }
-        });
-
-        // Keyboard support
-        marker.addEventListener("keydown", (e: KeyboardEvent) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            marker.click();
-          }
-        });
-      });
-
       // Initial state
       if (buttons[0]?.dataset.philosophyBtn) {
         activate(buttons[0].dataset.philosophyBtn);
@@ -376,10 +351,8 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
   /* ---- Edge Markers ---- */
   .edge-marker {
     position: absolute;
-    cursor: pointer;
     transition:
-      opacity var(--transition-base),
-      transform var(--transition-base);
+      opacity var(--transition-base);
   }
 
   /* Top edge */
@@ -490,24 +463,6 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   /* All markers remain fully visible; highlighted ones get emphasis via bold border */
 
-  .edge-marker:hover {
-    transform: translate(-50%, -50%) scale(1.1);
-  }
-
-  .edge-marker.edge-right:hover {
-    transform: translate(50%, -50%) scale(1.1);
-  }
-
-  .edge-marker.edge-bottom:hover {
-    transform: translate(-50%, 50%) scale(1.1);
-  }
-
-  .edge-marker:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 4px;
-    border-radius: 50%;
-  }
-
   /* ---- Addition Callouts ---- */
   .addition-callout {
     position: absolute;
@@ -524,12 +479,17 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     pointer-events: none;
     transition:
       opacity var(--transition-base),
-      transform var(--transition-base);
+      transform var(--transition-base),
+      box-shadow var(--transition-fast);
   }
 
   .addition-callout.is-active {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  .addition-callout.is-active:hover {
+    box-shadow: 0 3px 10px var(--addition-color-soft);
   }
 
   /* Top edge additions - position inward from top */
@@ -543,6 +503,10 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     transform: translateX(-50%) translateY(0);
   }
 
+  .addition-callout.addition-top.is-active:hover {
+    transform: translateX(-50%) translateY(0) scale(1.06) rotate(-1deg);
+  }
+
   /* Right edge additions - position inward from right */
   .addition-callout.addition-right {
     right: 40px;
@@ -552,6 +516,10 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   .addition-callout.addition-right.is-active {
     transform: translateY(-50%) translateX(0);
+  }
+
+  .addition-callout.addition-right.is-active:hover {
+    transform: translateY(-50%) translateX(0) scale(1.06) rotate(1deg);
   }
 
   /* Bottom edge additions - position inward from bottom */
@@ -565,6 +533,10 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     transform: translateX(-50%) translateY(0);
   }
 
+  .addition-callout.addition-bottom.is-active:hover {
+    transform: translateX(-50%) translateY(0) scale(1.06) rotate(1deg);
+  }
+
   /* Left edge additions - position inward from left */
   .addition-callout.addition-left {
     left: 40px;
@@ -574,6 +546,10 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   .addition-callout.addition-left.is-active {
     transform: translateY(-50%) translateX(0);
+  }
+
+  .addition-callout.addition-left.is-active:hover {
+    transform: translateY(-50%) translateX(0) scale(1.06) rotate(-1deg);
   }
 
   /* ---- Center Content ---- */
