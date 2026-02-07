@@ -2,26 +2,4 @@
 # This file configures the plugin detail page content
 
 display_name = "Intelligence Scale"
-tagline = "Structured workflows for AI-assisted development"
-short_description = "Structured workflows for predictable, high-quality AI-assisted development with Claude Code."
-full_description = "Intelligence Scale provides curated skills that enforce structured workflows for planning, execution, and verification in AI-assisted development. It ensures development is predictable, traceable, and maintains quality through explicit documentation, systematic progress, and built-in verification."
-
-[[use_cases]]
-title = "Project Planning"
-description = "Create comprehensive development plans with exact tasks, file paths, and verification criteria before making any changes."
-
-[[use_cases]]
-title = "Structured Execution"
-description = "Follow development plans systematically with built-in parallelism and verification gates while respecting task dependencies."
-
-[[use_cases]]
-title = "Error Recovery"
-description = "Handle failures gracefully with documented recovery procedures to prevent goal drift when things go wrong."
-
-[[use_cases]]
-title = "Quality Assurance"
-description = "Audit and verify work through structured review processes to ensure every planned change was implemented correctly."
-
-[[use_cases]]
-title = "Idea Exploration"
-description = "Brainstorm and refine ideas through collaborative dialogue before committing to implementation."
+tagline = "Empowers the AI-driven development."

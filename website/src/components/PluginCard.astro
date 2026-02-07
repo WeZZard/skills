@@ -8,14 +8,13 @@ interface Props {
   name: string;
   displayName: string;
   tagline: string;
-  shortDescription: string;
   skillCount: number;
   marketplaceCommand: string;
   installCommand: string;
   index: number;
 }
 
-const { name, displayName, tagline, shortDescription, skillCount, marketplaceCommand, installCommand, index } = Astro.props;
+const { name, displayName, tagline, skillCount, marketplaceCommand, installCommand, index } = Astro.props;
 ---
 
 <article class="plugin-entry" style={`--delay: ${index * 120}ms`}>
@@ -28,7 +27,7 @@ const { name, displayName, tagline, shortDescription, skillCount, marketplaceCom
     </header>
 
     <a href={`/plugins/${name}`} class="plugin-description-link">
-      <p class="plugin-description">{shortDescription}</p>
+      <p class="plugin-description">{tagline}</p>
     </a>
 
     <a href={`/plugins/${name}`} class="view-skills-link">
