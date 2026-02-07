@@ -4,7 +4,7 @@
   "skill": {
     "name": "audit-plan",
     "displayName": "Audit Plan",
-    "pluginName": "intelligence-scale",
+    "pluginName": "amplify",
     "tagline": "Verify every planned change was implemented correctly with evidence-based auditing",
     "shortSummary": "Audit plan execution by comparing planned tasks against actual system state with detailed verification",
     "fullSummary": "This skill automatically verifies that all tasks from a session plan were correctly implemented. It systematically checks file existence, content, deletions, and command outputs against the original plan specifications. The audit provides a structured report showing exactly what was implemented correctly and what discrepancies were found.",

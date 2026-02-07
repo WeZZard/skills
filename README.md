@@ -21,7 +21,7 @@ If you host on GitHub later:
 2. Install plugins:
 
 ```bash
-/plugin install intelligence-scale@wezzard-skills
+/plugin install amplify@wezzard-skills
 /plugin install walkthrough@wezzard-skills
 ```
 
@@ -29,10 +29,10 @@ If you host on GitHub later:
 
 ```bash
 # wezzard plugin skills
-/intelligence-scale:brainstorming
-/intelligence-scale:write-plan
-/intelligence-scale:execute-plan
-/intelligence-scale:recover-from-errors
+/amplify:brainstorming
+/amplify:write-plan
+/amplify:execute-plan
+/amplify:recover-from-errors
 
 # walkthrough plugin skills
 /walkthrough:run
@@ -67,7 +67,7 @@ Debugging skills that capture and analyze program execution with voice, screen, 
 
 ```text
 .claude-plugin/marketplace.json
-claude/intelligence-scale/.claude-plugin/plugin.json
+claude/amplify/.claude-plugin/plugin.json
 claude/<plugin-name>/skills/<skill-name>/SKILL.md
 ```
 

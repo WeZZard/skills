@@ -7,7 +7,7 @@ Replace the static Design Philosophy section on the plugin detail page with an i
 1. **Additions** attach to specific event points on the rectangle, showing what that philosophy contributes to the workflow.
 2. **Highlight content** appears in the center of the rectangle — the key artifact or concept the philosophy introduces.
 
-This creates an implicit before/after comparison: the bare rectangle is vanilla Claude Code; the additions are what Intelligence Scale brings.
+This creates an implicit before/after comparison: the bare rectangle is vanilla Claude Code; the additions are what Amplify brings.
 
 ---
 
@@ -57,7 +57,7 @@ Each edge justifies its events independently. The right edge distributes 3 event
 
 ### Design Principles
 
-1. **Before/after comparison.** The bare rectangle is "before" (vanilla Claude Code). Additions show "after" (with Intelligence Scale). This makes the value proposition immediately visible.
+1. **Before/after comparison.** The bare rectangle is "before" (vanilla Claude Code). Additions show "after" (with Amplify). This makes the value proposition immediately visible.
 
 2. **Visual diff.** Rather than highlighting existing elements, we show what each philosophy *adds*. This is more intuitive than dimming/brightening.
 
@@ -115,7 +115,7 @@ Each edge justifies its events independently. The right edge distributes 3 event
 ### TOML Schema
 
 ```toml
-# claude/intelligence-scale/website.toml
+# claude/amplify/website.toml
 
 [workflow_diagram]
 base_description = "The standard Claude Code agent loop: prompt → think → act → respond"
@@ -123,7 +123,7 @@ base_description = "The standard Claude Code agent loop: prompt → think → ac
 [[philosophy.sections]]
 id = "plan-structure"
 title = "Polished Plan Structure"
-content = "Intelligence Scale uses a refined plan structure..."
+content = "Amplify uses a refined plan structure..."
 
 # Additions attach to named events on the rectangle edges
 [[philosophy.sections.additions]]
@@ -173,7 +173,7 @@ before = """
 - Do thing 2
 - Test it
 """
-after_label = "Intelligence Scale Plan"
+after_label = "Amplify Plan"
 after = """
 1. **Create component** (file: src/Component.tsx)
    - Exact code provided
@@ -265,7 +265,7 @@ interface PhilosophySection {
 ### File Structure
 
 ```
-claude/intelligence-scale/
+claude/amplify/
 ├── website.toml                    # Human-editable config (source of truth)
 ├── suggestions/                    # LLM-generated suggestions (for review)
 │   ├── plan-structure.json
@@ -275,7 +275,7 @@ claude/intelligence-scale/
 
 website/src/content/generated/
 └── workflow/
-    └── intelligence-scale.json     # Final merged output for Astro
+    └── amplify.json     # Final merged output for Astro
 ```
 
 ---

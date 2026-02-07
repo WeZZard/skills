@@ -1,0 +1,5 @@
+# Amplify - Plugin Configuration
+# This file configures the plugin detail page content
+
+display_name = "Amplify"
+tagline = "Scale your AI-driven workflows."

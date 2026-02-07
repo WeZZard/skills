@@ -4,7 +4,7 @@
   "skill": {
     "name": "execute-plan",
     "displayName": "Execute Plan",
-    "pluginName": "intelligence-scale",
+    "pluginName": "amplify",
     "tagline": "Turn your development plans into working code with automated execution and human oversight.",
     "shortSummary": "Automatically executes development plans with parallel task processing and built-in verification gates.",
     "fullSummary": "This skill transforms finalized development plans into implemented code through automated execution. It processes tasks in parallel while respecting dependencies, and includes human verification gates for critical steps. The system stops automatically when encountering blockers or unclear instructions, ensuring quality implementation.",

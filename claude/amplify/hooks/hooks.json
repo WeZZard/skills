@@ -1,5 +1,5 @@
 {
-  "description": "Intelligence-scale skill hooks for context injection",
+  "description": "Amplify skill hooks for context injection",
   "hooks": {
     "SessionStart": [
       {

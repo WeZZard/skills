@@ -36,7 +36,7 @@ cat <<EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "<EXTREMELY_IMPORTANT>\nYou have wezzard skills.\n\n**Below is the full content of your 'intelligence-scale:using-skills' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**\n\n${using_skills_escaped}\n\n</EXTREMELY_IMPORTANT>"
+    "additionalContext": "<EXTREMELY_IMPORTANT>\nYou have wezzard skills.\n\n**Below is the full content of your 'amplify:using-skills' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**\n\n${using_skills_escaped}\n\n</EXTREMELY_IMPORTANT>"
   }
 }
 EOF

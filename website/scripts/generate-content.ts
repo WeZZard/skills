@@ -138,11 +138,11 @@ function discoverPlugins(): Array<{ name: string; path: string; skillNames: stri
   return plugins;
 }
 
-// --- AI generation for intelligence-scale skills ---
+// --- AI generation for amplify skills ---
 
 /**
  * Generates website content for a skill using the DeepSeek API.
- * Template is specific to the intelligence-scale plugin.
+ * Template is specific to the amplify plugin.
  */
 async function generateSkillContent(
   client: OpenAI,
@@ -244,7 +244,7 @@ function appendSkillToToml(skillsTomlPath: string, skillName: string, entry: Ski
  * and generates content for them via the DeepSeek API.
  * Returns true if any new content was generated (so the caller can re-read the TOML).
  *
- * This function is specific to the intelligence-scale plugin template.
+ * This function is specific to the amplify plugin template.
  */
 async function generateMissingSkillContent(
   plugin: { name: string; path: string; skillNames: string[] },
@@ -333,8 +333,8 @@ async function main() {
       console.log(`  ℹ Created empty ${skillsTomlPath}`);
     }
 
-    // --- Generate missing skill content (intelligence-scale only) ---
-    if (plugin.name === "intelligence-scale") {
+    // --- Generate missing skill content (amplify only) ---
+    if (plugin.name === "amplify") {
       const earlyTomlRaw = readFileSync(skillsTomlPath, "utf-8");
       const earlyToml = TOML.parse(earlyTomlRaw) as unknown as SkillsTomlConfig;
       if (!earlyToml.skills) {

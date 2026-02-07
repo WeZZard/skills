@@ -4,7 +4,7 @@
   "skill": {
     "name": "write-plan",
     "displayName": "Write Plan",
-    "pluginName": "intelligence-scale",
+    "pluginName": "amplify",
     "tagline": "Create structured development plans with built-in verification and human oversight",
     "shortSummary": "Generates comprehensive project plans with verification steps and human review gates",
     "fullSummary": "The write-plan skill helps developers create detailed project plans before making changes. It ensures thorough documentation of files, hypotheses, and verification approaches while identifying when human review is needed. The skill produces structured plans with clear tasks and validation steps to guide development work.",

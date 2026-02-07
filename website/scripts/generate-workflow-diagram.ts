@@ -12,7 +12,7 @@ import TOML from "toml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const PLUGIN_DIR = join(__dirname, "../../claude/intelligence-scale");
+const PLUGIN_DIR = join(__dirname, "../../claude/amplify");
 const HOOKS_JSON = join(PLUGIN_DIR, "hooks/hooks.json");
 const WEBSITE_TOML = join(PLUGIN_DIR, "website.philosophy.toml");
 const SKILLS_DIR = join(PLUGIN_DIR, "skills");
@@ -189,7 +189,7 @@ function buildHighlight(section: TomlSection): PhilosophyHighlight {
 function main() {
   const forceRegenerate = process.argv.includes("--force");
 
-  console.log("🔄 Generating workflow diagram data for intelligence-scale\n");
+  console.log("🔄 Generating workflow diagram data for amplify\n");
 
   // Load source files
   const hooksRaw = readFileSync(HOOKS_JSON, "utf-8");
@@ -212,7 +212,7 @@ function main() {
   const skillContents = skills.map((s) => s.content);
   const currentHash = computeCombinedHash(hooksRaw, websiteRaw, skillContents);
 
-  const outputPath = join(OUTPUT_DIR, "intelligence-scale.json");
+  const outputPath = join(OUTPUT_DIR, "amplify.json");
   const existingHash = getExistingHash(outputPath);
 
   // Skip regeneration if sources unchanged and output exists (unless --force)

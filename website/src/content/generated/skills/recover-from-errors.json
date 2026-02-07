@@ -4,7 +4,7 @@
   "skill": {
     "name": "recover-from-errors",
     "displayName": "Recover From Errors",
-    "pluginName": "intelligence-scale",
+    "pluginName": "amplify",
     "tagline": "Stay on track when tools fail by re-aligning with your plan instead of guessing.",
     "shortSummary": "Prevents goal drift by checking the plan after repeated tool failures.",
     "fullSummary": "This skill helps you recover from errors without losing sight of your original goal. When tool calls fail repeatedly, it guides you to verify alignment with your plan and fix specific issues rather than guessing. This keeps your work focused and prevents unnecessary context noise.",

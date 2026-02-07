@@ -4,7 +4,7 @@
   "skill": {
     "name": "using-skills",
     "displayName": "Using Skills",
-    "pluginName": "intelligence-scale",
+    "pluginName": "amplify",
     "tagline": "Master Claude's skills first—check before any action to ensure disciplined, effective workflows.",
     "shortSummary": "Always invoke relevant skills before responding or acting to maintain structured, efficient workflows.",
     "fullSummary": "This foundational skill ensures you always check for applicable skills before taking any action, including asking clarifying questions. It establishes a disciplined approach where skill invocation takes priority, preventing wasted time and ensuring you follow established workflows. By checking first, you guarantee that all tasks benefit from Claude's structured processes.",
