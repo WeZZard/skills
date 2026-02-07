@@ -68,6 +68,7 @@ interface TomlSection {
 }
 
 interface WebsiteConfig {
+  skill_order?: string[];
   philosophy: {
     intro: string;
     events?: TomlEvent[];
@@ -98,6 +99,7 @@ interface PhilosophyHighlight {
 interface WorkflowDiagramData {
   sourceHash: string;
   generatedAt: string;
+  skillOrder?: string[];
   diagram: {
     events: DiagramEvent[];
     rect: { width: number; height: number; rx: number };
@@ -343,9 +345,11 @@ async function main() {
     });
 
     // Build output
+    const skillOrder = websiteConfig.skill_order;
     const output: WorkflowDiagramData = {
       sourceHash: currentHash,
       generatedAt: new Date().toISOString(),
+      ...(skillOrder && skillOrder.length > 0 ? { skillOrder } : {}),
       diagram: {
         events: diagramEvents,
         rect: { width: 600, height: 400, rx: 24 },

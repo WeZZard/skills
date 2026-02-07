@@ -87,6 +87,20 @@ const workflowPath = join(process.cwd(), `src/content/generated/workflow/${plugi
 const workflowData = existsSync(workflowPath)
   ? JSON.parse(readFileSync(workflowPath, "utf-8"))
   : null;
+
+// Sort skills by workflow skill_order if available
+if (workflowData?.skillOrder) {
+  const order: string[] = workflowData.skillOrder;
+  skills.sort((a, b) => {
+    const ai = order.indexOf(a.skill.name);
+    const bi = order.indexOf(b.skill.name);
+    // Skills in the order list come first; unlisted ones go to the end alphabetically
+    if (ai === -1 && bi === -1) return a.skill.name.localeCompare(b.skill.name);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+}
 ---
 
 <Base title={plugin.displayName} description={plugin.tagline} showHeader={false}>
@@ -163,7 +177,6 @@ const workflowData = existsSync(workflowPath)
             displayName={s.skill.displayName}
             pluginName={plugin.name}
             tagline={s.skill.tagline}
-            shortSummary={s.skill.shortSummary}
             index={index}
           />
         ))}

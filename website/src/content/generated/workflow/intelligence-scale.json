@@ -1,6 +1,14 @@
 {
-  "sourceHash": "d3dfdb5b5b879051",
-  "generatedAt": "2026-02-07T09:50:39.706Z",
+  "sourceHash": "d66f32661be09970",
+  "generatedAt": "2026-02-07T09:59:58.849Z",
+  "skillOrder": [
+    "using-skills",
+    "brainstorming",
+    "write-plan",
+    "execute-plan",
+    "audit-plan",
+    "recover-from-errors"
+  ],
   "diagram": {
     "events": [
       {
@@ -8,70 +16,70 @@
         "edge": "top",
         "position": 0.33,
         "label": "Session Start",
-        "tooltip": "Initialize Intelligence Scale session and load skills"
+        "tooltip": "Initialize Intelligence Scale session and load available skills"
       },
       {
         "id": "UserPromptSubmit",
         "edge": "top",
         "position": 0.67,
         "label": "User Prompt Submit",
-        "tooltip": "Process user request and determine appropriate skills"
+        "tooltip": "Process user request and determine appropriate skill usage"
       },
       {
         "id": "PreToolUse",
         "edge": "right",
         "position": 0.25,
         "label": "Pre Tool Use",
-        "tooltip": "Prepare skill execution with necessary context and parameters"
+        "tooltip": "Validate tool parameters and prepare for execution"
       },
       {
         "id": "PostToolUse",
         "edge": "right",
         "position": 0.5,
         "label": "Post Tool Use",
-        "tooltip": "Analyze skill results and update workflow state"
+        "tooltip": "Analyze tool results and update development workflow state"
       },
       {
         "id": "PostToolUseFailure",
         "edge": "right",
         "position": 0.75,
         "label": "Post Tool Use Failure",
-        "tooltip": "Trigger error recovery when skill execution fails"
+        "tooltip": "Trigger error recovery skills and adjust development plan"
       },
       {
         "id": "ExitPlanMode",
         "edge": "bottom",
         "position": 0.33,
         "label": "Exit Plan Mode",
-        "tooltip": "Complete plan execution and return to main workflow"
+        "tooltip": "Complete plan execution and return to interactive development"
       },
       {
         "id": "EnterPlanMode",
         "edge": "bottom",
         "position": 0.67,
         "label": "Enter Plan Mode",
-        "tooltip": "Activate planning skills to create development strategy"
+        "tooltip": "Activate planning skills to structure development workflow"
       },
       {
         "id": "Stop",
         "edge": "left",
         "position": 0.25,
         "label": "Stop",
-        "tooltip": "Terminate current workflow and clean up resources"
+        "tooltip": "Terminate current operation and clean up resources"
       },
       {
         "id": "SubagentStop",
         "edge": "left",
         "position": 0.5,
         "label": "Subagent Stop",
-        "tooltip": "Complete subagent task and integrate results"
+        "tooltip": "Complete subagent task and integrate results into main workflow"
       },
       {
         "id": "SubagentSpawn",
         "edge": "left",
         "position": 0.75,
         "label": "Subagent Spawn",
-        "tooltip": "Create specialized subagent for focused development task"
+        "tooltip": "Create specialized subagent for parallel development tasks"
       }
     ],
     "rect": {

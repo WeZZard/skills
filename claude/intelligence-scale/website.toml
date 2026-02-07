@@ -1,6 +1,20 @@
 # Intelligence Scale - Website Configuration
 # This file configures the plugin detail page content
 
+# ============================================================================
+# Skill display order on the plugin detail page
+# Skills not listed here will appear after the ordered ones, alphabetically
+# ============================================================================
+
+skill_order = [
+  "using-skills",
+  "brainstorming",
+  "write-plan",
+  "execute-plan",
+  "audit-plan",
+  "recover-from-errors",
+]
+
 [philosophy]
 intro = """
 I believe we can scale our intelligence with deterministic signals, natural language-based judgments, and skill triggers. When I tried to scale my intelligence this way, I found some limits in the current Claude Code implementation—so I designed several skills to address those issues.

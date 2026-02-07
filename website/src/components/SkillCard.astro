@@ -9,11 +9,10 @@ interface Props {
   displayName: string;
   pluginName: string;
   tagline: string;
-  shortSummary: string;
   index: number;
 }
 
-const { name, displayName, pluginName, tagline, shortSummary, index } = Astro.props;
+const { name, displayName, pluginName, tagline, index } = Astro.props;
 ---
 
 <a href={`/plugins/${pluginName}/skills/${name}`} class="skill-card" style={`--delay: ${index * 80}ms`}>
@@ -25,7 +24,6 @@ const { name, displayName, pluginName, tagline, shortSummary, index } = Astro.pr
     <div class="skill-content">
       <h3 class="skill-name">{displayName}</h3>
       <p class="skill-tagline">{tagline}</p>
-      <p class="skill-summary">{shortSummary}</p>
     </div>
 
     <div class="skill-footer">
@@ -130,15 +128,8 @@ const { name, displayName, pluginName, tagline, shortSummary, index } = Astro.pr
     font-size: var(--text-sm);
     font-weight: 500;
     color: var(--color-accent);
-    margin-bottom: var(--space-3);
+    margin-bottom: 0;
     line-height: var(--leading-normal);
-  }
-
-  .skill-summary {
-    font-size: var(--text-sm);
-    color: var(--color-text-muted);
-    line-height: var(--leading-relaxed);
-    margin-bottom: var(--space-4);
   }
 
   .skill-footer {
