@@ -1,10 +1,15 @@
 import { createHash } from "crypto";
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, appendFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { config } from "dotenv";
+import OpenAI from "openai";
 import TOML from "toml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Load .env from project root
+config({ path: join(__dirname, "../../.env") });
 
 const PLUGINS_DIR = join(__dirname, "../../claude");
 const MARKETPLACE_JSON = join(__dirname, "../../.claude-plugin/marketplace.json");
@@ -133,6 +138,178 @@ function discoverPlugins(): Array<{ name: string; path: string; skillNames: stri
   return plugins;
 }
 
+// --- AI generation for intelligence-scale skills ---
+
+/**
+ * Generates website content for a skill using the DeepSeek API.
+ * Template is specific to the intelligence-scale plugin.
+ */
+async function generateSkillContent(
+  client: OpenAI,
+  skillName: string,
+  skillMdContent: string,
+  pluginMdContent: string,
+): Promise<SkillTomlEntry> {
+  const prompt = `You are generating website content for a Claude Code plugin skill.
+
+## Context
+
+### Plugin (PLUGIN.md)
+${pluginMdContent}
+
+### Skill (SKILL.md for "${skillName}")
+${skillMdContent}
+
+## Task
+
+Generate website content for this skill as a JSON object with these fields:
+
+{
+  "display_name": "Human-readable skill name (title case, 2-4 words)",
+  "tagline": "A compelling one-line tagline (max 80 chars) that captures the skill's value proposition",
+  "short_summary": "A concise one-sentence summary (max 150 chars) of what the skill does",
+  "full_summary": "A detailed 2-3 sentence summary explaining the skill's purpose, how it works, and its benefits (max 500 chars)",
+  "highlights": [
+    {
+      "title": "Highlight Title (2-4 words)",
+      "description": "A 2-3 sentence description of this key feature or benefit (max 300 chars)"
+    }
+  ],
+  "workflow": [
+    {
+      "name": "Step Name (2-4 words)",
+      "description": "Brief description of this step (max 100 chars)",
+      "details": "Detailed explanation of what happens in this step (max 200 chars)"
+    }
+  ]
+}
+
+Requirements:
+- Generate exactly 3-4 highlights
+- Generate 3-5 workflow steps that reflect the actual process described in SKILL.md
+- Use clear, professional language
+- Be specific to what this skill actually does (don't be generic)
+- The tagline should be compelling and action-oriented
+- Workflow steps should follow the actual process described in the SKILL.md`;
+
+  const response = await client.chat.completions.create({
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0,
+    seed: 42,
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error("No response from LLM");
+
+  const result = JSON.parse(content);
+
+  return {
+    display_name: result.display_name,
+    tagline: result.tagline,
+    short_summary: result.short_summary,
+    full_summary: result.full_summary,
+    highlights: result.highlights,
+    workflow: result.workflow,
+  };
+}
+
+/**
+ * Serializes a SkillTomlEntry and appends it to the skills TOML file.
+ */
+function appendSkillToToml(skillsTomlPath: string, skillName: string, entry: SkillTomlEntry): void {
+  let block = `\n[skills.${skillName}]\n`;
+  block += `display_name = ${JSON.stringify(entry.display_name)}\n`;
+  block += `tagline = ${JSON.stringify(entry.tagline)}\n`;
+  block += `short_summary = ${JSON.stringify(entry.short_summary)}\n`;
+  block += `full_summary = ${JSON.stringify(entry.full_summary)}\n`;
+
+  for (const highlight of entry.highlights) {
+    block += `\n[[skills.${skillName}.highlights]]\n`;
+    block += `title = ${JSON.stringify(highlight.title)}\n`;
+    block += `description = ${JSON.stringify(highlight.description)}\n`;
+  }
+
+  for (const step of entry.workflow) {
+    block += `\n[[skills.${skillName}.workflow]]\n`;
+    block += `name = ${JSON.stringify(step.name)}\n`;
+    block += `description = ${JSON.stringify(step.description)}\n`;
+    if (step.details) {
+      block += `details = ${JSON.stringify(step.details)}\n`;
+    }
+  }
+
+  appendFileSync(skillsTomlPath, block);
+}
+
+/**
+ * Checks for skills that exist on disk but are missing from website.skills.toml,
+ * and generates content for them via the DeepSeek API.
+ * Returns true if any new content was generated (so the caller can re-read the TOML).
+ *
+ * This function is specific to the intelligence-scale plugin template.
+ */
+async function generateMissingSkillContent(
+  plugin: { name: string; path: string; skillNames: string[] },
+  skillsTomlPath: string,
+  skillsToml: SkillsTomlConfig,
+): Promise<boolean> {
+  const missingSkills: string[] = [];
+  for (const skillName of plugin.skillNames) {
+    const entry = skillsToml.skills?.[skillName];
+    if (!entry || !entry.display_name || !entry.tagline || !entry.full_summary) {
+      missingSkills.push(skillName);
+    }
+  }
+
+  if (missingSkills.length === 0) {
+    return false;
+  }
+
+  console.log(`  ⚡ Found ${missingSkills.length} skill(s) missing from website.skills.toml: ${missingSkills.join(", ")}`);
+
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) {
+    console.error(
+      "  ✗ DEEPSEEK_API_KEY is required to generate content for new skills.\n" +
+      "    Set it in .env or pass it directly.\n" +
+      "    Missing skills: " + missingSkills.join(", ")
+    );
+    return false;
+  }
+
+  const client = new OpenAI({
+    apiKey,
+    baseURL: "https://api.deepseek.com/v1",
+  });
+
+  const pluginMdContent = readFileSync(join(plugin.path, "PLUGIN.md"), "utf-8");
+  let generated = false;
+
+  for (const skillName of missingSkills) {
+    const skillMdPath = join(plugin.path, "skills", skillName, "SKILL.md");
+    if (!existsSync(skillMdPath)) {
+      console.error(`  ✗ ${skillName}: SKILL.md not found`);
+      continue;
+    }
+
+    const skillMdContent = readFileSync(skillMdPath, "utf-8");
+
+    console.log(`  ⟳ ${skillName}: generating content via DeepSeek API...`);
+    try {
+      const entry = await generateSkillContent(client, skillName, skillMdContent, pluginMdContent);
+      appendSkillToToml(skillsTomlPath, skillName, entry);
+      console.log(`  ✓ ${skillName}: generated and appended to website.skills.toml`);
+      generated = true;
+    } catch (error) {
+      console.error(`  ✗ ${skillName}: generation failed -`, error);
+    }
+  }
+
+  return generated;
+}
+
 // --- Main ---
 
 async function main() {
@@ -143,7 +320,7 @@ async function main() {
   for (const plugin of plugins) {
     console.log(`\n📦 Plugin: ${plugin.name} (${plugin.skillNames.length} skills)`);
 
-    // --- Load TOML configs ---
+    // --- Ensure TOML configs exist ---
     const pluginTomlPath = join(plugin.path, "website.plugin.toml");
     const skillsTomlPath = join(plugin.path, "website.skills.toml");
 
@@ -151,22 +328,41 @@ async function main() {
       console.error(`  ✗ Missing ${pluginTomlPath}`);
       continue;
     }
+
+    // Create skills TOML if it doesn't exist
     if (!existsSync(skillsTomlPath)) {
-      console.error(`  ✗ Missing ${skillsTomlPath}`);
-      continue;
+      writeFileSync(skillsTomlPath,
+        `# ${plugin.name} - Skills Configuration\n` +
+        `# This file configures skill display content on the website\n`
+      );
+      console.log(`  ℹ Created empty ${skillsTomlPath}`);
     }
 
+    // --- Generate missing skill content (intelligence-scale only) ---
+    if (plugin.name === "intelligence-scale") {
+      const earlyTomlRaw = readFileSync(skillsTomlPath, "utf-8");
+      const earlyToml = TOML.parse(earlyTomlRaw) as unknown as SkillsTomlConfig;
+      if (!earlyToml.skills) {
+        (earlyToml as any).skills = {};
+      }
+
+      const didGenerate = await generateMissingSkillContent(plugin, skillsTomlPath, earlyToml);
+      if (didGenerate) {
+        console.log(`  ℹ Re-reading website.skills.toml after generation...`);
+      }
+    }
+
+    // --- Read TOML (may have been updated by generation above) ---
     const pluginTomlRaw = readFileSync(pluginTomlPath, "utf-8");
     const skillsTomlRaw = readFileSync(skillsTomlPath, "utf-8");
     const pluginToml = TOML.parse(pluginTomlRaw) as unknown as PluginTomlConfig;
     const skillsToml = TOML.parse(skillsTomlRaw) as unknown as SkillsTomlConfig;
 
-    // --- Process plugin ---
+    // --- Process plugin (TOML → JSON) ---
     const pluginOutputPath = join(PLUGINS_OUTPUT_DIR, `${plugin.name}.json`);
     const pluginCurrentHash = computeHash(pluginTomlRaw);
     const pluginExistingHash = getExistingHash(pluginOutputPath);
 
-    // Generate install commands from marketplace config
     const ownerName = marketplaceConfig.owner.name;
     const marketplaceCommand = `/plugin marketplace add ${ownerName}/skills`;
     const installCommand = `/plugin install ${plugin.name}@${marketplaceConfig.name}`;
@@ -197,18 +393,16 @@ async function main() {
       }
     }
 
-    // --- Process skills ---
+    // --- Process skills (TOML → JSON) ---
     for (const skillName of plugin.skillNames) {
       const skillOutputPath = join(SKILLS_OUTPUT_DIR, `${skillName}.json`);
 
-      // Hash the skill's TOML section content
       const skillToml = skillsToml.skills?.[skillName];
       if (!skillToml) {
         console.error(`  ✗ ${skillName}: not found in website.skills.toml`);
         continue;
       }
 
-      // Use the full skills TOML raw + skill name as hash source for per-skill caching
       const skillCurrentHash = computeHash(JSON.stringify(skillToml));
       const skillExistingHash = getExistingHash(skillOutputPath);
 
