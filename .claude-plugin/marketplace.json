@@ -11,7 +11,7 @@
     },
     {
       "name": "walkthrough",
-      "source": "https://github.com/WeZZard/Recall/releases/latest/download/walkthrough-plugin-latest-macos.zip",
+      "source": "https://github.com/WeZZard/ADA/releases/latest/download/walkthrough-plugin-latest-macos.zip",
       "description": "Walkthrough debugging skills: capture sessions, analyze with voice/screen/trace correlation, and system diagnostics"
     }
   ]
