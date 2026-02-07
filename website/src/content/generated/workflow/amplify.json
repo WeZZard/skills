@@ -1,6 +1,6 @@
 {
-  "sourceHash": "b0020af898367fd7",
-  "generatedAt": "2026-02-07T17:52:02.967Z",
+  "sourceHash": "9dba6fd37bdcc166",
+  "generatedAt": "2026-02-07T17:55:16.376Z",
   "skillOrder": [
     "using-skills",
     "brainstorming",
@@ -179,7 +179,7 @@
       ],
       "highlight": {
         "type": "feature",
-        "title": "Plan-File Based Audit",
+        "title": "Plan-File-Based Audit",
         "content": "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
       },
       "relatedSkills": [

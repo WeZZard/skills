@@ -133,7 +133,7 @@ effect = "Maximizes concurrent execution of independent work"
 
 [[philosophy.sections]]
 title = "Plan Audit"
-highlight_title = "Plan-File Based Audit"
+highlight_title = "Plan-File-Based Audit"
 highlight_content = "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
 related_skills = ["audit-plan"]
 
