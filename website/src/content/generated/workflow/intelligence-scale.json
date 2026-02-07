@@ -1,14 +1,6 @@
 {
-  "sourceHash": "d66f32661be09970",
-  "generatedAt": "2026-02-07T09:59:58.849Z",
-  "skillOrder": [
-    "using-skills",
-    "brainstorming",
-    "write-plan",
-    "execute-plan",
-    "audit-plan",
-    "recover-from-errors"
-  ],
+  "sourceHash": "2d5a77aab83f2c43",
+  "generatedAt": "2026-02-07T10:37:31.428Z",
   "diagram": {
     "events": [
       {
@@ -23,63 +15,63 @@
         "edge": "top",
         "position": 0.67,
         "label": "User Prompt Submit",
-        "tooltip": "Process user request and determine appropriate skill usage"
+        "tooltip": "Process user request and determine appropriate workflow approach"
       },
       {
         "id": "PreToolUse",
         "edge": "right",
         "position": 0.25,
         "label": "Pre Tool Use",
-        "tooltip": "Validate tool parameters and prepare for execution"
+        "tooltip": "Prepare skill execution with context and parameters"
       },
       {
         "id": "PostToolUse",
         "edge": "right",
         "position": 0.5,
         "label": "Post Tool Use",
-        "tooltip": "Analyze tool results and update development workflow state"
+        "tooltip": "Analyze skill results and update workflow state"
       },
       {
         "id": "PostToolUseFailure",
         "edge": "right",
         "position": 0.75,
         "label": "Post Tool Use Failure",
-        "tooltip": "Trigger error recovery skills and adjust development plan"
+        "tooltip": "Handle skill errors and trigger recovery procedures"
       },
       {
         "id": "ExitPlanMode",
         "edge": "bottom",
         "position": 0.33,
         "label": "Exit Plan Mode",
-        "tooltip": "Complete plan execution and return to interactive development"
+        "tooltip": "Complete planning phase and transition to execution"
       },
       {
         "id": "EnterPlanMode",
         "edge": "bottom",
         "position": 0.67,
         "label": "Enter Plan Mode",
-        "tooltip": "Activate planning skills to structure development workflow"
+        "tooltip": "Activate planning skills to design development workflow"
       },
       {
         "id": "Stop",
         "edge": "left",
         "position": 0.25,
         "label": "Stop",
-        "tooltip": "Terminate current operation and clean up resources"
+        "tooltip": "Terminate current workflow and clean up resources"
       },
       {
         "id": "SubagentStop",
         "edge": "left",
         "position": 0.5,
         "label": "Subagent Stop",
-        "tooltip": "Complete subagent task and integrate results into main workflow"
+        "tooltip": "Complete subagent task and reintegrate results"
       },
       {
         "id": "SubagentSpawn",
         "edge": "left",
         "position": 0.75,
         "label": "Subagent Spawn",
-        "tooltip": "Create specialized subagent for parallel development tasks"
+        "tooltip": "Create specialized subagent for parallel task execution"
       }
     ],
     "rect": {
@@ -175,34 +167,6 @@
       ]
     },
     {
-      "id": "error-recovery",
-      "title": "Error Recovery",
-      "additions": [
-        {
-          "id": "tool-failure-recovery",
-          "event": "PostToolUseFailure",
-          "type": "hook",
-          "label": "Recovery Skill Prompt",
-          "description": "Suggests recover-from-errors skill on tool failures",
-          "effect": "Prevents goal drift by prompting plan re-alignment"
-        }
-      ],
-      "highlight": {
-        "type": "insight",
-        "title": "Beyond Error Resilience",
-        "content": "When tools fail, the natural instinct is to generalize or guess. Intelligence Scale prompts re-alignment with the plan, preventing cascading errors.",
-        "comparison": {
-          "before_label": "Without Recovery",
-          "before": "Tool fails → guess new params → drift from goal → waste context",
-          "after_label": "With Recovery",
-          "after": "Tool fails → check plan → verify alignment → fix specific issue"
-        }
-      },
-      "relatedSkills": [
-        "recover-from-errors"
-      ]
-    },
-    {
       "id": "plan-audit",
       "title": "Plan Audit",
       "additions": [
@@ -217,11 +181,47 @@
       ],
       "highlight": {
         "type": "feature",
-        "title": "Compliance Verification",
+        "title": "Plan-File Based Audition",
         "content": "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
       },
       "relatedSkills": [
         "audit-plan"
+      ]
+    },
+    {
+      "id": "error-recovery",
+      "title": "Error Recovery",
+      "additions": [
+        {
+          "id": "tool-failure-recovery",
+          "event": "PostToolUseFailure",
+          "type": "hook",
+          "label": "Recovery Skill Prompt",
+          "description": "Suggests recover-from-errors skill on tool failures",
+          "effect": "Prevents goal drift by prompting plan re-alignment",
+          "skill_order": [
+            "using-skills",
+            "brainstorming",
+            "write-plan",
+            "execute-plan",
+            "audit-plan",
+            "recover-from-errors"
+          ]
+        }
+      ],
+      "highlight": {
+        "type": "insight",
+        "title": "Beyond Error Resilience",
+        "content": "When tools fail, the natural instinct is to generalize or guess. Intelligence Scale prompts re-alignment with the plan, preventing cascading errors.",
+        "comparison": {
+          "before_label": "Raw",
+          "before": "Tool fails → guess new params → drift from goal → waste context",
+          "after_label": "Intelligence Scale",
+          "after": "Tool fails → check plan → verify alignment → fix specific issue"
+        }
+      },
+      "relatedSkills": [
+        "recover-from-errors"
       ]
     }
   ]

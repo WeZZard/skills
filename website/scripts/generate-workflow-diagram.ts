@@ -70,7 +70,6 @@ interface TomlSection {
 interface WebsiteConfig {
   skill_order?: string[];
   philosophy: {
-    intro: string;
     events?: TomlEvent[];
     sections: TomlSection[];
   };
@@ -264,16 +263,7 @@ Requirements:
 // --- Main ---
 
 async function main() {
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    console.error("Error: DEEPSEEK_API_KEY environment variable is required");
-    process.exit(1);
-  }
-
-  const client = new OpenAI({
-    apiKey,
-    baseURL: "https://api.deepseek.com/v1",
-  });
+  const forceRegenerate = process.argv.includes("--force");
 
   console.log("🔄 Generating workflow diagram data for intelligence-scale\n");
 
@@ -303,13 +293,37 @@ async function main() {
   const outputPath = join(OUTPUT_DIR, "intelligence-scale.json");
   const existingHash = getExistingHash(outputPath);
 
-  if (currentHash === existingHash) {
+  // Skip regeneration if sources unchanged and output exists (unless --force)
+  if (!forceRegenerate && currentHash === existingHash) {
     console.log(`\n  ✓ Sources unchanged (hash: ${currentHash})`);
     console.log("\n✨ Done!");
     return;
   }
 
-  console.log(`\n  ⟳ Sources changed (hash: ${currentHash}), regenerating...`);
+  if (forceRegenerate) {
+    console.log(`\n  ⟳ Forced regeneration requested...`);
+  } else {
+    console.log(`\n  ⟳ Sources changed (hash: ${currentHash}), regenerating...`);
+  }
+
+  // Only require API key when regeneration is needed
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) {
+    console.error(
+      "Error: DEEPSEEK_API_KEY environment variable is required for regeneration.\n" +
+      "Set it in .env or pass it directly. Skipping workflow diagram generation."
+    );
+    if (existingHash) {
+      console.log("  ⚠ Using existing cached output.");
+      return;
+    }
+    process.exit(1);
+  }
+
+  const client = new OpenAI({
+    apiKey,
+    baseURL: "https://api.deepseek.com/v1",
+  });
 
   // Call DeepSeek API for tooltips
   console.log("  ⟳ Calling DeepSeek API for tooltips...");

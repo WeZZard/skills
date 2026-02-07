@@ -5,6 +5,7 @@
   "scripts": {
     "generate": "tsx scripts/generate-content.ts",
     "generate:workflow": "tsx scripts/generate-workflow-diagram.ts",
+    "generate:workflow:force": "tsx scripts/generate-workflow-diagram.ts --force",
     "generate:all": "npm run generate && npm run generate:workflow",
     "dev": "astro dev",
     "build": "npm run generate:all && astro build",

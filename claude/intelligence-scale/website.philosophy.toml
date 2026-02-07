@@ -1,24 +1,7 @@
 # Intelligence Scale - Website Configuration
 # This file configures the plugin detail page content
 
-# ============================================================================
-# Skill display order on the plugin detail page
-# Skills not listed here will appear after the ordered ones, alphabetically
-# ============================================================================
-
-skill_order = [
-  "using-skills",
-  "brainstorming",
-  "write-plan",
-  "execute-plan",
-  "audit-plan",
-  "recover-from-errors",
-]
-
 [philosophy]
-intro = """
-I believe we can scale our intelligence with deterministic signals, natural language-based judgments, and skill triggers. When I tried to scale my intelligence this way, I found some limits in the current Claude Code implementation—so I designed several skills to address those issues.
-"""
 
 # ============================================================================
 # Diagram: Event markers on the rectangle edges
@@ -149,12 +132,26 @@ description = "Reminds to spawn subagents for independent tasks"
 effect = "Maximizes concurrent execution of independent work"
 
 [[philosophy.sections]]
+title = "Plan Audit"
+highlight_title = "Plan-File Based Audition"
+highlight_content = "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
+related_skills = ["audit-plan"]
+
+[[philosophy.sections.additions]]
+id = "subagent-stop-audit"
+event = "Stop"
+type = "hook"
+label = "Check Plan File"
+description = "Checks the plan file after plan execution."
+effect = "Measures the gap between plan execution and the goals in the plan file."
+
+[[philosophy.sections]]
 title = "Error Recovery"
 highlight_title = "Beyond Error Resilience"
 highlight_content = "When tools fail, the natural instinct is to generalize or guess. Intelligence Scale prompts re-alignment with the plan, preventing cascading errors."
-comparison_before_label = "Without Recovery"
+comparison_before_label = "Raw"
 comparison_before = "Tool fails → guess new params → drift from goal → waste context"
-comparison_after_label = "With Recovery"
+comparison_after_label = "Intelligence Scale"
 comparison_after = "Tool fails → check plan → verify alignment → fix specific issue"
 related_skills = ["recover-from-errors"]
 
@@ -166,16 +163,16 @@ label = "Recovery Skill Prompt"
 description = "Suggests recover-from-errors skill on tool failures"
 effect = "Prevents goal drift by prompting plan re-alignment"
 
-[[philosophy.sections]]
-title = "Plan Audit"
-highlight_title = "Compliance Verification"
-highlight_content = "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
-related_skills = ["audit-plan"]
+# ============================================================================
+# Skill display order on the plugin detail page
+# Skills not listed here will appear after the ordered ones, alphabetically
+# ============================================================================
 
-[[philosophy.sections.additions]]
-id = "subagent-stop-audit"
-event = "Stop"
-type = "hook"
-label = "Check Plan File"
-description = "Checks the plan file after plan execution."
-effect = "Measures the gap between plan execution and the goals in the plan file."
+skill_order = [
+  "using-skills",
+  "brainstorming",
+  "write-plan",
+  "execute-plan",
+  "audit-plan",
+  "recover-from-errors",
+]

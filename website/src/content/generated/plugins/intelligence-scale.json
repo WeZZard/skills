@@ -1,10 +1,10 @@
 {
-  "sourceHash": "f22c6b8dfcd94c2b",
-  "generatedAt": "2026-02-07T10:18:49.676Z",
+  "sourceHash": "63e3cc8dfd776a69",
+  "generatedAt": "2026-02-07T10:25:17.907Z",
   "plugin": {
     "name": "intelligence-scale",
     "displayName": "Intelligence Scale",
-    "tagline": "Scale your intelligence to your AI-driven development workflow.",
+    "tagline": "Empowers the AI-driven development.",
     "skillCount": 6,
     "skills": [
       "audit-plan",
