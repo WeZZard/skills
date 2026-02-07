@@ -1,0 +1,71 @@
+name: Deploy Website
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: # Manual trigger from GitHub UI
+
+# Cancel in-flight deploys when a new push arrives
+concurrency:
+  group: deploy-website
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────
+  # 1. Detect whether website-related files changed
+  # ──────────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      website: ${{ steps.filter.outputs.website }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            website:
+              - 'website/**'
+              - 'claude/*/website.*.toml'
+              - 'claude/*/skills/*/SKILL.md'
+              - 'claude/*/PLUGIN.md'
+              - 'claude/*/hooks/**'
+              - '.claude-plugin/marketplace.json'
+
+  # ──────────────────────────────────────────────
+  # 2. Build & deploy (only when relevant files changed, or manual trigger)
+  # ──────────────────────────────────────────────
+  deploy:
+    needs: changes
+    if: needs.changes.outputs.website == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      # LLM content generation is a LOCAL-ONLY step.
+      # Generated JSON files are committed to git after human review.
+      # In CI, generate:all is a no-op (hash match) for existing content.
+      # New skills without TOML entries are gracefully skipped — the site
+      # builds with whatever content is already committed.
+      - name: Generate content & build
+        working-directory: website
+        run: npm run build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist/ --project-name skills-website --branch main
+          workingDirectory: website

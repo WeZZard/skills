@@ -271,10 +271,10 @@ async function generateMissingSkillContent(
 
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    console.error(
-      "  ✗ DEEPSEEK_API_KEY is required to generate content for new skills.\n" +
-      "    Set it in .env or pass it directly.\n" +
-      "    Missing skills: " + missingSkills.join(", ")
+    console.log(
+      "  ℹ DEEPSEEK_API_KEY not set — skipping LLM content generation.\n" +
+      "    To generate content locally, set DEEPSEEK_API_KEY in .env\n" +
+      "    Skills without content will be omitted from the website: " + missingSkills.join(", ")
     );
     return false;
   }
