@@ -4,8 +4,10 @@
   "version": "0.0.1",
   "scripts": {
     "generate": "tsx scripts/generate-content.ts",
+    "generate:workflow": "tsx scripts/generate-workflow-diagram.ts",
+    "generate:all": "npm run generate && npm run generate:workflow",
     "dev": "astro dev",
-    "build": "npm run generate && astro build",
+    "build": "npm run generate:all && astro build",
     "preview": "astro preview",
     "astro": "astro"
   },

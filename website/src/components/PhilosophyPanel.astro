@@ -1,0 +1,430 @@
+---
+/**
+ * PhilosophyPanel Component
+ * Displays philosophy details with enhanced content, highlight blocks,
+ * optional before/after comparisons, and related skill tags.
+ */
+
+interface Props {
+  id: string;
+  title: string;
+  content: string;
+  enhancedContent: string;
+  highlight: {
+    type: string;
+    title: string;
+    content: string;
+    comparison?: {
+      before_label: string;
+      before: string;
+      after_label: string;
+      after: string;
+    };
+  };
+  relatedSkills: string[];
+  isDefault: boolean;
+}
+
+const { id, title, content, enhancedContent, highlight, relatedSkills, isDefault } = Astro.props;
+
+// Simple markdown-like processing for highlight content:
+// - Wrap `code` in <code> tags
+// - Wrap ```blocks``` in <pre><code> tags
+function processContent(text: string): string {
+  // Handle fenced code blocks first
+  let processed = text.replace(
+    /```(\w*)\n([\s\S]*?)```/g,
+    (_match, lang, code) => {
+      const langAttr = lang ? ` data-lang="${lang}"` : '';
+      return `<pre class="highlight-code-block"${langAttr}><code>${escapeHtml(code.trim())}</code></pre>`;
+    }
+  );
+
+  // Handle inline code
+  processed = processed.replace(
+    /`([^`]+)`/g,
+    '<code class="highlight-inline-code">$1</code>'
+  );
+
+  // Convert line breaks to paragraphs (double newline) or <br> (single)
+  processed = processed
+    .split(/\n\n+/)
+    .map((para) => `<p>${para.replace(/\n/g, '<br>')}</p>`)
+    .join('');
+
+  return processed;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+const processedEnhanced = processContent(enhancedContent);
+const processedHighlight = processContent(highlight.content);
+
+// Determine highlight type icon/label
+function getHighlightTypeLabel(type: string): string {
+  switch (type) {
+    case 'principle': return 'Core Principle';
+    case 'pattern': return 'Design Pattern';
+    case 'insight': return 'Key Insight';
+    case 'technique': return 'Technique';
+    default: return 'Highlight';
+  }
+}
+
+const highlightTypeLabel = getHighlightTypeLabel(highlight.type);
+---
+
+<article
+  class:list={["philosophy-panel", { "is-active": isDefault }]}
+  data-philosophy={id}
+  aria-hidden={!isDefault}
+>
+  <header class="panel-header">
+    <h3 class="panel-title">{title}</h3>
+  </header>
+
+  <div class="panel-body">
+    <div class="panel-enhanced-content" set:html={processedEnhanced} />
+
+    <!-- Highlight Block -->
+    <aside class="panel-highlight">
+      <div class="highlight-badge">
+        <span class="highlight-type-dot"></span>
+        <span class="highlight-type-label">{highlightTypeLabel}</span>
+      </div>
+      <h4 class="highlight-title">{highlight.title}</h4>
+      <div class="highlight-content" set:html={processedHighlight} />
+
+      {/* Before / After Comparison */}
+      {highlight.comparison && (
+        <div class="comparison-block">
+          <div class="comparison-side comparison-before">
+            <div class="comparison-label">{highlight.comparison.before_label}</div>
+            <div class="comparison-content">
+              <pre><code>{highlight.comparison.before}</code></pre>
+            </div>
+          </div>
+          <div class="comparison-divider">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </div>
+          <div class="comparison-side comparison-after">
+            <div class="comparison-label">{highlight.comparison.after_label}</div>
+            <div class="comparison-content">
+              <pre><code>{highlight.comparison.after}</code></pre>
+            </div>
+          </div>
+        </div>
+      )}
+    </aside>
+
+    {/* Related Skills */}
+    {relatedSkills.length > 0 && (
+      <footer class="panel-footer">
+        <span class="related-label">Related Skills</span>
+        <div class="related-tags">
+          {relatedSkills.map((skill) => (
+            <span class="skill-tag">{skill}</span>
+          ))}
+        </div>
+      </footer>
+    )}
+  </div>
+</article>
+
+<style>
+  .philosophy-panel {
+    display: none;
+    animation: panelFadeIn 0.35s ease forwards;
+  }
+
+  .philosophy-panel.is-active {
+    display: block;
+  }
+
+  @keyframes panelFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* ---- Header ---- */
+  .panel-header {
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-4);
+    border-bottom: 2px solid var(--color-accent-soft);
+  }
+
+  .panel-title {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 600;
+    color: var(--color-text);
+    line-height: var(--leading-snug);
+  }
+
+  /* ---- Body ---- */
+  .panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  /* Enhanced content paragraphs */
+  .panel-enhanced-content :global(p) {
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    color: var(--color-text-secondary);
+    line-height: var(--leading-relaxed);
+    margin-bottom: var(--space-3);
+  }
+
+  .panel-enhanced-content :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .panel-enhanced-content :global(code) {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    background: var(--color-earth-100);
+    padding: 0.1em 0.4em;
+    border-radius: var(--radius-sm);
+    color: var(--color-accent);
+  }
+
+  /* ---- Highlight Block ---- */
+  .panel-highlight {
+    background: var(--color-bg-alt);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--color-accent);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5) var(--space-6);
+  }
+
+  .highlight-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+  }
+
+  .highlight-type-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--color-accent);
+    flex-shrink: 0;
+  }
+
+  .highlight-type-label {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--color-accent);
+  }
+
+  .highlight-title {
+    font-family: var(--font-display);
+    font-size: var(--text-lg);
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: var(--space-3);
+    line-height: var(--leading-snug);
+  }
+
+  .highlight-content :global(p) {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    color: var(--color-text-secondary);
+    line-height: var(--leading-relaxed);
+    margin-bottom: var(--space-2);
+  }
+
+  .highlight-content :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .highlight-content :global(.highlight-inline-code) {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    background: var(--color-earth-100);
+    padding: 0.15em 0.4em;
+    border-radius: var(--radius-sm);
+    color: var(--color-accent);
+  }
+
+  .highlight-content :global(.highlight-code-block) {
+    background: var(--color-earth-100);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    margin: var(--space-3) 0;
+    overflow-x: auto;
+  }
+
+  .highlight-content :global(.highlight-code-block code) {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--color-text);
+    line-height: var(--leading-normal);
+    white-space: pre;
+  }
+
+  /* ---- Comparison Block ---- */
+  .comparison-block {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: var(--space-4);
+    align-items: start;
+    margin-top: var(--space-4);
+  }
+
+  .comparison-side {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .comparison-label {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--color-text-muted);
+  }
+
+  .comparison-before .comparison-label {
+    color: var(--color-text-light);
+  }
+
+  .comparison-after .comparison-label {
+    color: var(--color-secondary);
+  }
+
+  .comparison-content pre {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    margin: 0;
+    overflow-x: auto;
+  }
+
+  .comparison-content code {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--color-text);
+    line-height: var(--leading-normal);
+    white-space: pre;
+  }
+
+  .comparison-before .comparison-content pre {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+  }
+
+  .comparison-after .comparison-content pre {
+    border-color: var(--color-secondary-soft);
+    background: var(--color-secondary-softer);
+  }
+
+  .comparison-divider {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: var(--space-6);
+    color: var(--color-earth-300);
+  }
+
+  /* ---- Related Skills Footer ---- */
+  .panel-footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .related-label {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--color-text-muted);
+  }
+
+  .related-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .skill-tag {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    background: var(--color-earth-100);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border-subtle);
+    transition: all var(--transition-fast);
+  }
+
+  .skill-tag:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    background: var(--color-accent-softer);
+  }
+
+  /* ---- No-JS Fallback ---- */
+  :global(.no-js) .philosophy-panel {
+    display: block;
+    margin-bottom: var(--space-8);
+    padding-bottom: var(--space-8);
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+
+  :global(.no-js) .philosophy-panel:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  /* ---- Responsive ---- */
+  @media (max-width: 768px) {
+    .panel-title {
+      font-size: var(--text-xl);
+    }
+
+    .panel-highlight {
+      padding: var(--space-4);
+    }
+
+    .comparison-block {
+      grid-template-columns: 1fr;
+      gap: var(--space-3);
+    }
+
+    .comparison-divider {
+      padding-top: 0;
+      transform: rotate(90deg);
+    }
+  }
+</style>

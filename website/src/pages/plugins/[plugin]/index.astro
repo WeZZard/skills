@@ -2,6 +2,7 @@
 import Base from "../../../layouts/Base.astro";
 import Breadcrumb from "../../../components/Breadcrumb.astro";
 import SkillCard from "../../../components/SkillCard.astro";
+import WorkflowDiagram from "../../../components/WorkflowDiagram.astro";
 import { loadPluginWebsiteConfig } from "../../../config/site";
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
@@ -84,6 +85,12 @@ const breadcrumbItems = [
 
 // Get plugin-specific content from TOML config
 const websiteConfig = loadPluginWebsiteConfig(plugin.name);
+
+// Load workflow diagram data
+const workflowPath = join(process.cwd(), `src/content/generated/workflow/${plugin.name}.json`);
+const workflowData = existsSync(workflowPath)
+  ? JSON.parse(readFileSync(workflowPath, "utf-8"))
+  : null;
 ---
 
 <Base title={plugin.displayName} description={plugin.tagline} showHeader={false}>
@@ -142,10 +149,14 @@ const websiteConfig = loadPluginWebsiteConfig(plugin.name);
 
   <!-- Regular container for content sections -->
   <div class="container">
-    {websiteConfig?.philosophy && (
+    {workflowData ? (
+      <WorkflowDiagram diagramData={workflowData} />
+    ) : websiteConfig?.philosophy && (
       <section class="philosophy-section">
-        <h2 class="philosophy-title">Design Philosophy</h2>
-        <p class="philosophy-intro">{websiteConfig.philosophy.intro}</p>
+        <header class="philosophy-header">
+          <h2 class="philosophy-title">Design Philosophy</h2>
+          <p class="philosophy-intro">{websiteConfig.philosophy.intro}</p>
+        </header>
 
         <div class="philosophy-grid">
           {websiteConfig.philosophy.sections.map((section, index) => (
@@ -342,20 +353,24 @@ const websiteConfig = loadPluginWebsiteConfig(plugin.name);
     margin-bottom: var(--space-16);
   }
 
+  .philosophy-header {
+    /* Align with card content by adding same padding as cards */
+    padding-left: var(--space-6);
+    margin-bottom: var(--space-8);
+  }
+
   .philosophy-title {
     font-family: var(--font-display);
-    font-size: var(--text-2xl);
+    font-size: var(--text-3xl);
     font-weight: 600;
     color: var(--color-text);
     margin-bottom: var(--space-4);
   }
 
   .philosophy-intro {
-    font-size: var(--text-lg);
+    font-size: var(--text-xl);
     color: var(--color-text-secondary);
     line-height: var(--leading-relaxed);
-    max-width: 800px;
-    margin-bottom: var(--space-8);
   }
 
   .philosophy-grid {
@@ -388,14 +403,14 @@ const websiteConfig = loadPluginWebsiteConfig(plugin.name);
 
   .philosophy-card h3 {
     font-family: var(--font-display);
-    font-size: var(--text-lg);
+    font-size: var(--text-xl);
     font-weight: 600;
     color: var(--color-text);
     margin-bottom: var(--space-3);
   }
 
   .philosophy-card p {
-    font-size: var(--text-sm);
+    font-size: var(--text-base);
     color: var(--color-text-muted);
     line-height: var(--leading-relaxed);
   }

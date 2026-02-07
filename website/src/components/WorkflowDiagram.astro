@@ -1,0 +1,359 @@
+---
+/**
+ * WorkflowDiagram Component
+ * Main container that orchestrates the SVG diagram, philosophy navigation,
+ * and philosophy panels with progressive enhancement.
+ */
+import WorkflowSVG from "./WorkflowSVG.astro";
+import PhilosophyPanel from "./PhilosophyPanel.astro";
+
+interface EventMarker {
+  id: string;
+  edge: "top" | "right" | "bottom" | "left";
+  position: number;
+  label: string;
+  tooltip: string;
+}
+
+interface Philosophy {
+  id: string;
+  title: string;
+  content: string;
+  enhancedContent: string;
+  highlight: {
+    type: string;
+    title: string;
+    content: string;
+    comparison?: {
+      before_label: string;
+      before: string;
+      after_label: string;
+      after: string;
+    };
+  };
+  relatedEvents: string[];
+  relatedSkills: string[];
+}
+
+interface DiagramData {
+  diagram: {
+    events: EventMarker[];
+    rect: { width: number; height: number; rx: number };
+  };
+  philosophies: Philosophy[];
+}
+
+interface Props {
+  diagramData: DiagramData;
+}
+
+const { diagramData } = Astro.props;
+const { diagram, philosophies } = diagramData;
+
+// First philosophy is the default
+const defaultId = philosophies.length > 0 ? philosophies[0].id : "";
+---
+
+<section class="workflow-diagram" data-workflow-diagram>
+  <header class="philosophy-header">
+    <h2 class="philosophy-title">Design Philosophy</h2>
+  </header>
+
+  {/* Philosophy navigation buttons — hidden without JS */}
+  {philosophies.length > 1 && (
+    <nav class="philosophy-nav" aria-label="Design philosophy topics" data-philosophy-nav>
+      {philosophies.map((phil) => (
+        <button
+          class:list={["philosophy-nav-btn", { "is-active": phil.id === defaultId }]}
+          data-philosophy-btn={phil.id}
+          type="button"
+          aria-pressed={phil.id === defaultId ? "true" : "false"}
+        >
+          {phil.title}
+        </button>
+      ))}
+    </nav>
+  )}
+
+  <div class="workflow-layout">
+    {/* SVG Diagram */}
+    <div class="workflow-svg-container" data-workflow-svg-container>
+      <WorkflowSVG events={diagram.events} rect={diagram.rect} />
+    </div>
+
+    {/* Philosophy Panels */}
+    <div class="workflow-panels" data-workflow-panels>
+      {philosophies.map((phil) => (
+        <PhilosophyPanel
+          id={phil.id}
+          title={phil.title}
+          content={phil.content}
+          enhancedContent={phil.enhancedContent}
+          highlight={phil.highlight}
+          relatedSkills={phil.relatedSkills}
+          isDefault={phil.id === defaultId}
+        />
+      ))}
+    </div>
+  </div>
+
+  {/* Embedded mapping of philosophy IDs to related event IDs for the script */}
+  <script
+    type="application/json"
+    data-philosophy-events
+    set:html={JSON.stringify(
+      Object.fromEntries(
+        philosophies.map((phil) => [phil.id, phil.relatedEvents || []])
+      )
+    )}
+  />
+</section>
+
+<script>
+  function initWorkflowDiagram() {
+    const diagrams = document.querySelectorAll<HTMLElement>("[data-workflow-diagram]");
+
+    diagrams.forEach((diagram) => {
+      const nav = diagram.querySelector<HTMLElement>("[data-philosophy-nav]");
+      const buttons = diagram.querySelectorAll<HTMLButtonElement>("[data-philosophy-btn]");
+      const panels = diagram.querySelectorAll<HTMLElement>("[data-philosophy]");
+      const svgContainer = diagram.querySelector<HTMLElement>("[data-workflow-svg-container]");
+      const svg = svgContainer?.querySelector<SVGSVGElement>(".workflow-svg");
+      const eventMarkers = svg?.querySelectorAll<SVGGElement>("[data-event]");
+
+      if (!buttons.length || !panels.length) return;
+
+      // Build a map: philosophy id -> related event ids
+      // We read this from the button data and the panel data attributes
+      // The relatedEvents are encoded in the component; we'll use a data attribute approach.
+      // Since Astro renders static HTML, we embed the mapping as a JSON script.
+      const mappingEl = diagram.querySelector<HTMLScriptElement>("[data-philosophy-events]");
+      let philosophyEventMap: Record<string, string[]> = {};
+      if (mappingEl) {
+        try {
+          philosophyEventMap = JSON.parse(mappingEl.textContent || "{}");
+        } catch {
+          philosophyEventMap = {};
+        }
+      }
+
+      function activatePhilosophy(philosophyId: string) {
+        // Update buttons
+        buttons.forEach((btn) => {
+          const isActive = btn.dataset.philosophyBtn === philosophyId;
+          btn.classList.toggle("is-active", isActive);
+          btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+        });
+
+        // Update panels
+        panels.forEach((panel) => {
+          const isActive = panel.dataset.philosophy === philosophyId;
+          panel.classList.toggle("is-active", isActive);
+          panel.setAttribute("aria-hidden", isActive ? "false" : "true");
+        });
+
+        // Update SVG highlights
+        if (svg && eventMarkers) {
+          const relatedEvents = philosophyEventMap[philosophyId] || [];
+          const hasHighlights = relatedEvents.length > 0;
+
+          svg.classList.toggle("has-highlight", hasHighlights);
+
+          eventMarkers.forEach((marker) => {
+            const eventId = marker.dataset.event;
+            const isHighlighted = eventId ? relatedEvents.includes(eventId) : false;
+            marker.classList.toggle("is-highlighted", isHighlighted);
+          });
+        }
+      }
+
+      // Button click handlers
+      buttons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const philosophyId = btn.dataset.philosophyBtn;
+          if (philosophyId) {
+            activatePhilosophy(philosophyId);
+          }
+        });
+      });
+
+      // SVG event marker click handlers — activate the first philosophy that references this event
+      eventMarkers?.forEach((marker) => {
+        marker.addEventListener("click", () => {
+          const eventId = marker.dataset.event;
+          if (!eventId) return;
+
+          // Find the first philosophy that includes this event
+          for (const [philId, events] of Object.entries(philosophyEventMap)) {
+            if (events.includes(eventId)) {
+              activatePhilosophy(philId);
+              break;
+            }
+          }
+        });
+
+        // Keyboard support for SVG markers
+        marker.addEventListener("keydown", (e: KeyboardEvent) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            marker.dispatchEvent(new MouseEvent("click"));
+          }
+        });
+      });
+
+      // Set initial state (first philosophy)
+      const firstBtn = buttons[0];
+      if (firstBtn?.dataset.philosophyBtn) {
+        activatePhilosophy(firstBtn.dataset.philosophyBtn);
+      }
+    });
+  }
+
+  // Run on initial load and on Astro page transitions
+  document.addEventListener("astro:page-load", initWorkflowDiagram);
+  // Fallback for non-ViewTransitions
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initWorkflowDiagram);
+  } else {
+    initWorkflowDiagram();
+  }
+</script>
+
+<style>
+  .workflow-diagram {
+    margin-bottom: var(--space-16);
+  }
+
+  /* ---- Section Header ---- */
+  .philosophy-header {
+    padding-left: var(--space-6);
+    margin-bottom: var(--space-6);
+  }
+
+  .philosophy-title {
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    font-weight: 600;
+    color: var(--color-text);
+    line-height: var(--leading-snug);
+  }
+
+  /* ---- Navigation Pills ---- */
+  .philosophy-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding-left: var(--space-6);
+    margin-bottom: var(--space-8);
+  }
+
+  /* Hide nav without JS — progressive enhancement */
+  :global(.no-js) .philosophy-nav {
+    display: none;
+  }
+
+  .philosophy-nav-btn {
+    font-family: var(--font-body);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    color: var(--color-text-muted);
+    background: var(--color-earth-100);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    padding: var(--space-2) var(--space-5);
+    cursor: pointer;
+    transition:
+      color var(--transition-fast),
+      background var(--transition-fast),
+      border-color var(--transition-fast),
+      box-shadow var(--transition-fast);
+    white-space: nowrap;
+  }
+
+  .philosophy-nav-btn:hover {
+    color: var(--color-text-secondary);
+    border-color: var(--color-earth-300);
+    background: var(--color-earth-200);
+  }
+
+  .philosophy-nav-btn.is-active {
+    color: var(--color-surface);
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .philosophy-nav-btn.is-active:hover {
+    background: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+  }
+
+  .philosophy-nav-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* ---- Layout: Diagram + Panel ---- */
+  .workflow-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+
+  .workflow-svg-container {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+    overflow: hidden;
+  }
+
+  .workflow-panels {
+    min-width: 0;
+  }
+
+  /* ---- Desktop: Side by Side ---- */
+  @media (min-width: 1024px) {
+    .workflow-layout {
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-10);
+      align-items: start;
+    }
+
+    .workflow-svg-container {
+      position: sticky;
+      top: var(--space-6);
+    }
+  }
+
+  /* ---- Mobile Adjustments ---- */
+  @media (max-width: 768px) {
+    .philosophy-header {
+      padding-left: var(--space-4);
+    }
+
+    .philosophy-title {
+      font-size: var(--text-2xl);
+    }
+
+    .philosophy-nav {
+      padding-left: var(--space-4);
+      gap: var(--space-2);
+      margin-bottom: var(--space-6);
+    }
+
+    .philosophy-nav-btn {
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-3);
+    }
+
+    .workflow-svg-container {
+      padding: var(--space-4);
+    }
+  }
+
+  /* ---- No-JS Fallback: show all panels, hide nav ---- */
+  :global(.no-js) .workflow-panels :global(.philosophy-panel) {
+    display: block;
+  }
+</style>

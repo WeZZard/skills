@@ -1,0 +1,228 @@
+{
+  "sourceHash": "6cba834c300231cd",
+  "generatedAt": "2026-02-07T06:58:50.566Z",
+  "diagram": {
+    "events": [
+      {
+        "id": "SessionStart",
+        "edge": "top",
+        "position": 0.33,
+        "label": "Session Start",
+        "tooltip": "Initialize Intelligence Scale session with plan structure and skill setup"
+      },
+      {
+        "id": "UserPromptSubmit",
+        "edge": "top",
+        "position": 0.67,
+        "label": "User Prompt Submit",
+        "tooltip": "Process user request and trigger plan generation or execution"
+      },
+      {
+        "id": "PreToolUse",
+        "edge": "right",
+        "position": 0.25,
+        "label": "Pre Tool Use",
+        "tooltip": "Validate tool parameters and prepare execution context"
+      },
+      {
+        "id": "PostToolUse",
+        "edge": "right",
+        "position": 0.5,
+        "label": "Post Tool Use",
+        "tooltip": "Update plan progress and verify tool execution results"
+      },
+      {
+        "id": "PostToolUseFailure",
+        "edge": "right",
+        "position": 0.75,
+        "label": "Post Tool Use Failure",
+        "tooltip": "Trigger error recovery skills and adjust plan execution"
+      },
+      {
+        "id": "ExitPlanMode",
+        "edge": "bottom",
+        "position": 0.33,
+        "label": "Exit Plan Mode",
+        "tooltip": "Complete plan execution and transition to verification phase"
+      },
+      {
+        "id": "EnterPlanMode",
+        "edge": "bottom",
+        "position": 0.67,
+        "label": "Enter Plan Mode",
+        "tooltip": "Activate structured planning with task dependencies and verification"
+      },
+      {
+        "id": "SubagentStop",
+        "edge": "left",
+        "position": 0.33,
+        "label": "Subagent Stop",
+        "tooltip": "Consolidate subagent results and update main plan status"
+      },
+      {
+        "id": "SubagentSpawn",
+        "edge": "left",
+        "position": 0.67,
+        "label": "Subagent Spawn",
+        "tooltip": "Create parallel execution agents for independent tasks"
+      }
+    ],
+    "rect": {
+      "width": 600,
+      "height": 400,
+      "rx": 24
+    }
+  },
+  "philosophies": [
+    {
+      "id": "addressing-the-review-burden",
+      "title": "Addressing the Review Burden",
+      "content": "The first challenge is the review burden. When executing long-running tasks, plans become too lengthy and difficult to understand. Even Claude Code might generate plans you can't fully grasp—especially when using it to explore unfamiliar territory.\n\nTraditional plans are built for humans who imagine based on existing situations: they describe the current state and what actions will change it. But living in this context can cause hallucinations in large language models.\n",
+      "enhancedContent": "Tackle the overwhelming review process head-on! Intelligence Scale transforms complex, lengthy plans into manageable structures that developers can actually understand. Our refined approach reduces cognitive load while maintaining comprehensive task coverage, making Claude Code's output truly accessible.",
+      "additions": [
+        {
+          "id": "session-start-context",
+          "event": "SessionStart",
+          "type": "hook",
+          "label": "Context Injection",
+          "description": "Injects skill context and session state on startup",
+          "effect": "Reduces review burden by pre-loading relevant context"
+        }
+      ],
+      "highlight": {
+        "type": "insight",
+        "title": "Why Plans Fail",
+        "content": "Traditional plans describe state transitions for humans who imagine outcomes. LLMs living in this context hallucinate because they lack grounded state awareness.",
+        "comparison": {
+          "before_label": "Traditional Plan",
+          "before": "Describe current state → list changes → hope for the best",
+          "after_label": "Intelligence Scale Plan",
+          "after": "Structured template → verification gates → evidence-based execution"
+        }
+      },
+      "relatedSkills": [
+        "using-skills",
+        "brainstorming"
+      ]
+    },
+    {
+      "id": "polished-plan-structure",
+      "title": "Polished Plan Structure",
+      "content": "Intelligence Scale uses a refined plan structure designed to reduce review pressure on human beings. Plans are organized with clear task dependencies, explicit verification steps, and human verification gates for subjective decisions.\n",
+      "enhancedContent": "Experience plans that actually make sense! Intelligence Scale organizes tasks with clear dependencies, explicit verification steps, and human-friendly formatting. This structured approach minimizes review pressure while ensuring nothing slips through the cracks during execution.",
+      "additions": [
+        {
+          "id": "enter-plan-mode-structure",
+          "event": "EnterPlanMode",
+          "type": "hook",
+          "label": "Plan Mode Entry",
+          "description": "Triggers structured plan template when entering plan mode",
+          "effect": "Ensures plans follow a reviewable, consistent structure"
+        },
+        {
+          "id": "post-tool-plan-check",
+          "event": "PostToolUse",
+          "type": "hook",
+          "label": "Post-Plan Validation",
+          "description": "Validates plan structure after plan mode tool use",
+          "effect": "Catches structural issues early in the planning phase"
+        }
+      ],
+      "highlight": {
+        "type": "feature",
+        "title": "Structured Plan Template",
+        "content": "Plans include task dependencies, verification steps, human verification gates, and explicit file paths—reducing ambiguity and review effort."
+      },
+      "relatedSkills": [
+        "write-plan",
+        "brainstorming"
+      ]
+    },
+    {
+      "id": "maximizing-task-parallelism",
+      "title": "Maximizing Task Parallelism",
+      "content": "The latest Opus model excels at executing concurrent tasks. Intelligence Scale prompts Claude Code to maximize task parallelism whenever possible, spawning subagents for independent work while respecting task dependencies.\n",
+      "enhancedContent": "Unlock Claude Code's full potential with intelligent parallel processing! Intelligence Scale prompts the AI to spawn subagents for independent work, dramatically speeding up development while maintaining coordination. Watch your projects move forward on multiple fronts simultaneously.",
+      "additions": [
+        {
+          "id": "user-prompt-parallelism",
+          "event": "UserPromptSubmit",
+          "type": "hook",
+          "label": "Parallelism Reminder",
+          "description": "Reminds to spawn subagents for independent tasks",
+          "effect": "Maximizes concurrent execution of independent work"
+        },
+        {
+          "id": "subagent-spawn-parallel",
+          "event": "SubagentSpawn",
+          "type": "event",
+          "label": "Subagent Spawning",
+          "description": "Parallel task execution via subagent spawning",
+          "effect": "Enables concurrent work on independent plan tasks"
+        }
+      ],
+      "highlight": {
+        "type": "feature",
+        "title": "Automatic Parallelism",
+        "content": "Every user prompt triggers a reminder to spawn subagents for independent tasks, ensuring maximum throughput without manual orchestration."
+      },
+      "relatedSkills": [
+        "execute-plan"
+      ]
+    },
+    {
+      "id": "error-recovery",
+      "title": "Error Recovery",
+      "content": "While the latest Opus model has strong error resilience, recovering from errors still has common cases and edge cases that need attention. Intelligence Scale hints Claude Code to check the session plan when it encounters repeated errors, providing a structured path back to productive work.\n",
+      "enhancedContent": "Build resilience into your development workflow! Intelligence Scale guides Claude Code through both common and edge-case errors with smart recovery strategies. The system checks session plans and adapts execution paths, turning potential roadblocks into learning opportunities.",
+      "additions": [
+        {
+          "id": "tool-failure-recovery",
+          "event": "PostToolUseFailure",
+          "type": "hook",
+          "label": "Error Recovery Hook",
+          "description": "Triggers error recovery procedure on tool failures",
+          "effect": "Prevents goal drift by re-aligning to the session plan"
+        }
+      ],
+      "highlight": {
+        "type": "insight",
+        "title": "Preventing Goal Drift",
+        "content": "When tools fail, the natural instinct is to generalize or guess. Intelligence Scale forces re-alignment to the plan, preventing cascading errors.",
+        "comparison": {
+          "before_label": "Without Recovery",
+          "before": "Tool fails → guess new params → drift from goal → waste context",
+          "after_label": "With Recovery",
+          "after": "Tool fails → check plan → verify alignment → fix specific issue"
+        }
+      },
+      "relatedSkills": [
+        "recover-from-errors"
+      ]
+    },
+    {
+      "id": "plan-execution-audit",
+      "title": "Plan Execution Audit",
+      "content": "When a plan is executed, some parts might not be fully implemented. The audit-plan skill verifies plan execution compliance, measuring the gap between the existing implementation and the goals described in the plan.\n",
+      "enhancedContent": "Ensure nothing gets left behind! The audit-plan skill measures implementation gaps between your actual code and planned goals. This verification layer provides confidence that every aspect of your plan has been properly executed and documented.",
+      "additions": [
+        {
+          "id": "subagent-stop-audit",
+          "event": "SubagentStop",
+          "type": "hook",
+          "label": "Post-Subagent Audit",
+          "description": "Checks plan compliance when subagent work completes",
+          "effect": "Verifies each parallel task met its planned objectives"
+        }
+      ],
+      "highlight": {
+        "type": "feature",
+        "title": "Compliance Verification",
+        "content": "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
+      },
+      "relatedSkills": [
+        "audit-plan"
+      ]
+    }
+  ]
+}
