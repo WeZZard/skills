@@ -77,48 +77,44 @@ label = "Subagent Spawn"
 # ============================================================================
 
 [[philosophy.sections]]
-title = "Addressing the Review Burden"
-highlight_title = "Why Plans Fail"
-highlight_content = "Traditional plans describe state transitions for humans who imagine outcomes. LLMs living in this context hallucinate because they lack grounded state awareness."
-comparison_before_label = "Traditional Plan"
-comparison_before = "Describe current state → list changes → hope for the best"
-comparison_after_label = "Intelligence Scale Plan"
-comparison_after = "Structured template → verification gates → evidence-based execution"
-related_skills = ["using-skills", "brainstorming"]
-
-[[philosophy.sections.additions]]
-id = "session-start-context"
-event = "SessionStart"
-type = "hook"
-label = "Context Injection"
-description = "Injects skill context and session state on startup"
-effect = "Reduces review burden by pre-loading relevant context"
+title = "Ground Truth First"
+highlight_title = "Explore"
+highlight_content = "Emphasizes web search during exploration, injecting a chain-of-thought that checks ground truth source dates and resolves conflicts by recency."
+comparison_before_label = "Raw"
+comparison_before = "Codebase only"
+comparison_after_label = "Intelligence Scale"
+comparison_after = "Explore the web and codebase"
+related_skills = ["brainstorming"]
 
 [[philosophy.sections]]
-title = "Polished Plan Structure"
-highlight_title = "Structured Plan Template"
-highlight_content = "Plans include task dependencies, verification steps, human verification gates, and explicit file paths—reducing ambiguity and review effort."
-related_skills = ["write-plan", "brainstorming"]
+title = "Clear Plan"
+highlight_title = "Plan"
+highlight_content = "Agent-first and human-first-oriented plan structure design."
+comparison_before_label = "Raw"
+comparison_before = "Freeform"
+comparison_after_label = "Intelligence Scale"
+comparison_after = "Before/after comparison. Explicit diagrams for algorithms and workflow."
+related_skills = ["write-plan"]
 
 [[philosophy.sections.additions]]
 id = "enter-plan-mode-structure"
-event = "EnterPlanMode"
+event = "ExitPlanMode"
 type = "hook"
-label = "Plan Mode Entry"
-description = "Triggers structured plan template when entering plan mode"
+label = "Write Plan"
+description = "Triggers structured plan template when writing the plan file"
 effect = "Ensures plans follow a reviewable, consistent structure"
 
 [[philosophy.sections.additions]]
 id = "post-tool-plan-check"
 event = "PostToolUse"
 type = "hook"
-label = "Post-Plan Validation"
-description = "Validates plan structure after plan mode tool use"
-effect = "Catches structural issues early in the planning phase"
+label = "Plan Writing Harness"
+description = "Enforces use of write-plan skill before writing plan files"
+effect = "Prevents ad-hoc planning by requiring template compliance"
 
 [[philosophy.sections]]
-title = "Maximizing Task Parallelism"
-highlight_title = "Automatic Parallelism"
+title = "Parallelism"
+highlight_title = "Task"
 highlight_content = "Every user prompt triggers a reminder to spawn subagents for independent tasks, ensuring maximum throughput without manual orchestration."
 related_skills = ["execute-plan"]
 
@@ -132,16 +128,16 @@ effect = "Maximizes concurrent execution of independent work"
 
 [[philosophy.sections.additions]]
 id = "subagent-spawn-parallel"
-event = "SubagentSpawn"
+event = "ExitPlanMode"
 type = "event"
-label = "Subagent Spawning"
-description = "Parallel task execution via subagent spawning"
-effect = "Enables concurrent work on independent plan tasks"
+label = "Parallelism Reminder"
+description = "Reminds to spawn subagents for independent tasks"
+effect = "Maximizes concurrent execution of independent work"
 
 [[philosophy.sections]]
 title = "Error Recovery"
-highlight_title = "Preventing Goal Drift"
-highlight_content = "When tools fail, the natural instinct is to generalize or guess. Intelligence Scale forces re-alignment to the plan, preventing cascading errors."
+highlight_title = "Beyond Error Resilience"
+highlight_content = "When tools fail, the natural instinct is to generalize or guess. Intelligence Scale prompts re-alignment with the plan, preventing cascading errors."
 comparison_before_label = "Without Recovery"
 comparison_before = "Tool fails → guess new params → drift from goal → waste context"
 comparison_after_label = "With Recovery"
@@ -152,20 +148,20 @@ related_skills = ["recover-from-errors"]
 id = "tool-failure-recovery"
 event = "PostToolUseFailure"
 type = "hook"
-label = "Error Recovery Hook"
-description = "Triggers error recovery procedure on tool failures"
-effect = "Prevents goal drift by re-aligning to the session plan"
+label = "Recovery Skill Prompt"
+description = "Suggests recover-from-errors skill on tool failures"
+effect = "Prevents goal drift by prompting plan re-alignment"
 
 [[philosophy.sections]]
-title = "Plan Execution Audit"
+title = "Plan Audit"
 highlight_title = "Compliance Verification"
 highlight_content = "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
 related_skills = ["audit-plan"]
 
 [[philosophy.sections.additions]]
 id = "subagent-stop-audit"
-event = "SubagentStop"
+event = "Stop"
 type = "hook"
-label = "Post-Subagent Audit"
-description = "Checks plan compliance when subagent work completes"
-effect = "Verifies each parallel task met its planned objectives"
+label = "Check Plan File"
+description = "Checks the plan file after plan execution."
+effect = "Measures the gap between plan execution and the goals in the plan file."

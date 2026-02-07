@@ -168,6 +168,16 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
                 </div>
               </div>
             )}
+            {phil.relatedSkills.length > 0 && (
+              <div class="related-skills">
+                <span class="related-skills-label">Related Skills</span>
+                {phil.relatedSkills.map((skill) => (
+                  <a class="skill-tag" href={`/plugins/intelligence-scale/skills/${skill}/`}>
+                    {skill}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -644,6 +654,46 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     font-size: var(--text-xl);
     color: var(--color-accent);
     font-weight: 600;
+  }
+
+  /* ---- Related Skills ---- */
+  .related-skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    justify-content: center;
+    margin-top: var(--space-4);
+  }
+
+  .related-skills-label {
+    font-family: var(--font-body);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .skill-tag {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--color-secondary);
+    background: var(--color-secondary-softer);
+    border: 1px solid var(--color-secondary-soft);
+    border-radius: var(--radius-full);
+    padding: var(--space-1) var(--space-3);
+    text-decoration: none;
+    transition:
+      color var(--transition-fast),
+      background var(--transition-fast),
+      border-color var(--transition-fast);
+  }
+
+  .skill-tag:hover {
+    color: var(--color-surface);
+    background: var(--color-secondary);
+    border-color: var(--color-secondary);
   }
 
   /* ---- Responsive: Mobile ---- */

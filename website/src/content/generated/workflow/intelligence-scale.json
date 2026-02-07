@@ -1,6 +1,6 @@
 {
-  "sourceHash": "59c43749314e62d1",
-  "generatedAt": "2026-02-07T08:46:11.973Z",
+  "sourceHash": "c5fe52d0b43ea7e9",
+  "generatedAt": "2026-02-07T09:41:47.999Z",
   "diagram": {
     "events": [
       {
@@ -8,35 +8,35 @@
         "edge": "top",
         "position": 0.33,
         "label": "Session Start",
-        "tooltip": "Initialize Intelligence Scale session with Claude Code plugin"
+        "tooltip": "Initialize Intelligence Scale session and load skills"
       },
       {
         "id": "UserPromptSubmit",
         "edge": "top",
         "position": 0.67,
         "label": "User Prompt Submit",
-        "tooltip": "User submits prompt to Claude for AI-assisted development"
+        "tooltip": "Process user request and determine workflow approach"
       },
       {
         "id": "PreToolUse",
         "edge": "right",
         "position": 0.25,
         "label": "Pre Tool Use",
-        "tooltip": "Before executing tool, prepare with Intelligence Scale skills"
+        "tooltip": "Prepare skill execution with context and parameters"
       },
       {
         "id": "PostToolUse",
         "edge": "right",
         "position": 0.5,
         "label": "Post Tool Use",
-        "tooltip": "After tool execution, analyze results and plan next steps"
+        "tooltip": "Analyze skill results and update session state"
       },
       {
         "id": "PostToolUseFailure",
         "edge": "right",
         "position": 0.75,
         "label": "Post Tool Use Failure",
-        "tooltip": "Handle tool errors and trigger recovery strategies"
+        "tooltip": "Handle skill errors and trigger recovery strategies"
       },
       {
         "id": "ExitPlanMode",
@@ -50,28 +50,28 @@
         "edge": "bottom",
         "position": 0.67,
         "label": "Enter Plan Mode",
-        "tooltip": "Activate planning skills like audit-plan and write-plan"
+        "tooltip": "Activate planning skills to structure development workflow"
       },
       {
         "id": "Stop",
         "edge": "left",
         "position": 0.25,
         "label": "Stop",
-        "tooltip": "Terminate current Intelligence Scale workflow session"
+        "tooltip": "Terminate current session and clean up resources"
       },
       {
         "id": "SubagentStop",
         "edge": "left",
         "position": 0.5,
         "label": "Subagent Stop",
-        "tooltip": "End subagent task and consolidate results"
+        "tooltip": "Complete subagent task and reintegrate results"
       },
       {
         "id": "SubagentSpawn",
         "edge": "left",
         "position": 0.75,
         "label": "Subagent Spawn",
-        "tooltip": "Create specialized subagent for focused development task"
+        "tooltip": "Create specialized subagent for parallel task execution"
       }
     ],
     "rect": {
@@ -82,68 +82,63 @@
   },
   "philosophies": [
     {
-      "id": "addressing-the-review-burden",
-      "title": "Addressing the Review Burden",
-      "additions": [
-        {
-          "id": "session-start-context",
-          "event": "SessionStart",
-          "type": "hook",
-          "label": "Context Injection",
-          "description": "Injects skill context and session state on startup",
-          "effect": "Reduces review burden by pre-loading relevant context"
-        }
-      ],
+      "id": "ground-truth-first",
+      "title": "Ground Truth First",
+      "additions": [],
       "highlight": {
         "type": "insight",
-        "title": "Why Plans Fail",
-        "content": "Traditional plans describe state transitions for humans who imagine outcomes. LLMs living in this context hallucinate because they lack grounded state awareness.",
+        "title": "Explore",
+        "content": "Emphasizes web search during exploration, injecting a chain-of-thought that checks ground truth source dates and resolves conflicts by recency.",
         "comparison": {
-          "before_label": "Traditional Plan",
-          "before": "Describe current state → list changes → hope for the best",
-          "after_label": "Intelligence Scale Plan",
-          "after": "Structured template → verification gates → evidence-based execution"
+          "before_label": "Raw",
+          "before": "Codebase only",
+          "after_label": "Intelligence Scale",
+          "after": "Explore the web and codebase"
         }
       },
       "relatedSkills": [
-        "using-skills",
         "brainstorming"
       ]
     },
     {
-      "id": "polished-plan-structure",
-      "title": "Polished Plan Structure",
+      "id": "clear-plan",
+      "title": "Clear Plan",
       "additions": [
         {
           "id": "enter-plan-mode-structure",
-          "event": "EnterPlanMode",
+          "event": "ExitPlanMode",
           "type": "hook",
-          "label": "Plan Mode Entry",
-          "description": "Triggers structured plan template when entering plan mode",
+          "label": "Write Plan",
+          "description": "Triggers structured plan template when exiting plan mode",
           "effect": "Ensures plans follow a reviewable, consistent structure"
         },
         {
           "id": "post-tool-plan-check",
           "event": "PostToolUse",
           "type": "hook",
-          "label": "Post-Plan Validation",
-          "description": "Validates plan structure after plan mode tool use",
-          "effect": "Catches structural issues early in the planning phase"
+          "label": "Plan Writing Harness",
+          "description": "Enforces use of write-plan skill before writing plan files",
+          "effect": "Prevents ad-hoc planning by requiring template compliance"
         }
       ],
       "highlight": {
-        "type": "feature",
-        "title": "Structured Plan Template",
-        "content": "Plans include task dependencies, verification steps, human verification gates, and explicit file paths—reducing ambiguity and review effort."
+        "type": "insight",
+        "title": "Plan",
+        "content": "Agent-first and human-first-oriented plan structure design.",
+        "comparison": {
+          "before_label": "Raw",
+          "before": "Freeform",
+          "after_label": "Intelligence Scale",
+          "after": "Before/after comparison. Explicit diagrams for algorithms and workflow."
+        }
       },
       "relatedSkills": [
-        "write-plan",
-        "brainstorming"
+        "write-plan"
       ]
     },
     {
-      "id": "maximizing-task-parallelism",
-      "title": "Maximizing Task Parallelism",
+      "id": "parallelism",
+      "title": "Parallelism",
       "additions": [
         {
           "id": "user-prompt-parallelism",
@@ -155,16 +150,16 @@
         },
         {
           "id": "subagent-spawn-parallel",
-          "event": "SubagentSpawn",
+          "event": "ExitPlanMode",
           "type": "event",
-          "label": "Subagent Spawning",
-          "description": "Parallel task execution via subagent spawning",
-          "effect": "Enables concurrent work on independent plan tasks"
+          "label": "Parallelism Reminder",
+          "description": "Reminds to spawn subagents for independent tasks",
+          "effect": "Maximizes concurrent execution of independent work"
         }
       ],
       "highlight": {
         "type": "feature",
-        "title": "Automatic Parallelism",
+        "title": "Task",
         "content": "Every user prompt triggers a reminder to spawn subagents for independent tasks, ensuring maximum throughput without manual orchestration."
       },
       "relatedSkills": [
@@ -179,15 +174,15 @@
           "id": "tool-failure-recovery",
           "event": "PostToolUseFailure",
           "type": "hook",
-          "label": "Error Recovery Hook",
-          "description": "Triggers error recovery procedure on tool failures",
-          "effect": "Prevents goal drift by re-aligning to the session plan"
+          "label": "Recovery Skill Prompt",
+          "description": "Suggests recover-from-errors skill on tool failures",
+          "effect": "Prevents goal drift by prompting plan re-alignment"
         }
       ],
       "highlight": {
         "type": "insight",
-        "title": "Preventing Goal Drift",
-        "content": "When tools fail, the natural instinct is to generalize or guess. Intelligence Scale forces re-alignment to the plan, preventing cascading errors.",
+        "title": "Beyond Error Resilience",
+        "content": "When tools fail, the natural instinct is to generalize or guess. Intelligence Scale prompts re-alignment with the plan, preventing cascading errors.",
         "comparison": {
           "before_label": "Without Recovery",
           "before": "Tool fails → guess new params → drift from goal → waste context",
@@ -200,16 +195,16 @@
       ]
     },
     {
-      "id": "plan-execution-audit",
-      "title": "Plan Execution Audit",
+      "id": "plan-audit",
+      "title": "Plan Audit",
       "additions": [
         {
           "id": "subagent-stop-audit",
-          "event": "SubagentStop",
+          "event": "Stop",
           "type": "hook",
-          "label": "Post-Subagent Audit",
-          "description": "Checks plan compliance when subagent work completes",
-          "effect": "Verifies each parallel task met its planned objectives"
+          "label": "Check Plan File",
+          "description": "Checks the plan file after plan execution.",
+          "effect": "Measures the gap between plan execution and the goals in the plan file."
         }
       ],
       "highlight": {
