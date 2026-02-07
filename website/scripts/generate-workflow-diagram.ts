@@ -66,6 +66,12 @@ interface PhilosophySection {
   content: string;
   additions?: PhilosophySectionAddition[];
   highlight?: PhilosophySectionHighlight;
+  highlight_title?: string;
+  highlight_content?: string;
+  comparison_before_label?: string;
+  comparison_before?: string;
+  comparison_after_label?: string;
+  comparison_after?: string;
 }
 
 interface WebsiteConfig {
@@ -233,6 +239,44 @@ function buildStaticDiagramEvents(): Omit<DiagramEvent, "tooltip">[] {
       label: "Subagent Spawn",
     },
   ];
+}
+
+// --- Build highlight from TOML config or fallback to defaults ---
+
+function buildHighlightFromConfig(section: PhilosophySection): PhilosophySectionHighlight {
+  // If highlight is already provided in the section, use it
+  if (section.highlight) {
+    return section.highlight;
+  }
+
+  // If highlight fields are provided in TOML, build from them
+  if (section.highlight_title && section.highlight_content) {
+    const highlight: PhilosophySectionHighlight = {
+      type: section.comparison_before ? "insight" : "feature",
+      title: section.highlight_title,
+      content: section.highlight_content,
+    };
+
+    // Add comparison if all comparison fields are present
+    if (
+      section.comparison_before_label &&
+      section.comparison_before &&
+      section.comparison_after_label &&
+      section.comparison_after
+    ) {
+      highlight.comparison = {
+        before_label: section.comparison_before_label,
+        before: section.comparison_before,
+        after_label: section.comparison_after_label,
+        after: section.comparison_after,
+      };
+    }
+
+    return highlight;
+  }
+
+  // Fallback to default highlight
+  return getDefaultHighlight(section.title);
 }
 
 // --- Default additions and highlights for philosophy sections ---
@@ -528,7 +572,7 @@ async function main() {
         section.additions && section.additions.length > 0
           ? section.additions
           : getDefaultAdditions(section.title);
-      const highlight = section.highlight || getDefaultHighlight(section.title);
+      const highlight = buildHighlightFromConfig(section);
       const relatedSkills = getRelatedSkills(section.title);
       const enhancedContent =
         enhancedContents[section.title] || section.content;

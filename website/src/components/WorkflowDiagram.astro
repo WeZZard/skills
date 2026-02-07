@@ -359,7 +359,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   /* ---- Rectangle Wrapper ---- */
   .workflow-rect-wrapper {
-    padding: var(--space-12) var(--space-6);
+    padding: var(--space-12) var(--space-10);
   }
 
   /* ---- The Rectangle ---- */
@@ -367,7 +367,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     position: relative;
     width: 100%;
     aspect-ratio: 16 / 9;
-    background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-earth-100) 100%);
+    background: var(--color-surface);
     border: 1.5px solid var(--color-earth-300);
     border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-sm);
@@ -391,7 +391,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   .edge-marker.edge-top .marker-label {
     position: absolute;
-    top: -24px;
+    top: -28px;
     left: 50%;
     transform: translateX(-50%);
     white-space: nowrap;
@@ -406,7 +406,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   .edge-marker.edge-right .marker-label {
     position: absolute;
-    left: 24px;
+    left: 28px;
     top: 50%;
     transform: translateY(-50%);
     white-space: nowrap;
@@ -421,7 +421,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   .edge-marker.edge-bottom .marker-label {
     position: absolute;
-    bottom: -24px;
+    bottom: -28px;
     left: 50%;
     transform: translateX(-50%);
     white-space: nowrap;
@@ -436,7 +436,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   .edge-marker.edge-left .marker-label {
     position: absolute;
-    right: 24px;
+    right: 28px;
     top: 50%;
     transform: translateY(-50%);
     white-space: nowrap;
@@ -444,8 +444,8 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
   /* Marker circle */
   .marker-circle {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
     border: 2px solid var(--marker-color);
     background: var(--color-surface);
@@ -468,7 +468,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
   /* Marker label */
   .marker-label {
     font-family: var(--font-body);
-    font-size: 11px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--color-text-muted);
     transition: color var(--transition-base);
@@ -488,10 +488,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     color: var(--marker-color);
   }
 
-  /* Dimmed state when has-highlight but not highlighted */
-  .workflow-rect.has-highlight .edge-marker:not(.is-highlighted) {
-    opacity: 0.3;
-  }
+  /* All markers remain fully visible; highlighted ones get emphasis via bold border */
 
   .edge-marker:hover {
     transform: translate(-50%, -50%) scale(1.1);
@@ -515,13 +512,13 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
   .addition-callout {
     position: absolute;
     font-family: var(--font-body);
-    font-size: 10px;
+    font-size: var(--text-sm);
     font-weight: 600;
     color: var(--addition-color);
     background: var(--addition-color-soft);
     border: 1px solid var(--addition-color);
     border-radius: var(--radius-full);
-    padding: var(--space-1) var(--space-3);
+    padding: var(--space-2) var(--space-4);
     white-space: nowrap;
     opacity: 0;
     pointer-events: none;
@@ -706,7 +703,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     }
 
     .marker-label {
-      font-size: 9px;
+      font-size: var(--text-xs);
     }
 
     .center-content {
