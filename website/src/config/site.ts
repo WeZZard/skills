@@ -21,57 +21,32 @@ export interface SiteConfig {
   };
 }
 
-export interface PluginWebsiteConfig {
-  philosophy?: {
-    intro: string;
-    sections: Array<{
-      title: string;
-      content: string;
-    }>;
-  };
-}
-
 // Load site configuration from TOML
 function loadSiteConfig(): SiteConfig {
   const configPath = join(process.cwd(), "site.toml");
 
   if (!existsSync(configPath)) {
-    // Fallback defaults
-    return {
-      site: {
-        name: "WeZZard Skills",
-        description: "Claude Code skills by WeZZard",
-      },
-      hero: {
-        slogan: "Craft with Intention",
-        subtitle: "Thoughtful skills for AI-assisted development",
-      },
-      footer: {
-        copyright: "WeZZard",
-      },
-    };
+    throw new Error(
+      `Missing required site configuration file: ${configPath}\n\n` +
+      `Create a "site.toml" file in the website root directory with the following TOML format:\n\n` +
+      `# Site Configuration\n` +
+      `# Edit this file to customize site-wide content\n` +
+      `\n` +
+      `[site]\n` +
+      `name = "Your Site Name"\n` +
+      `description = "A short description of your site"\n` +
+      `\n` +
+      `[hero]\n` +
+      `slogan = "Your Slogan"\n` +
+      `subtitle = "A subtitle for the hero section"\n` +
+      `\n` +
+      `[footer]\n` +
+      `copyright = "Your Name"\n`
+    );
   }
 
   const content = readFileSync(configPath, "utf-8");
   return toml.parse(content) as SiteConfig;
-}
-
-// Load plugin website configuration from TOML
-export function loadPluginWebsiteConfig(pluginName: string): PluginWebsiteConfig | null {
-  // Look for website.toml in the plugin directory
-  const configPath = join(process.cwd(), "..", "claude", pluginName, "website.toml");
-
-  if (!existsSync(configPath)) {
-    return null;
-  }
-
-  try {
-    const content = readFileSync(configPath, "utf-8");
-    return toml.parse(content) as PluginWebsiteConfig;
-  } catch (error) {
-    console.error(`Failed to parse website.toml for plugin ${pluginName}:`, error);
-    return null;
-  }
 }
 
 // Export loaded config
