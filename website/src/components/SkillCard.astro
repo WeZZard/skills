@@ -1,21 +1,22 @@
 ---
 /**
  * SkillCard Component
- * Editorial-style skill card for the index page grid
+ * Editorial-style skill card for the plugin detail page grid
  */
 
 interface Props {
   name: string;
   displayName: string;
+  pluginName: string;
   tagline: string;
   shortSummary: string;
   index: number;
 }
 
-const { name, displayName, tagline, shortSummary, index } = Astro.props;
+const { name, displayName, pluginName, tagline, shortSummary, index } = Astro.props;
 ---
 
-<a href={`/skills/${name}`} class="skill-card" style={`--delay: ${index * 80}ms`}>
+<a href={`/plugins/${pluginName}/skills/${name}`} class="skill-card" style={`--delay: ${index * 80}ms`}>
   <article class="skill-card-inner">
     <div class="skill-number">
       <span>{String(index + 1).padStart(2, '0')}</span>

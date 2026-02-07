@@ -1,0 +1,54 @@
+{
+  "sourceHash": "bc1d98d45d633004",
+  "generatedAt": "2026-02-07T03:03:42.239Z",
+  "skill": {
+    "name": "execute-plan",
+    "displayName": "Execute Plan",
+    "pluginName": "intelligence-scale",
+    "tagline": "Turn your development plans into working code with automated execution and human oversight.",
+    "shortSummary": "Automatically executes development plans with parallel task processing and built-in verification gates.",
+    "fullSummary": "This skill transforms finalized development plans into implemented code through automated execution. It processes tasks in parallel while respecting dependencies, and includes human verification gates for critical steps. The system stops automatically when encountering blockers or unclear instructions, ensuring quality implementation.",
+    "highlights": [
+      {
+        "title": "Parallel Task Execution",
+        "description": "Maximizes development speed by processing multiple tasks simultaneously while respecting dependencies. This approach significantly reduces implementation time compared to sequential execution."
+      },
+      {
+        "title": "Human Verification Gates",
+        "description": "Automatically pauses execution at critical points to request human verification. This ensures important decisions receive proper oversight while maintaining automation efficiency."
+      },
+      {
+        "title": "Automatic Block Detection",
+        "description": "Stops execution immediately when encountering blockers like missing dependencies, test failures, or unclear instructions. Prevents wasted effort by asking for clarification rather than guessing."
+      },
+      {
+        "title": "Plan-First Approach",
+        "description": "Requires a finalized plan file before starting implementation, ensuring structured development. Follows plan steps exactly while maintaining flexibility for necessary adjustments."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Load Plan",
+          "description": "Read and validate the finalized development plan file.",
+          "details": "The skill begins by loading the plan file to understand the implementation requirements. This ensures all tasks and dependencies are properly identified before execution begins."
+        },
+        {
+          "name": "Execute Tasks",
+          "description": "Process tasks in parallel while respecting dependencies.",
+          "details": "Tasks are executed simultaneously to maximize efficiency, with careful attention to dependencies that require sequential processing. This balanced approach optimizes development speed."
+        },
+        {
+          "name": "Request Verification",
+          "description": "Pause execution for human verification when required.",
+          "details": "At critical points specified in the plan, execution stops to request human verification. This ensures important decisions receive proper oversight before proceeding."
+        },
+        {
+          "name": "Handle Feedback",
+          "description": "Apply changes based on verification feedback and continue.",
+          "details": "After receiving verification feedback, the skill applies any necessary changes and continues execution. This iterative process continues until all tasks are completed."
+        }
+      ]
+    }
+  }
+}

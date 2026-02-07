@@ -1,9 +1,25 @@
 ---
-import Base from "../../layouts/Base.astro";
-import HighlightCard from "../../components/HighlightCard.astro";
-import WorkflowStep from "../../components/WorkflowStep.astro";
+import Base from "../../../../layouts/Base.astro";
+import Breadcrumb from "../../../../components/Breadcrumb.astro";
+import HighlightCard from "../../../../components/HighlightCard.astro";
+import WorkflowStep from "../../../../components/WorkflowStep.astro";
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
+
+interface PluginData {
+  sourceHash: string;
+  generatedAt: string;
+  plugin: {
+    name: string;
+    displayName: string;
+    tagline: string;
+    shortDescription: string;
+    fullDescription: string;
+    useCases: Array<{ title: string; description: string }>;
+    skillCount: number;
+    skills: string[];
+  };
+}
 
 interface SkillData {
   sourceHash: string;
@@ -11,6 +27,7 @@ interface SkillData {
   skill: {
     name: string;
     displayName: string;
+    pluginName: string;
     tagline: string;
     shortSummary: string;
     fullSummary: string;
@@ -22,39 +39,64 @@ interface SkillData {
 }
 
 export function getStaticPaths() {
-  const generatedDir = join(process.cwd(), "src/content/generated");
-  if (!existsSync(generatedDir)) return [];
+  const pluginsDir = join(process.cwd(), "src/content/generated/plugins");
+  const skillsDir = join(process.cwd(), "src/content/generated/skills");
 
-  const files = readdirSync(generatedDir).filter((f) => f.endsWith(".json"));
-  return files.map((f) => {
-    const content = readFileSync(join(generatedDir, f), "utf-8");
-    const data = JSON.parse(content) as SkillData;
-    return {
-      params: { slug: data.skill.name },
-      props: { data },
-    };
-  });
+  if (!existsSync(pluginsDir) || !existsSync(skillsDir)) return [];
+
+  const paths: Array<{
+    params: { plugin: string; skill: string };
+    props: { skillData: SkillData; pluginData: PluginData };
+  }> = [];
+
+  // Load all plugins
+  const pluginFiles = readdirSync(pluginsDir).filter((f) => f.endsWith(".json"));
+
+  for (const pluginFile of pluginFiles) {
+    const pluginContent = readFileSync(join(pluginsDir, pluginFile), "utf-8");
+    const pluginData = JSON.parse(pluginContent) as PluginData;
+
+    // Load skills for this plugin
+    for (const skillName of pluginData.plugin.skills) {
+      const skillPath = join(skillsDir, `${skillName}.json`);
+      if (!existsSync(skillPath)) continue;
+
+      const skillContent = readFileSync(skillPath, "utf-8");
+      const skillData = JSON.parse(skillContent) as SkillData;
+
+      paths.push({
+        params: {
+          plugin: pluginData.plugin.name,
+          skill: skillData.skill.name
+        },
+        props: { skillData, pluginData },
+      });
+    }
+  }
+
+  return paths;
 }
 
 interface Props {
-  data: SkillData;
+  skillData: SkillData;
+  pluginData: PluginData;
 }
 
-const { data } = Astro.props;
-const { skill } = data;
+const { skillData, pluginData } = Astro.props;
+const { skill } = skillData;
+const { plugin } = pluginData;
+
+const breadcrumbItems = [
+  { label: "Home", href: "/" },
+  { label: plugin.displayName, href: `/plugins/${plugin.name}` },
+  { label: skill.displayName },
+];
 ---
 
-<Base title={skill.displayName} description={skill.tagline}>
+<Base title={skill.displayName} description={skill.tagline} showHeader={false}>
   <div class="container-narrow">
-    <!-- Back Navigation -->
-    <nav class="back-nav">
-      <a href="/">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-        All skills
-      </a>
-    </nav>
+    <!-- Breadcrumb -->
+    <Breadcrumb items={breadcrumbItems} />
 
     <!-- Skill Header -->
     <header class="skill-header">
@@ -127,8 +169,8 @@ const { skill } = data;
           <p>Run this command in Claude Code to activate the skill</p>
         </div>
         <div class="command-box">
-          <code>/intelligence-scale:{skill.name}</code>
-          <button class="copy-btn" data-command={`/intelligence-scale:${skill.name}`}>
+          <code>/{plugin.name}:{skill.name}</code>
+          <button class="copy-btn" data-command={`/${plugin.name}:${skill.name}`}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
@@ -141,7 +183,7 @@ const { skill } = data;
 
     <!-- Page Footer -->
     <footer class="page-footer">
-      <span>Content generated {new Date(data.generatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+      <span>Content generated {new Date(skillData.generatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
     </footer>
   </div>
 </Base>
@@ -163,26 +205,6 @@ const { skill } = data;
 </script>
 
 <style>
-  /* Back Navigation */
-  .back-nav {
-    padding: var(--space-6) 0;
-  }
-
-  .back-nav a {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    color: var(--color-text-muted);
-    font-size: var(--text-sm);
-    font-weight: 500;
-    text-decoration: none;
-    transition: color var(--transition-fast);
-  }
-
-  .back-nav a:hover {
-    color: var(--color-accent);
-  }
-
   /* Skill Header */
   .skill-header {
     text-align: center;

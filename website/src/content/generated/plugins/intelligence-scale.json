@@ -1,0 +1,44 @@
+{
+  "sourceHash": "fd5eb79755c85bfc",
+  "generatedAt": "2026-02-07T04:11:23.030Z",
+  "plugin": {
+    "name": "intelligence-scale",
+    "displayName": "Intelligence Scale",
+    "tagline": "Structured workflows for AI-assisted development",
+    "shortDescription": "Structured workflows for predictable, high-quality AI-assisted development with Claude Code.",
+    "fullDescription": "Intelligence Scale provides curated skills that enforce structured workflows for planning, execution, and verification in AI-assisted development. It ensures development is predictable, traceable, and maintains quality through explicit documentation, systematic progress, and built-in verification while preserving human oversight.",
+    "useCases": [
+      {
+        "title": "Project Planning",
+        "description": "Create comprehensive development plans with exact tasks, file paths, and verification criteria before making any changes."
+      },
+      {
+        "title": "Structured Execution",
+        "description": "Follow development plans systematically with built-in parallelism and verification gates to execute tasks efficiently while respecting dependencies."
+      },
+      {
+        "title": "Error Recovery",
+        "description": "Handle failures gracefully with documented recovery procedures to prevent goal drift when things go wrong during development."
+      },
+      {
+        "title": "Quality Assurance",
+        "description": "Audit and verify work through structured review processes to ensure every planned change was implemented correctly."
+      },
+      {
+        "title": "Idea Exploration",
+        "description": "Brainstorm and refine ideas through collaborative dialogue before committing to implementation, ensuring well-thought-out solutions."
+      }
+    ],
+    "skillCount": 6,
+    "skills": [
+      "audit-plan",
+      "brainstorming",
+      "execute-plan",
+      "recover-from-errors",
+      "using-skills",
+      "write-plan"
+    ],
+    "marketplaceCommand": "/plugin marketplace add Wezzard/skills",
+    "installCommand": "/plugin install intelligence-scale@wezzard-skills"
+  }
+}

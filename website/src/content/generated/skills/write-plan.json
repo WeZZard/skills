@@ -1,0 +1,59 @@
+{
+  "sourceHash": "9e5513745205d4c0",
+  "generatedAt": "2026-02-07T03:04:41.630Z",
+  "skill": {
+    "name": "write-plan",
+    "displayName": "Write Plan",
+    "pluginName": "intelligence-scale",
+    "tagline": "Create structured development plans with built-in verification and human oversight",
+    "shortSummary": "Generates comprehensive project plans with verification steps and human review gates",
+    "fullSummary": "The write-plan skill helps developers create detailed project plans before making changes. It ensures thorough documentation of files, hypotheses, and verification approaches while identifying when human review is needed. The skill produces structured plans with clear tasks and validation steps to guide development work.",
+    "highlights": [
+      {
+        "title": "Mandatory Verification",
+        "description": "Every plan must include verification steps with clear approaches (automated, manual, or hybrid). The skill recognizes hypotheses that need validation and ensures they're addressed before proceeding with implementation."
+      },
+      {
+        "title": "Human Review Gates",
+        "description": "Automatically identifies tasks requiring human verification based on four criteria: no computer use, subjective judgment, financial authorization, or security sensitivity. These tasks are prioritized at the start of the plan for early review."
+      },
+      {
+        "title": "Structured Templates",
+        "description": "Uses standardized templates for plan components including project structure, tech stack, architecture, and algorithm design. This ensures consistency and completeness across all development plans."
+      },
+      {
+        "title": "Task Organization",
+        "description": "Breaks down work into manageable tasks with clear dependencies and context awareness. Tasks are designed to be focused and appropriately sized for effective execution within context limitations."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Skill Invocation",
+          "description": "The skill is invoked at the start of planning with a specific announcement.",
+          "details": "Before updating any plan files, you must explicitly call the write-plan skill. This ensures the planning process follows the structured approach defined by the skill's requirements."
+        },
+        {
+          "name": "Plan Creation",
+          "description": "Generates a comprehensive plan using the mandatory template structure.",
+          "details": "Creates a plan document with sections for goals, tasks, and verification. The plan includes all necessary details assuming the user has zero context about the codebase, ensuring thorough documentation."
+        },
+        {
+          "name": "Component Documentation",
+          "description": "Documents project structure, tech stack, and architecture changes using specific templates.",
+          "details": "When changes affect these areas, the skill uses predefined templates to show both before and after states. This provides clear visualization of how the project will evolve."
+        },
+        {
+          "name": "Verification Planning",
+          "description": "Identifies verification needs and creates detailed testing approaches.",
+          "details": "Lists all verification steps needed to confirm the plan's success. This includes both automated testing approaches and manual verification requirements with specific test cases and assertions."
+        },
+        {
+          "name": "Human Review Identification",
+          "description": "Flags tasks requiring human verification and prioritizes them in the plan.",
+          "details": "Analyzes the plan to identify where human judgment is needed based on four specific criteria. These tasks are moved to the beginning of the plan to ensure early review and approval."
+        }
+      ]
+    }
+  }
+}

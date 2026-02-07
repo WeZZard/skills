@@ -1,0 +1,49 @@
+{
+  "sourceHash": "d62ef47748df2190",
+  "generatedAt": "2026-02-07T03:03:01.714Z",
+  "skill": {
+    "name": "audit-plan",
+    "displayName": "Audit Plan",
+    "pluginName": "intelligence-scale",
+    "tagline": "Verify every planned change was implemented correctly with evidence-based auditing",
+    "shortSummary": "Audit plan execution by comparing planned tasks against actual system state with detailed verification",
+    "fullSummary": "This skill automatically verifies that all tasks from a session plan were correctly implemented. It systematically checks file existence, content, deletions, and command outputs against the original plan specifications. The audit provides a structured report showing exactly what was implemented correctly and what discrepancies were found.",
+    "highlights": [
+      {
+        "title": "Evidence-Based Verification",
+        "description": "Trusts evidence over assumptions by checking actual files and system state. Every task in the plan is verified against real-world implementation, ensuring no changes are missed or incorrectly assumed to be complete."
+      },
+      {
+        "title": "Structured Audit Report",
+        "description": "Generates a clear summary table showing task-by-task status (Done/Partial/Missing) with evidence for each verdict. Issues are clearly documented so users can see exactly what needs attention without guesswork."
+      },
+      {
+        "title": "Comprehensive Task Checking",
+        "description": "Verifies file existence, content accuracy, proper deletions, and command outputs. The audit covers all aspects of implementation, from file creation to configuration changes and command execution."
+      },
+      {
+        "title": "Final Workflow Step",
+        "description": "Designed as the concluding step in plan-based workflows. After plan execution completes, this skill provides the verification needed to confirm successful implementation before considering work complete."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Load Plan",
+          "description": "Read the session plan file to extract all tasks and file references.",
+          "details": "The skill begins by loading the plan file created during the planning session. It extracts the complete task list and all file references that need to be verified, ensuring the audit is based on the original specifications."
+        },
+        {
+          "name": "Verify Tasks",
+          "description": "Check each task against actual system state using multiple verification methods.",
+          "details": "For every task in the plan, the skill checks file existence, content accuracy, proper deletions, and runs any verification commands. It uses subagents to perform these checks efficiently and thoroughly, ensuring comprehensive coverage."
+        },
+        {
+          "name": "Generate Report",
+          "description": "Create a structured summary showing implementation status and any issues found.",
+          "details": "The skill presents a clear audit summary with a task-by-task status table and evidence for each verdict. It documents all discrepancies found but doesn't fix them, leaving decisions about next steps to the user."
+        }
+      ]
+    }
+  }
+}

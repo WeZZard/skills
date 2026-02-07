@@ -1,0 +1,63 @@
+{
+  "sourceHash": "f00b87ab0ed1dfc2",
+  "generatedAt": "2026-02-07T03:03:25.996Z",
+  "skill": {
+    "name": "brainstorming",
+    "displayName": "Brainstorming",
+    "pluginName": "intelligence-scale",
+    "tagline": "Turn ideas into fully formed designs through collaborative dialogue",
+    "shortSummary": "Brainstorm and refine ideas into detailed designs with structured questioning and validation",
+    "fullSummary": "This skill helps you transform rough ideas into complete, validated designs through natural conversation. It guides you through understanding your project context, exploring different approaches, and validating information before presenting a detailed design in manageable sections. The process ensures you get a well-thought-out solution that meets your specific needs and constraints.",
+    "highlights": [
+      {
+        "title": "One Question at a Time",
+        "description": "The skill asks questions one at a time to avoid overwhelming you and ensure clear understanding. This focused approach helps refine your idea gradually while keeping the conversation natural and productive."
+      },
+      {
+        "title": "Multiple Approaches Explored",
+        "description": "Before settling on a solution, the skill presents 2-3 different approaches with clear trade-offs. This gives you options to consider and helps you make informed decisions about the best path forward."
+      },
+      {
+        "title": "Information Validation",
+        "description": "All external information is verified for credibility and recency before being used. The skill checks sources, dates, and resolves conflicts to ensure you're working with accurate, up-to-date information."
+      },
+      {
+        "title": "Incremental Design Review",
+        "description": "Designs are presented in small, manageable sections of 200-300 words. After each section, you're asked for feedback to ensure everything looks right before moving forward, preventing major rework later."
+      },
+      {
+        "title": "Project Context Aware",
+        "description": "The skill starts by understanding your current project state, including files, documentation, and recent changes. This context-aware approach ensures solutions fit seamlessly into your existing work."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Understand Context",
+          "description": "Review your current project state and ask focused questions to understand your idea.",
+          "details": "The skill examines your project files, docs, and recent commits to understand where you're starting from. It then asks targeted questions one at a time to clarify your goals, constraints, and success criteria."
+        },
+        {
+          "name": "Explore Approaches",
+          "description": "Propose 2-3 different solutions with clear trade-offs and recommendations.",
+          "details": "Based on your requirements, the skill presents multiple approaches with their pros and cons. It uses web search when needed to gather current information about technologies and provides a clear recommendation with reasoning."
+        },
+        {
+          "name": "Validate Information",
+          "description": "Verify all external information for credibility, recency, and accuracy.",
+          "details": "Before using any information, the skill checks source credibility, dates, and resolves conflicting information. This ensures you're working with reliable, up-to-date facts rather than assumptions or outdated knowledge."
+        },
+        {
+          "name": "Present Design",
+          "description": "Break the complete design into manageable sections and validate each one.",
+          "details": "The skill presents the final design in small sections covering architecture, components, data flow, and more. After each 200-300 word section, it asks for your feedback to ensure everything aligns with your vision before continuing."
+        },
+        {
+          "name": "Update Plan",
+          "description": "If in plan mode, automatically update your project plan with the new design.",
+          "details": "When working with project plans, the skill seamlessly updates your plan file with the newly developed design, keeping your documentation current without requiring manual updates."
+        }
+      ]
+    }
+  }
+}

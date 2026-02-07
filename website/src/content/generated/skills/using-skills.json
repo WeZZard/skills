@@ -1,0 +1,54 @@
+{
+  "sourceHash": "9f32e4329fc8b0f2",
+  "generatedAt": "2026-02-07T03:04:21.263Z",
+  "skill": {
+    "name": "using-skills",
+    "displayName": "Using Skills",
+    "pluginName": "intelligence-scale",
+    "tagline": "Master Claude's skills first—check before any action to ensure disciplined, effective workflows.",
+    "shortSummary": "Always invoke relevant skills before responding or acting to maintain structured, efficient workflows.",
+    "fullSummary": "This foundational skill ensures you always check for applicable skills before taking any action, including asking clarifying questions. It establishes a disciplined approach where skill invocation takes priority, preventing wasted time and ensuring you follow established workflows. By checking first, you guarantee that all tasks benefit from Claude's structured processes.",
+    "highlights": [
+      {
+        "title": "Mandatory Skill Check",
+        "description": "You must invoke any skill that might apply—even with just a 1% chance—before responding or acting. This rule is non-negotiable and ensures you never skip essential workflows. Checking first prevents rationalization and keeps you on the most effective path."
+      },
+      {
+        "title": "Prevents Rationalization",
+        "description": "Common thoughts like 'This is just a simple question' or 'I need more context first' are red flags that mean you should stop and check for skills. The skill provides a table of these rationalizations to help you recognize and avoid them. This discipline prevents wasted effort and ensures consistent application of best practices."
+      },
+      {
+        "title": "Skill Priority Order",
+        "description": "When multiple skills could apply, follow this order: process skills (like brainstorming) first, then implementation skills (like write-plan), then verification skills (like review). This logical sequence ensures you approach tasks methodically, from planning through execution to validation."
+      },
+      {
+        "title": "Rigid vs Flexible Skills",
+        "description": "Skills are categorized as rigid (must be followed exactly, like execute-plan) or flexible (principles can be adapted, like brainstorming). This distinction helps you understand when to stick strictly to the process versus when you can adjust based on context, balancing discipline with adaptability."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Receive Request",
+          "description": "A user gives you a task or asks a question.",
+          "details": "This could be any instruction, from a simple query to a complex development task. The key is to treat all user inputs as potential tasks that might require skill application."
+        },
+        {
+          "name": "Check for Skills",
+          "description": "Immediately assess if any skills might apply to the situation.",
+          "details": "Even if there's only a 1% chance a skill is relevant, you must invoke it using the Skill tool. Do not respond, ask clarifying questions, or take any other action before this check. This step is mandatory and non-negotiable."
+        },
+        {
+          "name": "Invoke Skill",
+          "description": "Use the Skill tool to load and review the skill content.",
+          "details": "If a skill applies, invoke it to see its current instructions. Follow the skill directly once loaded. If no skill applies after checking, you can proceed with your response or other actions."
+        },
+        {
+          "name": "Follow Skill",
+          "description": "Execute the task according to the skill's guidance.",
+          "details": "Adhere to the skill's workflow, whether it's rigid (follow exactly) or flexible (adapt principles). This ensures you use Claude's structured processes for optimal results, from brainstorming to execution and review."
+        }
+      ]
+    }
+  }
+}

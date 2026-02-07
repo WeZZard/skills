@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { config } from "dotenv";
@@ -11,16 +11,53 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Load .env from project root
 config({ path: join(__dirname, "../../.env") });
 
-const SKILLS_DIR = join(__dirname, "../../claude/intelligence-scale/skills");
-const OUTPUT_DIR = join(__dirname, "../src/content/generated");
+const PLUGINS_DIR = join(__dirname, "../../claude");
+const MARKETPLACE_JSON = join(__dirname, "../../.claude-plugin/marketplace.json");
+const PLUGINS_OUTPUT_DIR = join(__dirname, "../src/content/generated/plugins");
+const SKILLS_OUTPUT_DIR = join(__dirname, "../src/content/generated/skills");
 
-// New schema for editorial redesign
+// Ensure output directories exist
+mkdirSync(PLUGINS_OUTPUT_DIR, { recursive: true });
+mkdirSync(SKILLS_OUTPUT_DIR, { recursive: true });
+
+// Marketplace configuration
+interface MarketplaceConfig {
+  name: string;
+  owner: { name: string };
+  plugins: Array<{ name: string; source: string; description: string }>;
+}
+
+function loadMarketplaceConfig(): MarketplaceConfig {
+  const content = readFileSync(MARKETPLACE_JSON, "utf-8");
+  return JSON.parse(content);
+}
+
+// Plugin generated content schema
+interface PluginGenerated {
+  sourceHash: string;
+  generatedAt: string;
+  plugin: {
+    name: string;
+    displayName: string;
+    tagline: string;
+    shortDescription: string;
+    fullDescription: string;
+    useCases: Array<{ title: string; description: string }>;
+    skillCount: number;
+    skills: string[];
+    marketplaceCommand: string;
+    installCommand: string;
+  };
+}
+
+// Skill generated content schema
 interface SkillGenerated {
   sourceHash: string;
   generatedAt: string;
   skill: {
     name: string;
     displayName: string;
+    pluginName: string;
     tagline: string;
     shortSummary: string;
     fullSummary: string;
@@ -32,9 +69,7 @@ interface SkillGenerated {
 }
 
 /**
- * Convert hyphenated skill name to Title Case display name
- * "write-plan" → "Write Plan"
- * "recover-from-errors" → "Recover From Errors"
+ * Convert hyphenated name to Title Case display name
  */
 function toDisplayName(name: string): string {
   return name
@@ -57,9 +92,122 @@ function getExistingHash(outputPath: string): string | null {
   }
 }
 
+/**
+ * Discover all plugins in the claude directory
+ */
+function discoverPlugins(): Array<{ name: string; path: string; skillNames: string[] }> {
+  const plugins: Array<{ name: string; path: string; skillNames: string[] }> = [];
+
+  const entries = readdirSync(PLUGINS_DIR, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+
+    const pluginPath = join(PLUGINS_DIR, entry.name);
+    const pluginMdPath = join(pluginPath, "PLUGIN.md");
+
+    if (!existsSync(pluginMdPath)) continue;
+
+    // Discover skills for this plugin
+    const skillsDir = join(pluginPath, "skills");
+    const skillNames: string[] = [];
+
+    if (existsSync(skillsDir)) {
+      const skillEntries = readdirSync(skillsDir, { withFileTypes: true });
+      for (const skillEntry of skillEntries) {
+        if (skillEntry.isDirectory()) {
+          const skillMdPath = join(skillsDir, skillEntry.name, "SKILL.md");
+          if (existsSync(skillMdPath)) {
+            skillNames.push(skillEntry.name);
+          }
+        }
+      }
+    }
+
+    plugins.push({
+      name: entry.name,
+      path: pluginPath,
+      skillNames: skillNames.sort(),
+    });
+  }
+
+  return plugins;
+}
+
+async function generatePluginContent(
+  client: OpenAI,
+  pluginName: string,
+  pluginContent: string,
+  skillNames: string[],
+  marketplaceConfig: MarketplaceConfig
+): Promise<PluginGenerated["plugin"]> {
+  const { data: frontmatter } = matter(pluginContent);
+  const displayName = frontmatter.displayName || toDisplayName(pluginName);
+  const tagline = frontmatter.tagline || "";
+
+  // Generate install commands from marketplace config
+  const marketplaceName = marketplaceConfig.name;
+  const ownerName = marketplaceConfig.owner.name;
+  const marketplaceCommand = `/plugin marketplace add ${ownerName.charAt(0).toUpperCase() + ownerName.slice(1)}/skills`;
+  const installCommand = `/plugin install ${pluginName}@${marketplaceName}`;
+
+  const prompt = `You are analyzing a Claude Code plugin definition. Generate a user-friendly explanation for a plugin gallery website.
+
+Input PLUGIN.md:
+---
+${pluginContent}
+---
+
+Skills in this plugin: ${skillNames.join(", ")}
+
+Output a JSON object with this exact structure:
+{
+  "shortDescription": "One concise sentence (max 120 chars) for display on index cards",
+  "fullDescription": "2-3 sentences providing a complete overview for the detail page",
+  "useCases": [
+    {
+      "title": "Use case title (2-4 words)",
+      "description": "1-2 sentence explanation of this use case"
+    }
+  ]
+}
+
+Requirements:
+- shortDescription: Ultra-concise for card display
+- fullDescription: Complete but accessible explanation
+- useCases: Extract 3-5 key use cases from the plugin content
+- Use simple, clear language accessible to developers
+- Focus on user benefits and outcomes`;
+
+  const response = await client.chat.completions.create({
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0,
+    seed: 42,
+  });
+
+  const content = response.choices[0]?.message?.content;
+  if (!content) throw new Error("No response from LLM");
+
+  const parsed = JSON.parse(content);
+  return {
+    name: pluginName,
+    displayName,
+    tagline,
+    shortDescription: parsed.shortDescription,
+    fullDescription: parsed.fullDescription,
+    useCases: parsed.useCases,
+    skillCount: skillNames.length,
+    skills: skillNames,
+    marketplaceCommand,
+    installCommand,
+  };
+}
+
 async function generateSkillContent(
   client: OpenAI,
   skillName: string,
+  pluginName: string,
   skillContent: string
 ): Promise<SkillGenerated["skill"]> {
   const displayName = toDisplayName(skillName);
@@ -118,6 +266,7 @@ Requirements:
   return {
     name: skillName,
     displayName,
+    pluginName,
     tagline: parsed.tagline,
     shortSummary: parsed.shortSummary,
     fullSummary: parsed.fullSummary,
@@ -138,50 +287,94 @@ async function main() {
     baseURL: "https://api.deepseek.com/v1",
   });
 
-  const skillDirs = readdirSync(SKILLS_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name);
+  const marketplaceConfig = loadMarketplaceConfig();
+  const plugins = discoverPlugins();
+  console.log(`Found ${plugins.length} plugin(s) to process\n`);
 
-  console.log(`Found ${skillDirs.length} skills to process\n`);
+  for (const plugin of plugins) {
+    console.log(`\n📦 Plugin: ${plugin.name} (${plugin.skillNames.length} skills)`);
 
-  for (const skillName of skillDirs) {
-    const skillPath = join(SKILLS_DIR, skillName, "SKILL.md");
-    const outputPath = join(OUTPUT_DIR, `${skillName}.json`);
+    // Process plugin
+    const pluginMdPath = join(plugin.path, "PLUGIN.md");
+    const pluginOutputPath = join(PLUGINS_OUTPUT_DIR, `${plugin.name}.json`);
 
-    if (!existsSync(skillPath)) {
-      console.log(`⚠ Skipping ${skillName}: no SKILL.md found`);
-      continue;
+    const pluginRawContent = readFileSync(pluginMdPath, "utf-8");
+    const pluginCurrentHash = computeHash(pluginRawContent);
+    const pluginExistingHash = getExistingHash(pluginOutputPath);
+
+    if (pluginCurrentHash === pluginExistingHash) {
+      console.log(`  ✓ Plugin unchanged (hash: ${pluginCurrentHash})`);
+    } else {
+      console.log(`  ⟳ Generating plugin content...`);
+      try {
+        const pluginData = await generatePluginContent(
+          client,
+          plugin.name,
+          pluginRawContent,
+          plugin.skillNames,
+          marketplaceConfig
+        );
+
+        const output: PluginGenerated = {
+          sourceHash: pluginCurrentHash,
+          generatedAt: new Date().toISOString(),
+          plugin: pluginData,
+        };
+
+        writeFileSync(pluginOutputPath, JSON.stringify(output, null, 2) + "\n");
+        console.log(`  ✓ Plugin generated (hash: ${pluginCurrentHash})`);
+      } catch (error) {
+        console.error(`  ✗ Plugin failed:`, error);
+      }
     }
 
-    const rawContent = readFileSync(skillPath, "utf-8");
-    const currentHash = computeHash(rawContent);
-    const existingHash = getExistingHash(outputPath);
+    // Process skills for this plugin
+    const skillsDir = join(plugin.path, "skills");
 
-    if (currentHash === existingHash) {
-      console.log(`✓ ${skillName}: unchanged (hash: ${currentHash})`);
-      continue;
-    }
+    for (const skillName of plugin.skillNames) {
+      const skillPath = join(skillsDir, skillName, "SKILL.md");
+      const skillOutputPath = join(SKILLS_OUTPUT_DIR, `${skillName}.json`);
 
-    console.log(`⟳ ${skillName}: generating...`);
+      const skillRawContent = readFileSync(skillPath, "utf-8");
+      const skillCurrentHash = computeHash(skillRawContent);
+      const skillExistingHash = getExistingHash(skillOutputPath);
 
-    try {
-      const { data: frontmatter, content } = matter(rawContent);
-      const skill = await generateSkillContent(client, skillName, rawContent);
+      if (skillCurrentHash === skillExistingHash) {
+        // Check if pluginName field exists in existing file
+        try {
+          const existing = JSON.parse(readFileSync(skillOutputPath, "utf-8"));
+          if (existing.skill?.pluginName === plugin.name) {
+            console.log(`  ✓ ${skillName}: unchanged (hash: ${skillCurrentHash})`);
+            continue;
+          }
+        } catch {}
+      }
 
-      const output: SkillGenerated = {
-        sourceHash: currentHash,
-        generatedAt: new Date().toISOString(),
-        skill,
-      };
+      console.log(`  ⟳ ${skillName}: generating...`);
 
-      writeFileSync(outputPath, JSON.stringify(output, null, 2) + "\n");
-      console.log(`✓ ${skillName}: generated (hash: ${currentHash})`);
-    } catch (error) {
-      console.error(`✗ ${skillName}: failed -`, error);
+      try {
+        const skillData = await generateSkillContent(
+          client,
+          skillName,
+          plugin.name,
+          skillRawContent
+        );
+
+        const output: SkillGenerated = {
+          sourceHash: skillCurrentHash,
+          generatedAt: new Date().toISOString(),
+          skill: skillData,
+        };
+
+        writeFileSync(skillOutputPath, JSON.stringify(output, null, 2) + "\n");
+        console.log(`  ✓ ${skillName}: generated (hash: ${skillCurrentHash})`);
+      } catch (error) {
+        console.error(`  ✗ ${skillName}: failed -`, error);
+      }
     }
   }
 
-  console.log("\nDone!");
+  console.log("\n✨ Done!");
 }
 
 main();

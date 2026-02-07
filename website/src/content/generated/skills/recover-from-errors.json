@@ -1,0 +1,49 @@
+{
+  "sourceHash": "9cca97ccd2d11c46",
+  "generatedAt": "2026-02-07T03:03:58.238Z",
+  "skill": {
+    "name": "recover-from-errors",
+    "displayName": "Recover From Errors",
+    "pluginName": "intelligence-scale",
+    "tagline": "Stay on track when tools fail by re-aligning with your plan instead of guessing.",
+    "shortSummary": "Prevents goal drift by checking the plan after repeated tool failures.",
+    "fullSummary": "This skill helps you recover from errors without losing sight of your original goal. When tool calls fail repeatedly, it guides you to verify alignment with your plan and fix specific issues rather than guessing. This keeps your work focused and prevents unnecessary context noise.",
+    "highlights": [
+      {
+        "title": "Prevents Goal Drift",
+        "description": "Stops you from drifting away from your original objective when tools fail. Instead of guessing new parameters or alternative tools, you re-align with your plan to maintain focus."
+      },
+      {
+        "title": "Plan Verification",
+        "description": "Immediately checks your session's plan file to understand the context of the current operation. This ensures you're working on the right tasks and not introducing unrelated actions."
+      },
+      {
+        "title": "Smart Recovery Logic",
+        "description": "Provides clear decision logic: if the failing action is part of the plan, fix the specific issue; if not, stop and return to the plan. This prevents wasted effort on irrelevant tasks."
+      },
+      {
+        "title": "Error Analysis Focus",
+        "description": "Encourages analyzing why specific failures occurred rather than making random changes. This leads to more targeted solutions and cleaner execution."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Check Plan",
+          "description": "Look up the session's plan file to understand the current operation context.",
+          "details": "Immediately reference the plan document to verify what you should be working on. This establishes the proper context before attempting recovery."
+        },
+        {
+          "name": "Verify Alignment",
+          "description": "Determine if the failing tool call is actually required by the current plan step.",
+          "details": "Ask yourself if the action you attempted is explicitly needed for the current task. This helps identify whether you've drifted from the plan."
+        },
+        {
+          "name": "Re-align to Plan",
+          "description": "Take appropriate action based on whether the failing tool is part of the plan.",
+          "details": "If the tool is part of the plan, analyze and fix the specific issue. If not, stop calling the tool and return to the plan's specified tasks to prevent further drift."
+        }
+      ]
+    }
+  }
+}

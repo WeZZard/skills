@@ -1,82 +1,72 @@
 ---
 import Base from "../layouts/Base.astro";
-import InstallBanner from "../components/InstallBanner.astro";
-import SkillCard from "../components/SkillCard.astro";
+import PluginCard from "../components/PluginCard.astro";
+import { siteConfig } from "../config/site";
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 
-interface SkillData {
+interface PluginData {
   sourceHash: string;
   generatedAt: string;
-  skill: {
+  plugin: {
     name: string;
     displayName: string;
     tagline: string;
-    shortSummary: string;
-    fullSummary: string;
-    highlights: Array<{ title: string; description: string }>;
-    workflow: {
-      steps: Array<{ name: string; description: string; details?: string }>;
-    };
+    shortDescription: string;
+    fullDescription: string;
+    useCases: Array<{ title: string; description: string }>;
+    skillCount: number;
+    skills: string[];
+    marketplaceCommand: string;
+    installCommand: string;
   };
 }
 
-const generatedDir = join(process.cwd(), "src/content/generated");
-let skills: SkillData[] = [];
+const pluginsDir = join(process.cwd(), "src/content/generated/plugins");
+let plugins: PluginData[] = [];
 
-if (existsSync(generatedDir)) {
-  const files = readdirSync(generatedDir).filter((f) => f.endsWith(".json"));
-  skills = files.map((f) => {
-    const content = readFileSync(join(generatedDir, f), "utf-8");
-    return JSON.parse(content) as SkillData;
+if (existsSync(pluginsDir)) {
+  const files = readdirSync(pluginsDir).filter((f) => f.endsWith(".json"));
+  plugins = files.map((f) => {
+    const content = readFileSync(join(pluginsDir, f), "utf-8");
+    return JSON.parse(content) as PluginData;
   });
 }
 
-// Sort skills by name for consistent ordering
-skills.sort((a, b) => a.skill.name.localeCompare(b.skill.name));
+// Sort plugins by name for consistent ordering
+plugins.sort((a, b) => a.plugin.displayName.localeCompare(b.plugin.displayName));
 ---
 
-<Base title="Skills">
+<Base title={siteConfig.name} showHeader={false}>
   <!-- Hero Section -->
   <section class="hero">
     <div class="container">
-      <p class="hero-eyebrow">Claude Code Skills</p>
-      <h1>Build better with<br /><span class="hero-accent">structured workflows</span></h1>
-      <p class="hero-description">
-        A curated collection of skills for AI-assisted development.
-        Plan thoughtfully, execute precisely, and iterate with confidence.
-      </p>
+      <h1 class="hero-slogan">{siteConfig.hero.slogan}</h1>
+      <p class="hero-subtitle">{siteConfig.hero.subtitle}</p>
     </div>
   </section>
 
   <div class="container">
-    <!-- Installation Banner -->
-    <section class="install-section">
-      <InstallBanner />
-    </section>
-
-    <!-- Skills Grid -->
+    <!-- Plugins List -->
     {
-      skills.length === 0 ? (
+      plugins.length === 0 ? (
         <section class="empty-state">
           <p>
-            No skills generated yet. Run <code>npm run generate</code> to create skill content.
+            No plugins found. Run <code>npm run generate</code> to create plugin content.
           </p>
         </section>
       ) : (
-        <section class="skills-section">
-          <header class="section-header">
-            <h2>Available Skills</h2>
-            <p>Explore each skill to learn how it can enhance your development workflow</p>
-          </header>
-
-          <div class="skills-grid">
-            {skills.map((s, index) => (
-              <SkillCard
-                name={s.skill.name}
-                displayName={s.skill.displayName}
-                tagline={s.skill.tagline}
-                shortSummary={s.skill.shortSummary}
+        <section class="plugins-section">
+          <div class="plugins-list">
+            {plugins.map((p, index) => (
+              <PluginCard
+                name={p.plugin.name}
+                displayName={p.plugin.displayName}
+                tagline={p.plugin.tagline}
+                shortDescription={p.plugin.shortDescription}
+                skillCount={p.plugin.skillCount}
+                marketplaceCommand={p.plugin.marketplaceCommand}
+                installCommand={p.plugin.installCommand}
                 index={index}
               />
             ))}
@@ -90,7 +80,7 @@ skills.sort((a, b) => a.skill.name.localeCompare(b.skill.name));
 <style>
   /* Hero Section */
   .hero {
-    padding: var(--space-16) 0 var(--space-12);
+    padding: var(--space-20) 0 var(--space-16);
     text-align: center;
     background: linear-gradient(
       180deg,
@@ -100,48 +90,24 @@ skills.sort((a, b) => a.skill.name.localeCompare(b.skill.name));
     border-bottom: 1px solid var(--color-border-subtle);
   }
 
-  .hero-eyebrow {
-    font-family: var(--font-body);
-    font-size: var(--text-sm);
-    font-weight: 600;
-    color: var(--color-accent);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wider);
-    margin-bottom: var(--space-4);
-  }
-
-  .hero h1 {
+  .hero-slogan {
     font-family: var(--font-display);
-    font-size: var(--text-5xl);
+    font-size: clamp(3rem, 8vw, 5rem);
     font-weight: 600;
-    line-height: var(--leading-tight);
-    letter-spacing: var(--tracking-tight);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
     color: var(--color-text);
     margin-bottom: var(--space-6);
-    max-width: 700px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .hero-accent {
-    color: var(--color-accent);
     font-style: italic;
   }
 
-  .hero-description {
+  .hero-subtitle {
     font-size: var(--text-lg);
     color: var(--color-text-muted);
     line-height: var(--leading-relaxed);
-    max-width: 520px;
+    max-width: 480px;
     margin: 0 auto;
-  }
-
-  /* Install Section */
-  .install-section {
-    margin-top: calc(-1 * var(--space-8));
-    margin-bottom: var(--space-12);
-    position: relative;
-    z-index: 10;
+    font-weight: 400;
   }
 
   /* Empty State */
@@ -151,7 +117,7 @@ skills.sort((a, b) => a.skill.name.localeCompare(b.skill.name));
     border-radius: var(--radius-xl);
     text-align: center;
     border: 1px solid var(--color-border);
-    margin-bottom: var(--space-12);
+    margin: var(--space-12) 0;
   }
 
   .empty-state p {
@@ -159,59 +125,44 @@ skills.sort((a, b) => a.skill.name.localeCompare(b.skill.name));
     font-size: var(--text-base);
   }
 
-  /* Skills Section */
-  .skills-section {
-    padding: var(--space-8) 0 var(--space-16);
+  /* Plugins Section */
+  .plugins-section {
+    padding: var(--space-12) 0 var(--space-16);
   }
 
-  .section-header {
-    text-align: center;
-    margin-bottom: var(--space-10);
-  }
-
-  .section-header h2 {
-    font-family: var(--font-display);
-    font-size: var(--text-2xl);
-    font-weight: 600;
-    color: var(--color-text);
-    margin-bottom: var(--space-2);
-  }
-
-  .section-header p {
-    font-size: var(--text-base);
-    color: var(--color-text-muted);
-  }
-
-  .skills-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+  .plugins-list {
+    display: flex;
+    flex-direction: column;
     gap: var(--space-6);
+    max-width: 900px;
+    margin: 0 auto;
   }
 
   @media (max-width: 768px) {
     .hero {
-      padding: var(--space-12) 0 var(--space-10);
+      padding: var(--space-14) 0 var(--space-12);
     }
 
-    .hero h1 {
+    .hero-slogan {
+      font-size: var(--text-4xl);
+    }
+
+    .hero-subtitle {
+      font-size: var(--text-lg);
+    }
+
+    .plugins-section {
+      padding: var(--space-8) 0 var(--space-12);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .hero-slogan {
       font-size: var(--text-3xl);
     }
 
-    .hero-description {
+    .hero-subtitle {
       font-size: var(--text-base);
-    }
-
-    .install-section {
-      margin-top: calc(-1 * var(--space-6));
-    }
-
-    .skills-grid {
-      grid-template-columns: 1fr;
-      gap: var(--space-4);
-    }
-
-    .skills-section {
-      padding: var(--space-6) 0 var(--space-12);
     }
   }
 </style>

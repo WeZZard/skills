@@ -3,6 +3,7 @@
  * Footer Component
  * Minimal, warm, refined footer
  */
+import { siteConfig } from "../config/site";
 ---
 
 <footer class="site-footer">
@@ -11,7 +12,7 @@
       Made with <span class="heart">♥</span> using Claude Code
     </p>
     <p class="footer-credit">
-      by <a href="https://github.com/WeZZard" target="_blank" rel="noopener noreferrer">WeZZard</a>
+      by <a href="https://github.com/WeZZard" target="_blank" rel="noopener noreferrer">{siteConfig.footer.copyright}</a>
     </p>
   </div>
 </footer>

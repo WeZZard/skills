@@ -3,13 +3,14 @@
  * Header Component
  * Minimal header with logo/brand - expandable for future navigation
  */
+import { siteConfig } from "../config/site";
 ---
 
 <header class="site-header">
   <div class="header-container">
     <a href="/" class="brand">
       <span class="brand-icon">✦</span>
-      <span class="brand-text">WeZZard Skills</span>
+      <span class="brand-text">{siteConfig.name}</span>
     </a>
 
     <!-- Placeholder for future navigation -->
