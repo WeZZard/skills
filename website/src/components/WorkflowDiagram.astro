@@ -833,7 +833,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
   /* ---- Responsive: Mobile ---- */
   @media (max-width: 768px) {
     .workflow-diagram > header {
-      padding-left: var(--space-4);
+      padding-left: 0;
     }
 
     .workflow-diagram h2 {
@@ -841,7 +841,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     }
 
     .philosophy-nav {
-      padding-left: var(--space-4);
+      padding-left: 0;
       gap: var(--space-2);
       margin-bottom: var(--space-4);
     }
@@ -853,7 +853,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
     /* Hide the entire diagram rectangle on mobile */
     .workflow-rect-wrapper {
-      padding: 0 var(--space-4);
+      padding: 0;
     }
 
     .workflow-rect {
@@ -872,9 +872,9 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
     .center-content--mobile .highlight-panel {
       background: var(--color-surface);
-      border: 1px solid var(--color-earth-200);
-      border-radius: var(--radius-lg);
-      padding: var(--space-6);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-xl);
+      padding: var(--space-5);
       box-shadow: var(--shadow-sm);
       text-align: center;
     }
@@ -894,7 +894,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     }
 
     .highlight-title {
-      font-size: var(--text-base);
+      font-size: var(--text-lg);
     }
 
     .highlight-content {
