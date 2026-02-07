@@ -28,7 +28,6 @@ jobs:
               - 'website/**'
               - 'claude/*/website.*.toml'
               - 'claude/*/skills/*/SKILL.md'
-              - 'claude/*/PLUGIN.md'
               - 'claude/*/hooks/**'
               - '.claude-plugin/marketplace.json'
 

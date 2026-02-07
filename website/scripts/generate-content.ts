@@ -108,9 +108,9 @@ function discoverPlugins(): Array<{ name: string; path: string; skillNames: stri
     if (!entry.isDirectory()) continue;
 
     const pluginPath = join(PLUGINS_DIR, entry.name);
-    const pluginMdPath = join(pluginPath, "PLUGIN.md");
+    const pluginTomlPath = join(pluginPath, "website.plugin.toml");
 
-    if (!existsSync(pluginMdPath)) continue;
+    if (!existsSync(pluginTomlPath)) continue;
 
     // Discover skills for this plugin
     const skillsDir = join(pluginPath, "skills");
@@ -148,14 +148,10 @@ async function generateSkillContent(
   client: OpenAI,
   skillName: string,
   skillMdContent: string,
-  pluginMdContent: string,
 ): Promise<SkillTomlEntry> {
   const prompt = `You are generating website content for a Claude Code plugin skill.
 
 ## Context
-
-### Plugin (PLUGIN.md)
-${pluginMdContent}
 
 ### Skill (SKILL.md for "${skillName}")
 ${skillMdContent}
@@ -284,7 +280,6 @@ async function generateMissingSkillContent(
     baseURL: "https://api.deepseek.com/v1",
   });
 
-  const pluginMdContent = readFileSync(join(plugin.path, "PLUGIN.md"), "utf-8");
   let generated = false;
 
   for (const skillName of missingSkills) {
@@ -298,7 +293,7 @@ async function generateMissingSkillContent(
 
     console.log(`  ⟳ ${skillName}: generating content via DeepSeek API...`);
     try {
-      const entry = await generateSkillContent(client, skillName, skillMdContent, pluginMdContent);
+      const entry = await generateSkillContent(client, skillName, skillMdContent);
       appendSkillToToml(skillsTomlPath, skillName, entry);
       console.log(`  ✓ ${skillName}: generated and appended to website.skills.toml`);
       generated = true;
