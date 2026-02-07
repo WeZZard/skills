@@ -362,8 +362,13 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
   /* ---- Edge Markers ---- */
   .edge-marker {
     position: absolute;
+    z-index: 10;
     transition:
       opacity var(--transition-base);
+  }
+
+  .edge-marker:hover {
+    z-index: 50;
   }
 
   /* Top edge */
@@ -558,10 +563,15 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     white-space: nowrap;
     opacity: 0;
     pointer-events: none;
+    z-index: 10;
     transition:
       opacity var(--transition-base),
       transform var(--transition-base),
       box-shadow var(--transition-fast);
+  }
+
+  .addition-callout:hover {
+    z-index: 50;
   }
 
   .addition-callout.is-active {
@@ -729,6 +739,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     display: flex;
     align-items: center;
     justify-content: center;
+    z-index: 1;
   }
 
   .highlight-panel {
