@@ -10,7 +10,7 @@ interface Props {
   showHeader?: boolean;
 }
 
-const { title, description = siteConfig.description, showHeader = true } = Astro.props;
+const { title, description = siteConfig.site.description, showHeader = true } = Astro.props;
 ---
 
 <!doctype html>
@@ -19,7 +19,7 @@ const { title, description = siteConfig.description, showHeader = true } = Astro
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
-    <title>{title} | {siteConfig.name}</title>
+    <title>{title} | {siteConfig.site.name}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -141,6 +141,12 @@ const { title, description = siteConfig.description, showHeader = true } = Astro
     padding: 0 var(--space-6);
   }
 
+  .container-wide {
+    max-width: var(--container-wide);
+    margin: 0 auto;
+    padding: 0 var(--space-6);
+  }
+
   @media (max-width: 768px) {
     h1 {
       font-size: var(--text-3xl);
@@ -151,7 +157,8 @@ const { title, description = siteConfig.description, showHeader = true } = Astro
     }
 
     .container,
-    .container-narrow {
+    .container-narrow,
+    .container-wide {
       padding: 0 var(--space-4);
     }
   }

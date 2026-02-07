@@ -37,7 +37,7 @@ if (existsSync(pluginsDir)) {
 plugins.sort((a, b) => a.plugin.displayName.localeCompare(b.plugin.displayName));
 ---
 
-<Base title={siteConfig.name} showHeader={false}>
+<Base title={siteConfig.site.name} showHeader={false}>
   <!-- Hero Section -->
   <section class="hero">
     <div class="container">

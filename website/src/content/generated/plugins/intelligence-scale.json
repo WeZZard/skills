@@ -1,12 +1,12 @@
 {
   "sourceHash": "fd5eb79755c85bfc",
-  "generatedAt": "2026-02-07T04:11:23.030Z",
+  "generatedAt": "2026-02-07T04:55:21.508Z",
   "plugin": {
     "name": "intelligence-scale",
     "displayName": "Intelligence Scale",
     "tagline": "Structured workflows for AI-assisted development",
     "shortDescription": "Structured workflows for predictable, high-quality AI-assisted development with Claude Code.",
-    "fullDescription": "Intelligence Scale provides curated skills that enforce structured workflows for planning, execution, and verification in AI-assisted development. It ensures development is predictable, traceable, and maintains quality through explicit documentation, systematic progress, and built-in verification while preserving human oversight.",
+    "fullDescription": "Intelligence Scale provides curated skills that enforce structured workflows for planning, execution, and verification in AI-assisted development. It ensures development is predictable, traceable, and maintains quality through explicit documentation, systematic progress, and built-in verification.",
     "useCases": [
       {
         "title": "Project Planning",
@@ -14,11 +14,11 @@
       },
       {
         "title": "Structured Execution",
-        "description": "Follow development plans systematically with built-in parallelism and verification gates to execute tasks efficiently while respecting dependencies."
+        "description": "Follow development plans systematically with built-in parallelism and verification gates while respecting task dependencies."
       },
       {
         "title": "Error Recovery",
-        "description": "Handle failures gracefully with documented recovery procedures to prevent goal drift when things go wrong during development."
+        "description": "Handle failures gracefully with documented recovery procedures to prevent goal drift when things go wrong."
       },
       {
         "title": "Quality Assurance",
@@ -26,7 +26,7 @@
       },
       {
         "title": "Idea Exploration",
-        "description": "Brainstorm and refine ideas through collaborative dialogue before committing to implementation, ensuring well-thought-out solutions."
+        "description": "Brainstorm and refine ideas through collaborative dialogue before committing to implementation."
       }
     ],
     "skillCount": 6,
@@ -38,7 +38,7 @@
       "using-skills",
       "write-plan"
     ],
-    "marketplaceCommand": "/plugin marketplace add Wezzard/skills",
+    "marketplaceCommand": "/plugin marketplace add WeZZard/skills",
     "installCommand": "/plugin install intelligence-scale@wezzard-skills"
   }
 }

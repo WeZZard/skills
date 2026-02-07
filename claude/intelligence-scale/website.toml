@@ -1,0 +1,39 @@
+# Intelligence Scale - Website Configuration
+# This file configures the plugin detail page content
+
+[philosophy]
+intro = """
+I believe we can scale our intelligence with deterministic signals, natural language-based judgments, and skill triggers. When I tried to scale my intelligence this way, I found some limits in the current Claude Code implementation—so I designed several skills to address those issues.
+"""
+
+[[philosophy.sections]]
+title = "Addressing the Review Burden"
+content = """
+The first challenge is the review burden. When executing long-running tasks, plans become too lengthy and difficult to understand. Even Claude Code might generate plans you can't fully grasp—especially when using it to explore unfamiliar territory.
+
+Traditional plans are built for humans who imagine based on existing situations: they describe the current state and what actions will change it. But living in this context can cause hallucinations in large language models.
+"""
+
+[[philosophy.sections]]
+title = "Polished Plan Structure"
+content = """
+Intelligence Scale uses a refined plan structure designed to reduce review pressure on human beings. Plans are organized with clear task dependencies, explicit verification steps, and human verification gates for subjective decisions.
+"""
+
+[[philosophy.sections]]
+title = "Maximizing Task Parallelism"
+content = """
+The latest Opus model excels at executing concurrent tasks. Intelligence Scale prompts Claude Code to maximize task parallelism whenever possible, spawning subagents for independent work while respecting task dependencies.
+"""
+
+[[philosophy.sections]]
+title = "Error Recovery"
+content = """
+While the latest Opus model has strong error resilience, recovering from errors still has common cases and edge cases that need attention. Intelligence Scale hints Claude Code to check the session plan when it encounters repeated errors, providing a structured path back to productive work.
+"""
+
+[[philosophy.sections]]
+title = "Plan Execution Audit"
+content = """
+When a plan is executed, some parts might not be fully implemented. The audit-plan skill verifies plan execution compliance, measuring the gap between the existing implementation and the goals described in the plan.
+"""

@@ -1,0 +1,13 @@
+# Site Configuration
+# Edit this file to customize site-wide content
+
+[site]
+name = "WeZZard Skills"
+description = "Claude Code skills by WeZZard"
+
+[hero]
+slogan = "Craft with Intention"
+subtitle = "Thoughtful skills for AI-assisted development"
+
+[footer]
+copyright = "WeZZard"

@@ -147,7 +147,7 @@ async function generatePluginContent(
   // Generate install commands from marketplace config
   const marketplaceName = marketplaceConfig.name;
   const ownerName = marketplaceConfig.owner.name;
-  const marketplaceCommand = `/plugin marketplace add ${ownerName.charAt(0).toUpperCase() + ownerName.slice(1)}/skills`;
+  const marketplaceCommand = `/plugin marketplace add ${ownerName}/skills`;
   const installCommand = `/plugin install ${pluginName}@${marketplaceName}`;
 
   const prompt = `You are analyzing a Claude Code plugin definition. Generate a user-friendly explanation for a plugin gallery website.
