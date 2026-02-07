@@ -6,6 +6,70 @@ intro = """
 I believe we can scale our intelligence with deterministic signals, natural language-based judgments, and skill triggers. When I tried to scale my intelligence this way, I found some limits in the current Claude Code implementation—so I designed several skills to address those issues.
 """
 
+# ============================================================================
+# Diagram: Event markers on the rectangle edges
+# Each event has: id, edge (top/right/bottom/left), position (0-1), label
+# ============================================================================
+
+[[philosophy.events]]
+id = "SessionStart"
+edge = "top"
+position = 0.33
+label = "Session Start"
+
+[[philosophy.events]]
+id = "UserPromptSubmit"
+edge = "top"
+position = 0.67
+label = "User Prompt Submit"
+
+[[philosophy.events]]
+id = "PreToolUse"
+edge = "right"
+position = 0.25
+label = "Pre Tool Use"
+
+[[philosophy.events]]
+id = "PostToolUse"
+edge = "right"
+position = 0.5
+label = "Post Tool Use"
+
+[[philosophy.events]]
+id = "PostToolUseFailure"
+edge = "right"
+position = 0.75
+label = "Post Tool Use Failure"
+
+[[philosophy.events]]
+id = "ExitPlanMode"
+edge = "bottom"
+position = 0.33
+label = "Exit Plan Mode"
+
+[[philosophy.events]]
+id = "EnterPlanMode"
+edge = "bottom"
+position = 0.67
+label = "Enter Plan Mode"
+
+[[philosophy.events]]
+id = "SubagentStop"
+edge = "left"
+position = 0.33
+label = "Subagent Stop"
+
+[[philosophy.events]]
+id = "SubagentSpawn"
+edge = "left"
+position = 0.67
+label = "Subagent Spawn"
+
+# ============================================================================
+# Philosophy sections
+# Each section defines: title, content, highlight, additions, related_skills
+# ============================================================================
+
 [[philosophy.sections]]
 title = "Addressing the Review Burden"
 content = """
@@ -19,6 +83,15 @@ comparison_before_label = "Traditional Plan"
 comparison_before = "Describe current state → list changes → hope for the best"
 comparison_after_label = "Intelligence Scale Plan"
 comparison_after = "Structured template → verification gates → evidence-based execution"
+related_skills = ["using-skills", "brainstorming"]
+
+[[philosophy.sections.additions]]
+id = "session-start-context"
+event = "SessionStart"
+type = "hook"
+label = "Context Injection"
+description = "Injects skill context and session state on startup"
+effect = "Reduces review burden by pre-loading relevant context"
 
 [[philosophy.sections]]
 title = "Polished Plan Structure"
@@ -27,6 +100,23 @@ Intelligence Scale uses a refined plan structure designed to reduce review press
 """
 highlight_title = "Structured Plan Template"
 highlight_content = "Plans include task dependencies, verification steps, human verification gates, and explicit file paths—reducing ambiguity and review effort."
+related_skills = ["write-plan", "brainstorming"]
+
+[[philosophy.sections.additions]]
+id = "enter-plan-mode-structure"
+event = "EnterPlanMode"
+type = "hook"
+label = "Plan Mode Entry"
+description = "Triggers structured plan template when entering plan mode"
+effect = "Ensures plans follow a reviewable, consistent structure"
+
+[[philosophy.sections.additions]]
+id = "post-tool-plan-check"
+event = "PostToolUse"
+type = "hook"
+label = "Post-Plan Validation"
+description = "Validates plan structure after plan mode tool use"
+effect = "Catches structural issues early in the planning phase"
 
 [[philosophy.sections]]
 title = "Maximizing Task Parallelism"
@@ -35,6 +125,23 @@ The latest Opus model excels at executing concurrent tasks. Intelligence Scale p
 """
 highlight_title = "Automatic Parallelism"
 highlight_content = "Every user prompt triggers a reminder to spawn subagents for independent tasks, ensuring maximum throughput without manual orchestration."
+related_skills = ["execute-plan"]
+
+[[philosophy.sections.additions]]
+id = "user-prompt-parallelism"
+event = "UserPromptSubmit"
+type = "hook"
+label = "Parallelism Reminder"
+description = "Reminds to spawn subagents for independent tasks"
+effect = "Maximizes concurrent execution of independent work"
+
+[[philosophy.sections.additions]]
+id = "subagent-spawn-parallel"
+event = "SubagentSpawn"
+type = "event"
+label = "Subagent Spawning"
+description = "Parallel task execution via subagent spawning"
+effect = "Enables concurrent work on independent plan tasks"
 
 [[philosophy.sections]]
 title = "Error Recovery"
@@ -47,6 +154,15 @@ comparison_before_label = "Without Recovery"
 comparison_before = "Tool fails → guess new params → drift from goal → waste context"
 comparison_after_label = "With Recovery"
 comparison_after = "Tool fails → check plan → verify alignment → fix specific issue"
+related_skills = ["recover-from-errors"]
+
+[[philosophy.sections.additions]]
+id = "tool-failure-recovery"
+event = "PostToolUseFailure"
+type = "hook"
+label = "Error Recovery Hook"
+description = "Triggers error recovery procedure on tool failures"
+effect = "Prevents goal drift by re-aligning to the session plan"
 
 [[philosophy.sections]]
 title = "Plan Execution Audit"
@@ -55,3 +171,12 @@ When a plan is executed, some parts might not be fully implemented. The audit-pl
 """
 highlight_title = "Compliance Verification"
 highlight_content = "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
+related_skills = ["audit-plan"]
+
+[[philosophy.sections.additions]]
+id = "subagent-stop-audit"
+event = "SubagentStop"
+type = "hook"
+label = "Post-Subagent Audit"
+description = "Checks plan compliance when subagent work completes"
+effect = "Verifies each parallel task met its planned objectives"

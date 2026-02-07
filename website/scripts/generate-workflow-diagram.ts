@@ -39,7 +39,7 @@ interface HooksConfig {
   >;
 }
 
-interface PhilosophySectionAddition {
+interface TomlAddition {
   id: string;
   event: string;
   type: string;
@@ -48,36 +48,31 @@ interface PhilosophySectionAddition {
   effect: string;
 }
 
-interface PhilosophySectionHighlight {
-  type: string;
-  title: string;
-  content: string;
-  comparison?: {
-    before_label: string;
-    before: string;
-    after_label: string;
-    after: string;
-  };
+interface TomlEvent {
+  id: string;
+  edge: "top" | "right" | "bottom" | "left";
+  position: number;
+  label: string;
 }
 
-interface PhilosophySection {
-  id?: string;
+interface TomlSection {
   title: string;
   content: string;
-  additions?: PhilosophySectionAddition[];
-  highlight?: PhilosophySectionHighlight;
   highlight_title?: string;
   highlight_content?: string;
   comparison_before_label?: string;
   comparison_before?: string;
   comparison_after_label?: string;
   comparison_after?: string;
+  related_skills?: string[];
+  additions?: TomlAddition[];
 }
 
 interface WebsiteConfig {
   philosophy: {
     intro: string;
-    sections: PhilosophySection[];
+    events?: TomlEvent[];
+    sections: TomlSection[];
   };
 }
 
@@ -87,6 +82,18 @@ interface DiagramEvent {
   position: number;
   label: string;
   tooltip: string;
+}
+
+interface PhilosophyHighlight {
+  type: string;
+  title: string;
+  content: string;
+  comparison?: {
+    before_label: string;
+    before: string;
+    after_label: string;
+    after: string;
+  };
 }
 
 interface WorkflowDiagramData {
@@ -101,13 +108,13 @@ interface WorkflowDiagramData {
     title: string;
     content: string;
     enhancedContent: string;
-    additions: PhilosophySectionAddition[];
-    highlight: PhilosophySectionHighlight;
+    additions: TomlAddition[];
+    highlight: PhilosophyHighlight;
     relatedSkills: string[];
   }>;
 }
 
-// --- Utility functions (same patterns as generate-content.ts) ---
+// --- Utility functions ---
 
 function computeHash(content: string): string {
   return createHash("sha256").update(content).digest("hex").slice(0, 16);
@@ -123,9 +130,6 @@ function getExistingHash(outputPath: string): string | null {
   }
 }
 
-/**
- * Convert a title string to a kebab-case id
- */
 function toId(title: string): string {
   return title
     .toLowerCase()
@@ -176,262 +180,39 @@ function computeCombinedHash(
   return computeHash(combined);
 }
 
-// --- Static diagram structure ---
+// --- Build highlight from TOML config ---
 
-function buildStaticDiagramEvents(): Omit<DiagramEvent, "tooltip">[] {
-  return [
-    // Top edge: SessionStart, UserPromptSubmit
-    {
-      id: "SessionStart",
-      edge: "top" as const,
-      position: 0.33,
-      label: "Session Start",
-    },
-    {
-      id: "UserPromptSubmit",
-      edge: "top" as const,
-      position: 0.67,
-      label: "User Prompt Submit",
-    },
-    // Right edge: PreToolUse, PostToolUse, PostToolUseFailure at 1/4, 1/2, 3/4
-    {
-      id: "PreToolUse",
-      edge: "right" as const,
-      position: 0.25,
-      label: "Pre Tool Use",
-    },
-    {
-      id: "PostToolUse",
-      edge: "right" as const,
-      position: 0.5,
-      label: "Post Tool Use",
-    },
-    {
-      id: "PostToolUseFailure",
-      edge: "right" as const,
-      position: 0.75,
-      label: "Post Tool Use Failure",
-    },
-    // Bottom edge: ExitPlanMode, EnterPlanMode
-    {
-      id: "ExitPlanMode",
-      edge: "bottom" as const,
-      position: 0.33,
-      label: "Exit Plan Mode",
-    },
-    {
-      id: "EnterPlanMode",
-      edge: "bottom" as const,
-      position: 0.67,
-      label: "Enter Plan Mode",
-    },
-    // Left edge: SubagentStop, SubagentSpawn at 1/3, 2/3
-    {
-      id: "SubagentStop",
-      edge: "left" as const,
-      position: 0.33,
-      label: "Subagent Stop",
-    },
-    {
-      id: "SubagentSpawn",
-      edge: "left" as const,
-      position: 0.67,
-      label: "Subagent Spawn",
-    },
-  ];
-}
+function buildHighlight(section: TomlSection): PhilosophyHighlight {
+  const highlight: PhilosophyHighlight = {
+    type: section.comparison_before ? "insight" : "feature",
+    title: section.highlight_title || section.title,
+    content: section.highlight_content || section.content.slice(0, 200),
+  };
 
-// --- Build highlight from TOML config or fallback to defaults ---
-
-function buildHighlightFromConfig(section: PhilosophySection): PhilosophySectionHighlight {
-  // If highlight is already provided in the section, use it
-  if (section.highlight) {
-    return section.highlight;
-  }
-
-  // If highlight fields are provided in TOML, build from them
-  if (section.highlight_title && section.highlight_content) {
-    const highlight: PhilosophySectionHighlight = {
-      type: section.comparison_before ? "insight" : "feature",
-      title: section.highlight_title,
-      content: section.highlight_content,
+  if (
+    section.comparison_before_label &&
+    section.comparison_before &&
+    section.comparison_after_label &&
+    section.comparison_after
+  ) {
+    highlight.comparison = {
+      before_label: section.comparison_before_label,
+      before: section.comparison_before,
+      after_label: section.comparison_after_label,
+      after: section.comparison_after,
     };
-
-    // Add comparison if all comparison fields are present
-    if (
-      section.comparison_before_label &&
-      section.comparison_before &&
-      section.comparison_after_label &&
-      section.comparison_after
-    ) {
-      highlight.comparison = {
-        before_label: section.comparison_before_label,
-        before: section.comparison_before,
-        after_label: section.comparison_after_label,
-        after: section.comparison_after,
-      };
-    }
-
-    return highlight;
   }
 
-  // Fallback to default highlight
-  return getDefaultHighlight(section.title);
+  return highlight;
 }
 
-// --- Default additions and highlights for philosophy sections ---
-
-function getDefaultAdditions(sectionTitle: string): PhilosophySectionAddition[] {
-  const defaults: Record<string, PhilosophySectionAddition[]> = {
-    "Addressing the Review Burden": [
-      {
-        id: "session-start-context",
-        event: "SessionStart",
-        type: "hook",
-        label: "Context Injection",
-        description: "Injects skill context and session state on startup",
-        effect: "Reduces review burden by pre-loading relevant context",
-      },
-    ],
-    "Polished Plan Structure": [
-      {
-        id: "enter-plan-mode-structure",
-        event: "EnterPlanMode",
-        type: "hook",
-        label: "Plan Mode Entry",
-        description: "Triggers structured plan template when entering plan mode",
-        effect: "Ensures plans follow a reviewable, consistent structure",
-      },
-      {
-        id: "post-tool-plan-check",
-        event: "PostToolUse",
-        type: "hook",
-        label: "Post-Plan Validation",
-        description: "Validates plan structure after plan mode tool use",
-        effect: "Catches structural issues early in the planning phase",
-      },
-    ],
-    "Maximizing Task Parallelism": [
-      {
-        id: "user-prompt-parallelism",
-        event: "UserPromptSubmit",
-        type: "hook",
-        label: "Parallelism Reminder",
-        description: "Reminds to spawn subagents for independent tasks",
-        effect: "Maximizes concurrent execution of independent work",
-      },
-      {
-        id: "subagent-spawn-parallel",
-        event: "SubagentSpawn",
-        type: "event",
-        label: "Subagent Spawning",
-        description: "Parallel task execution via subagent spawning",
-        effect: "Enables concurrent work on independent plan tasks",
-      },
-    ],
-    "Error Recovery": [
-      {
-        id: "tool-failure-recovery",
-        event: "PostToolUseFailure",
-        type: "hook",
-        label: "Error Recovery Hook",
-        description: "Triggers error recovery procedure on tool failures",
-        effect: "Prevents goal drift by re-aligning to the session plan",
-      },
-    ],
-    "Plan Execution Audit": [
-      {
-        id: "subagent-stop-audit",
-        event: "SubagentStop",
-        type: "hook",
-        label: "Post-Subagent Audit",
-        description: "Checks plan compliance when subagent work completes",
-        effect: "Verifies each parallel task met its planned objectives",
-      },
-    ],
-  };
-
-  return defaults[sectionTitle] || [];
-}
-
-function getDefaultHighlight(sectionTitle: string): PhilosophySectionHighlight {
-  const defaults: Record<string, PhilosophySectionHighlight> = {
-    "Addressing the Review Burden": {
-      type: "insight",
-      title: "Why Plans Fail",
-      content:
-        "Traditional plans describe state transitions for humans who imagine outcomes. LLMs living in this context hallucinate because they lack grounded state awareness.",
-      comparison: {
-        before_label: "Traditional Plan",
-        before: "Describe current state → list changes → hope for the best",
-        after_label: "Intelligence Scale Plan",
-        after:
-          "Structured template → verification gates → evidence-based execution",
-      },
-    },
-    "Polished Plan Structure": {
-      type: "feature",
-      title: "Structured Plan Template",
-      content:
-        "Plans include task dependencies, verification steps, human verification gates, and explicit file paths—reducing ambiguity and review effort.",
-    },
-    "Maximizing Task Parallelism": {
-      type: "feature",
-      title: "Automatic Parallelism",
-      content:
-        "Every user prompt triggers a reminder to spawn subagents for independent tasks, ensuring maximum throughput without manual orchestration.",
-    },
-    "Error Recovery": {
-      type: "insight",
-      title: "Preventing Goal Drift",
-      content:
-        "When tools fail, the natural instinct is to generalize or guess. Intelligence Scale forces re-alignment to the plan, preventing cascading errors.",
-      comparison: {
-        before_label: "Without Recovery",
-        before: "Tool fails → guess new params → drift from goal → waste context",
-        after_label: "With Recovery",
-        after:
-          "Tool fails → check plan → verify alignment → fix specific issue",
-      },
-    },
-    "Plan Execution Audit": {
-      type: "feature",
-      title: "Compliance Verification",
-      content:
-        "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing.",
-    },
-  };
-
-  return (
-    defaults[sectionTitle] || {
-      type: "insight",
-      title: sectionTitle,
-      content: "Key insight for this philosophy section.",
-    }
-  );
-}
-
-// --- Determine related skills for each philosophy section ---
-
-function getRelatedSkills(sectionTitle: string): string[] {
-  const mapping: Record<string, string[]> = {
-    "Addressing the Review Burden": ["using-skills", "brainstorming"],
-    "Polished Plan Structure": ["write-plan", "brainstorming"],
-    "Maximizing Task Parallelism": ["execute-plan"],
-    "Error Recovery": ["recover-from-errors"],
-    "Plan Execution Audit": ["audit-plan"],
-  };
-
-  return mapping[sectionTitle] || [];
-}
-
-// --- AI generation ---
+// --- AI generation (tooltips and enhanced content only) ---
 
 async function generateTooltipsAndEnhancedContent(
   client: OpenAI,
-  events: Omit<DiagramEvent, "tooltip">[],
+  events: TomlEvent[],
   hooksConfig: HooksConfig,
-  sections: PhilosophySection[],
+  sections: TomlSection[],
   skills: Array<{ name: string; content: string }>
 ): Promise<{
   tooltips: Record<string, string>;
@@ -467,15 +248,7 @@ Generate a JSON object with two fields:
 Output format:
 {
   "tooltips": {
-    "SessionStart": "...",
-    "UserPromptSubmit": "...",
-    "PreToolUse": "...",
-    "PostToolUse": "...",
-    "PostToolUseFailure": "...",
-    "ExitPlanMode": "...",
-    "EnterPlanMode": "...",
-    "SubagentStop": "...",
-    "SubagentSpawn": "..."
+${events.map((e) => `    "${e.id}": "..."`).join(",\n")}
   },
   "enhancedContents": {
     "Section Title": "Enhanced content..."
@@ -528,6 +301,14 @@ async function main() {
   console.log(`  Found ${websiteConfig.philosophy.sections.length} philosophy section(s)`);
   console.log(`  Found ${skills.length} skill(s)`);
 
+  // Read events from TOML config
+  const tomlEvents = websiteConfig.philosophy.events || [];
+  if (tomlEvents.length === 0) {
+    console.error("  ✗ No events defined in website.toml [philosophy.events]");
+    process.exit(1);
+  }
+  console.log(`  Found ${tomlEvents.length} diagram event(s) in TOML`);
+
   // Compute combined hash for cache invalidation
   const skillContents = skills.map((s) => s.content);
   const currentHash = computeCombinedHash(hooksRaw, websiteRaw, skillContents);
@@ -543,37 +324,31 @@ async function main() {
 
   console.log(`\n  ⟳ Sources changed (hash: ${currentHash}), regenerating...`);
 
-  // Build static diagram events
-  const staticEvents = buildStaticDiagramEvents();
-
-  // Call DeepSeek API
+  // Call DeepSeek API for tooltips and enhanced content
   console.log("  ⟳ Calling DeepSeek API for tooltips and enhanced content...");
 
   try {
     const { tooltips, enhancedContents } =
       await generateTooltipsAndEnhancedContent(
         client,
-        staticEvents,
+        tomlEvents,
         hooksConfig,
         websiteConfig.philosophy.sections,
         skills
       );
 
     // Assemble diagram events with tooltips
-    const diagramEvents: DiagramEvent[] = staticEvents.map((event) => ({
+    const diagramEvents: DiagramEvent[] = tomlEvents.map((event) => ({
       ...event,
       tooltip: tooltips[event.id] || `${event.label} event`,
     }));
 
-    // Assemble philosophy sections
+    // Assemble philosophy sections — all content from TOML
     const philosophies = websiteConfig.philosophy.sections.map((section) => {
-      const id = section.id || toId(section.title);
-      const additions =
-        section.additions && section.additions.length > 0
-          ? section.additions
-          : getDefaultAdditions(section.title);
-      const highlight = buildHighlightFromConfig(section);
-      const relatedSkills = getRelatedSkills(section.title);
+      const id = toId(section.title);
+      const additions = section.additions || [];
+      const highlight = buildHighlight(section);
+      const relatedSkills = section.related_skills || [];
       const enhancedContent =
         enhancedContents[section.title] || section.content;
 
