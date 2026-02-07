@@ -22,7 +22,7 @@ If you host on GitHub later:
 
 ```bash
 /plugin install wezzard@wezzard-skills
-/plugin install recall@wezzard-skills
+/plugin install walkthrough@wezzard-skills
 ```
 
 3. Run a skill:
@@ -34,10 +34,10 @@ If you host on GitHub later:
 /intelligence-scale:execute-plan
 /intelligence-scale:recover-from-errors
 
-# recall plugin skills
-/recall:run
-/recall:analyze
-/recall:ada-doctor
+# walkthrough plugin skills
+/walkthrough:run
+/walkthrough:analyze
+/walkthrough:ada-doctor
 ```
 
 ## Available Plugins
@@ -53,7 +53,7 @@ Development workflow skills for planning and execution.
 | `execute-plan`        | Execute a plan file step by step                                   |
 | `recover-from-errors` | Recover from errors during execution                               |
 
-### recall
+### walkthrough
 
 Debugging skills that capture and analyze program execution with voice, screen, and trace correlation. **Automatically fetched from [GitHub Releases](https://github.com/WeZZard/Recall/releases)**.
 
@@ -61,7 +61,7 @@ Debugging skills that capture and analyze program execution with voice, screen, 
 | ------------ | -------------------------------------------------------------------------------- |
 | `run`        | Capture a debugging session with voice narration, screen recording, and tracing  |
 | `analyze`    | Analyze captured sessions using voice-first intent extraction and evidence correlation |
-| `ada-doctor` | Run system diagnostics to verify Recall dependencies and configuration           |
+| `ada-doctor` | Run system diagnostics to verify Walkthrough dependencies and configuration           |
 
 ## Repo layout
 
@@ -75,7 +75,7 @@ Notes:
 
 - Only `plugin.json` lives inside `.claude-plugin/`. All other folders stay at the plugin root.
 - Skills are namespaced as `/<plugin-name>:<skill-name>`.
-- The recall plugin is fetched from GitHub Releases (not stored in this repo).
+- The walkthrough plugin is fetched from GitHub Releases (not stored in this repo).
 
 ## Add a new skill
 
