@@ -147,8 +147,8 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
         })
       )}
 
-      {/* Center content area */}
-      <div class="center-content">
+      {/* Center content area (desktop: inside rect, mobile: below rect) */}
+      <div class="center-content center-content--desktop">
         {philosophies.map((phil) => (
           <div
             class:list={["highlight-panel", { "is-active": phil.id === defaultId }]}
@@ -183,6 +183,42 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
         ))}
       </div>
     </div>
+
+    {/* Mobile highlight cards (below the rect, visible only on mobile) */}
+    <div class="center-content center-content--mobile">
+      {philosophies.map((phil) => (
+        <div
+          class:list={["highlight-panel", { "is-active": phil.id === defaultId }]}
+          data-philosophy={phil.id}
+        >
+          <h4 class="highlight-title">{phil.highlight.title}</h4>
+          <p class="highlight-content">{phil.highlight.content}</p>
+          {phil.highlight.comparison && (
+            <div class="highlight-comparison">
+              <div class="comparison-item">
+                <div class="comparison-label">{phil.highlight.comparison.before_label}</div>
+                <div class="comparison-text">{phil.highlight.comparison.before}</div>
+              </div>
+              <div class="comparison-arrow">↓</div>
+              <div class="comparison-item">
+                <div class="comparison-label">{phil.highlight.comparison.after_label}</div>
+                <div class="comparison-text">{phil.highlight.comparison.after}</div>
+              </div>
+            </div>
+          )}
+          {phil.relatedSkills.length > 0 && (
+            <div class="related-skills">
+              <span class="related-skills-label">Related Skills</span>
+              {phil.relatedSkills.map((skill) => (
+                <a class="skill-tag" href={`/plugins/intelligence-scale/skills/${skill}/`}>
+                  {skill}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
   </div>
 
   {/* Embedded mapping of philosophy IDs to related event IDs for the script */}
@@ -202,6 +238,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
       const rect = diagram.querySelector<HTMLElement>("[data-workflow-rect]");
       const markers = diagram.querySelectorAll<HTMLElement>("[data-event]");
       const additions = diagram.querySelectorAll<HTMLElement>("[data-addition]");
+      // Select panels from both desktop and mobile containers
       const panels = diagram.querySelectorAll<HTMLElement>(".highlight-panel");
 
       if (!buttons.length || !panels.length || !rect) return;
@@ -653,7 +690,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
   }
 
   /* ---- Center Content ---- */
-  .center-content {
+  .center-content--desktop {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -664,6 +701,10 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     align-items: center;
     justify-content: center;
     z-index: 1;
+  }
+
+  .center-content--mobile {
+    display: none;
   }
 
   .highlight-panel {
@@ -810,21 +851,103 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
       padding: var(--space-1) var(--space-3);
     }
 
+    /* Rect wrapper: tighter padding, vertical stack */
     .workflow-rect-wrapper {
-      padding: var(--space-8) var(--space-4);
+      padding: var(--space-6) var(--space-4);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
     }
 
+    /* Rectangle: fixed aspect, no center content overlay */
     .workflow-rect {
       aspect-ratio: auto;
-      min-height: 400px;
+      min-height: 280px;
+    }
+
+    /* Hide desktop center content on mobile */
+    .center-content--desktop {
+      display: none;
+    }
+
+    /* Show mobile center content below the rect */
+    .center-content--mobile {
+      display: block;
+    }
+
+    .center-content--mobile .highlight-panel {
+      background: var(--color-surface);
+      border: 1px solid var(--color-earth-200);
+      border-radius: var(--radius-lg);
+      padding: var(--space-6);
+      box-shadow: var(--shadow-sm);
+      text-align: center;
+    }
+
+    .center-content--mobile .highlight-panel.is-active {
+      display: block;
+      animation: fadeIn var(--transition-base) ease-out;
+    }
+
+    .center-content--mobile .highlight-comparison {
+      grid-template-columns: 1fr;
+      gap: var(--space-2);
+    }
+
+    .center-content--mobile .comparison-arrow {
+      transform: none;
+    }
+
+    /* Move event labels inside the rectangle on mobile */
+    .edge-marker.edge-top .marker-label {
+      top: 8px;
+      transform: translateX(-50%);
+    }
+
+    .edge-marker.edge-bottom .marker-label {
+      bottom: 8px;
+      top: auto;
+      transform: translateX(-50%);
+    }
+
+    .edge-marker.edge-right .marker-label {
+      left: auto;
+      right: 8px;
+      transform: translateY(-50%);
+      text-align: right;
+    }
+
+    .edge-marker.edge-left .marker-label {
+      right: auto;
+      left: 8px;
+      transform: translateY(-50%);
+      text-align: left;
     }
 
     .marker-label {
       font-size: var(--text-xs);
     }
 
-    .center-content {
-      width: 80%;
+    /* Smaller marker circles on mobile */
+    .marker-circle {
+      width: 14px;
+      height: 14px;
+    }
+
+    .marker-dot {
+      width: 5px;
+      height: 5px;
+    }
+
+    /* Addition callouts: smaller on mobile */
+    .addition-callout {
+      font-size: var(--text-xs);
+      padding: var(--space-1) var(--space-3);
+    }
+
+    /* Hide addition popovers on mobile (content is in the card below) */
+    .addition-popover {
+      display: none;
     }
 
     .highlight-title {
@@ -833,15 +956,6 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
 
     .highlight-content {
       font-size: var(--text-xs);
-    }
-
-    .highlight-comparison {
-      grid-template-columns: 1fr;
-      gap: var(--space-2);
-    }
-
-    .comparison-arrow {
-      transform: rotate(90deg);
     }
   }
 
