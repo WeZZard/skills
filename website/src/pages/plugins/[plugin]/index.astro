@@ -3,7 +3,6 @@ import Base from "../../../layouts/Base.astro";
 import Breadcrumb from "../../../components/Breadcrumb.astro";
 import SkillCard from "../../../components/SkillCard.astro";
 import WorkflowDiagram from "../../../components/WorkflowDiagram.astro";
-import { loadPluginWebsiteConfig } from "../../../config/site";
 import { readdirSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 
@@ -83,9 +82,6 @@ const breadcrumbItems = [
   { label: plugin.displayName },
 ];
 
-// Get plugin-specific content from TOML config
-const websiteConfig = loadPluginWebsiteConfig(plugin.name);
-
 // Load workflow diagram data
 const workflowPath = join(process.cwd(), `src/content/generated/workflow/${plugin.name}.json`);
 const workflowData = existsSync(workflowPath)
@@ -149,24 +145,8 @@ const workflowData = existsSync(workflowPath)
 
   <!-- Regular container for content sections -->
   <div class="container">
-    {workflowData ? (
+    {workflowData && (
       <WorkflowDiagram diagramData={workflowData} />
-    ) : websiteConfig?.philosophy && (
-      <section class="philosophy-section">
-        <header class="philosophy-header">
-          <h2 class="philosophy-title">Design Philosophy</h2>
-          <p class="philosophy-intro">{websiteConfig.philosophy.intro}</p>
-        </header>
-
-        <div class="philosophy-grid">
-          {websiteConfig.philosophy.sections.map((section, index) => (
-            <article class="philosophy-card" style={`--delay: ${index * 80}ms`}>
-              <h3>{section.title}</h3>
-              <p>{section.content}</p>
-            </article>
-          ))}
-        </div>
-      </section>
     )}
 
     <!-- Skills Section -->
@@ -348,73 +328,6 @@ const workflowData = existsSync(workflowPath)
     opacity: 1;
   }
 
-  /* Philosophy Section */
-  .philosophy-section {
-    margin-bottom: var(--space-16);
-  }
-
-  .philosophy-header {
-    /* Align with card content by adding same padding as cards */
-    padding-left: var(--space-6);
-    margin-bottom: var(--space-8);
-  }
-
-  .philosophy-title {
-    font-family: var(--font-display);
-    font-size: var(--text-3xl);
-    font-weight: 600;
-    color: var(--color-text);
-    margin-bottom: var(--space-4);
-  }
-
-  .philosophy-intro {
-    font-size: var(--text-xl);
-    color: var(--color-text-secondary);
-    line-height: var(--leading-relaxed);
-  }
-
-  .philosophy-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-6);
-  }
-
-  .philosophy-card {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: var(--space-6);
-    animation: fadeIn 0.4s ease forwards;
-    animation-delay: var(--delay);
-    opacity: 0;
-    transition: border-color var(--transition-base), box-shadow var(--transition-base);
-  }
-
-  .philosophy-card:hover {
-    border-color: var(--color-accent);
-    box-shadow: var(--shadow-md);
-  }
-
-  @keyframes fadeIn {
-    to {
-      opacity: 1;
-    }
-  }
-
-  .philosophy-card h3 {
-    font-family: var(--font-display);
-    font-size: var(--text-xl);
-    font-weight: 600;
-    color: var(--color-text);
-    margin-bottom: var(--space-3);
-  }
-
-  .philosophy-card p {
-    font-size: var(--text-base);
-    color: var(--color-text-muted);
-    line-height: var(--leading-relaxed);
-  }
-
   /* Skills Section */
   .skills-section {
     margin-bottom: var(--space-12);
@@ -473,10 +386,6 @@ const workflowData = existsSync(workflowPath)
 
     .hero-right {
       min-width: unset;
-    }
-
-    .philosophy-grid {
-      grid-template-columns: 1fr;
     }
   }
 

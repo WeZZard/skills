@@ -57,7 +57,6 @@ interface TomlEvent {
 
 interface TomlSection {
   title: string;
-  content: string;
   highlight_title?: string;
   highlight_content?: string;
   comparison_before_label?: string;
@@ -106,8 +105,6 @@ interface WorkflowDiagramData {
   philosophies: Array<{
     id: string;
     title: string;
-    content: string;
-    enhancedContent: string;
     additions: TomlAddition[];
     highlight: PhilosophyHighlight;
     relatedSkills: string[];
@@ -186,7 +183,7 @@ function buildHighlight(section: TomlSection): PhilosophyHighlight {
   const highlight: PhilosophyHighlight = {
     type: section.comparison_before ? "insight" : "feature",
     title: section.highlight_title || section.title,
-    content: section.highlight_content || section.content.slice(0, 200),
+    content: section.highlight_content || "",
   };
 
   if (
@@ -206,18 +203,14 @@ function buildHighlight(section: TomlSection): PhilosophyHighlight {
   return highlight;
 }
 
-// --- AI generation (tooltips and enhanced content only) ---
+// --- AI generation (tooltips only) ---
 
-async function generateTooltipsAndEnhancedContent(
+async function generateTooltips(
   client: OpenAI,
   events: TomlEvent[],
   hooksConfig: HooksConfig,
-  sections: TomlSection[],
   skills: Array<{ name: string; content: string }>
-): Promise<{
-  tooltips: Record<string, string>;
-  enhancedContents: Record<string, string>;
-}> {
+): Promise<Record<string, string>> {
   const hookEventNames = Object.keys(hooksConfig.hooks);
   const skillNames = skills.map((s) => s.name);
 
@@ -234,30 +227,21 @@ ${skillNames.map((name) => `- ${name}`).join("\n")}
 ### Diagram Events (markers on a rounded rectangle)
 ${events.map((e) => `- ${e.id} (${e.edge} edge, position ${e.position}): "${e.label}"`).join("\n")}
 
-### Philosophy Sections
-${sections.map((s, i) => `${i + 1}. "${s.title}": ${s.content.slice(0, 200)}...`).join("\n")}
-
 ## Task
 
-Generate a JSON object with two fields:
+Generate a JSON object with one field:
 
-1. "tooltips": An object mapping each event ID to a short tooltip string (max 60 characters). The tooltip should concisely explain what happens at this hook point in the Claude Code lifecycle. Be specific to Intelligence Scale's usage.
-
-2. "enhancedContents": An object mapping each philosophy section title to an enhanced version of its content (2-3 sentences). The enhanced content should be more engaging and website-friendly while preserving the original meaning. Write for developers visiting a plugin gallery.
+"tooltips": An object mapping each event ID to a short tooltip string (max 60 characters). The tooltip should concisely explain what happens at this hook point in the Claude Code lifecycle. Be specific to Intelligence Scale's usage.
 
 Output format:
 {
   "tooltips": {
 ${events.map((e) => `    "${e.id}": "..."`).join(",\n")}
-  },
-  "enhancedContents": {
-    "Section Title": "Enhanced content..."
   }
 }
 
 Requirements:
 - Tooltips: Max 60 chars each, action-oriented, specific to Intelligence Scale
-- Enhanced contents: 2-3 sentences, engaging, developer-friendly, preserve original meaning
 - Use simple, clear language`;
 
   const response = await client.chat.completions.create({
@@ -271,7 +255,8 @@ Requirements:
   const content = response.choices[0]?.message?.content;
   if (!content) throw new Error("No response from LLM");
 
-  return JSON.parse(content);
+  const result = JSON.parse(content);
+  return result.tooltips || {};
 }
 
 // --- Main ---
@@ -324,18 +309,16 @@ async function main() {
 
   console.log(`\n  ⟳ Sources changed (hash: ${currentHash}), regenerating...`);
 
-  // Call DeepSeek API for tooltips and enhanced content
-  console.log("  ⟳ Calling DeepSeek API for tooltips and enhanced content...");
+  // Call DeepSeek API for tooltips
+  console.log("  ⟳ Calling DeepSeek API for tooltips...");
 
   try {
-    const { tooltips, enhancedContents } =
-      await generateTooltipsAndEnhancedContent(
-        client,
-        tomlEvents,
-        hooksConfig,
-        websiteConfig.philosophy.sections,
-        skills
-      );
+    const tooltips = await generateTooltips(
+      client,
+      tomlEvents,
+      hooksConfig,
+      skills
+    );
 
     // Assemble diagram events with tooltips
     const diagramEvents: DiagramEvent[] = tomlEvents.map((event) => ({
@@ -349,14 +332,10 @@ async function main() {
       const additions = section.additions || [];
       const highlight = buildHighlight(section);
       const relatedSkills = section.related_skills || [];
-      const enhancedContent =
-        enhancedContents[section.title] || section.content;
 
       return {
         id,
         title: section.title,
-        content: section.content,
-        enhancedContent,
         additions,
         highlight,
         relatedSkills,
