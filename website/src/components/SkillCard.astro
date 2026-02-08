@@ -15,7 +15,7 @@ interface Props {
 const { name, displayName, pluginName, tagline, index } = Astro.props;
 ---
 
-<a href={`/plugins/${pluginName}/skills/${name}`} class="skill-card" style={`--delay: ${index * 80}ms`}>
+<a href={`/claude/${pluginName}/skills/${name}`} class="skill-card" style={`--delay: ${index * 80}ms`}>
   <article class="skill-card-inner">
     <div class="skill-number">
       <span>{String(index + 1).padStart(2, '0')}</span>

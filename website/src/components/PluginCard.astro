@@ -20,17 +20,17 @@ const { name, displayName, tagline, skillCount, marketplaceCommand, installComma
 <article class="plugin-entry" style={`--delay: ${index * 120}ms`}>
   <div class="plugin-info">
     <header class="plugin-header">
-      <a href={`/plugins/${name}`} class="plugin-name-link">
+      <a href={`/claude/${name}`} class="plugin-name-link">
         <h2 class="plugin-name">{displayName}</h2>
       </a>
-      <a href={`/plugins/${name}`} class="plugin-badge">{skillCount} skills</a>
+      <a href={`/claude/${name}`} class="plugin-badge">{skillCount} skills</a>
     </header>
 
-    <a href={`/plugins/${name}`} class="plugin-description-link">
+    <a href={`/claude/${name}`} class="plugin-description-link">
       <p class="plugin-description">{tagline}</p>
     </a>
 
-    <a href={`/plugins/${name}`} class="view-skills-link">
+    <a href={`/claude/${name}`} class="view-skills-link">
       View all skills
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M5 12h14M12 5l7 7-7 7" />
