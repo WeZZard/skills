@@ -8,11 +8,6 @@
       "name": "amplify",
       "source": "./claude/amplify",
       "description": "WeZZard's Claude Code skills: brainstorming, planning, execution, error recovery"
-    },
-    {
-      "name": "walkthrough",
-      "source": "https://github.com/WeZZard/walkthrough/releases/latest/download/walkthrough-plugin-latest-macos.zip",
-      "description": "Walk through the bug, let AI find the cause."
     }
   ]
 }
