@@ -101,15 +101,13 @@ if (workflowData?.skillOrder) {
 ---
 
 <Base title={plugin.displayName} description={plugin.tagline} showHeader={false}>
-  <!-- Regular container for breadcrumb -->
-  <div class="container">
-    <Breadcrumb items={breadcrumbItems} />
-  </div>
+  <!-- Hero area: uses calculated padding to align at half of diagram rect offset -->
+  <div class="hero-area">
+    <div class="hero-area-inner">
+      <Breadcrumb items={breadcrumbItems} />
 
-  <!-- Wide container for hero -->
-  <div class="container-wide">
-    <!-- Hero Section: Title left, Commands right -->
-    <section class="plugin-hero">
+      <!-- Hero Section: Title left, Commands right -->
+      <section class="plugin-hero">
       <div class="hero-left">
         <h1 class="plugin-title">{plugin.displayName}</h1>
         <p class="plugin-tagline">{plugin.tagline}</p>
@@ -152,6 +150,7 @@ if (workflowData?.skillOrder) {
         </div>
       </div>
     </section>
+    </div>
   </div>
 
   <!-- Regular container for content sections -->
@@ -201,15 +200,45 @@ if (workflowData?.skillOrder) {
 </script>
 
 <style>
+  /* Hero Area — full-width wrapper with calculated padding
+     so content aligns relative to the workflow diagram rect's left edge.
+
+     Diagram rect left = container-margin + container-padding(24) + wrapper-padding(40)
+     container-margin = (100vw - 1100px) / 2  (when viewport > 1100px)
+     So diagram rect left = (100vw - 1100px) / 2 + 64px
+
+     Strategy — two tiers based on the gap between title and diagram rect border:
+       • Half-screen (~1280px): gap = half of diagram rect offset
+         padding = (100vw - 1100px) / 4 + 32px  → 77px at 1280px
+         gap = diagram_rect_left - padding = 77px
+       • Full-screen / wide: gap doubles to 154px
+         padding = (100vw - 1100px) / 2 - 90px  → 640px at 2560px
+         gap = diagram_rect_left - padding = 154px
+       The two formulas cross at 1588px. Using max() of both
+       gives a smooth transition: the steeper formula takes over above 1588px.
+  */
+  .hero-area {
+    width: 100%;
+    border-bottom: 1px solid var(--color-border-subtle);
+    margin-bottom: var(--space-16);
+  }
+
+  .hero-area-inner {
+    /* Two-tier padding:
+       Tier 1 (≤1588px): (100vw - 1100px) / 4 + 32px  — half diagram offset
+       Tier 2 (>1588px):  (100vw - 1100px) / 2 - 90px  — doubled gap
+       Floor of --space-6 (24px) for narrow viewports. */
+    padding-left: max(var(--space-6), calc((100vw - 1100px) / 4 + 32px), calc((100vw - 1100px) / 2 - 90px));
+    padding-right: max(var(--space-6), calc((100vw - 1100px) / 4 + 32px), calc((100vw - 1100px) / 2 - 90px));
+  }
+
   /* Hero Section */
   .plugin-hero {
     display: grid;
     grid-template-columns: 1fr auto;
-    gap: var(--space-20);
+    gap: var(--space-24);
     align-items: center;
     padding: var(--space-16) 0 var(--space-20);
-    border-bottom: 1px solid var(--color-border-subtle);
-    margin-bottom: var(--space-16);
   }
 
   .hero-left {
@@ -238,7 +267,7 @@ if (workflowData?.skillOrder) {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    min-width: 380px;
+    min-width: 340px;
   }
 
   .install-label {
@@ -400,9 +429,17 @@ if (workflowData?.skillOrder) {
   }
 
   @media (max-width: 768px) {
+    .hero-area {
+      margin-bottom: var(--space-8);
+    }
+
+    .hero-area-inner {
+      padding-left: var(--space-5);
+      padding-right: var(--space-5);
+    }
+
     .plugin-hero {
       padding: var(--space-6) 0 var(--space-8);
-      margin-bottom: var(--space-8);
     }
 
     .plugin-title {
