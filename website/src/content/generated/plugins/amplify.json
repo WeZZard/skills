@@ -14,7 +14,7 @@
       "using-skills",
       "write-plan"
     ],
-    "marketplaceCommand": "/plugin marketplace add WeZZard/skills",
+    "marketplaceCommand": "/plugin marketplace add wezzard/skills",
     "installCommand": "/plugin install amplify@wezzard-skills"
   }
 }
