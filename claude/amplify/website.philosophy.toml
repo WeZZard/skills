@@ -79,18 +79,22 @@ highlight_title = "Explore"
 highlight_content = "Emphasizes web search during exploration, injecting a chain-of-thought that checks ground truth source dates and resolves conflicts by recency."
 comparison_before_label = "Raw"
 comparison_before = "Codebase only"
+comparison_before_image = "/images/philosophies/ground-truth-first-raw.jpg"
 comparison_after_label = "Amplify"
 comparison_after = "Explore the web and codebase"
+comparison_after_image = "/images/philosophies/ground-truth-first-amplify.jpg"
 related_skills = ["brainstorming"]
 
 [[philosophy.sections]]
 title = "Clear Plan"
 highlight_title = "Plan"
-highlight_content = "Agent-first and human-first-oriented plan structure design."
+highlight_content = "Explains the plan with diagrams and before/after comparisons."
 comparison_before_label = "Raw"
 comparison_before = "Freeform"
+comparison_before_image = "/images/philosophies/clear-plan-raw.jpg"
 comparison_after_label = "Amplify"
 comparison_after = "Before/after comparison. Explicit diagrams for algorithms and workflow."
+comparison_after_image = "/images/philosophies/clear-plan-amplify.jpg"
 related_skills = ["write-plan"]
 
 [[philosophy.sections.additions]]
@@ -113,6 +117,7 @@ effect = "Prevents ad-hoc planning by requiring template compliance"
 title = "Parallelism"
 highlight_title = "Task"
 highlight_content = "Every user prompt triggers a reminder to spawn subagents for independent tasks, ensuring maximum throughput without manual orchestration."
+highlight_image = "/images/philosophies/parallelism.jpg"
 related_skills = ["execute-plan"]
 
 [[philosophy.sections.additions]]
@@ -135,6 +140,7 @@ effect = "Maximizes concurrent execution of independent work"
 title = "Plan Audit"
 highlight_title = "Plan-File-Based Audit"
 highlight_content = "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
+highlight_image = "/images/philosophies/plan-audit.jpg"
 related_skills = ["audit-plan"]
 
 [[philosophy.sections.additions]]
@@ -151,8 +157,10 @@ highlight_title = "Beyond Error Resilience"
 highlight_content = "When tools fail, the natural instinct is to generalize or guess. Amplify prompts re-alignment with the plan, preventing cascading errors."
 comparison_before_label = "Raw"
 comparison_before = "Tool fails → guess new params → drift from goal → waste context"
+comparison_before_image = "/images/philosophies/error-recovery-raw.jpg"
 comparison_after_label = "Amplify"
 comparison_after = "Tool fails → check plan → verify alignment → fix specific issue"
+comparison_after_image = "/images/philosophies/error-recovery-amplify.jpg"
 related_skills = ["recover-from-errors"]
 
 [[philosophy.sections.additions]]

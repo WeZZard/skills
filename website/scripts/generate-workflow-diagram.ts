@@ -43,10 +43,13 @@ interface TomlSection {
   title: string;
   highlight_title?: string;
   highlight_content?: string;
+  highlight_image?: string;
   comparison_before_label?: string;
   comparison_before?: string;
+  comparison_before_image?: string;
   comparison_after_label?: string;
   comparison_after?: string;
+  comparison_after_image?: string;
   related_skills?: string[];
   additions?: TomlAddition[];
 }
@@ -72,11 +75,14 @@ interface PhilosophyHighlight {
   type: string;
   title: string;
   content: string;
+  image?: string;
   comparison?: {
     before_label: string;
     before: string;
+    before_image?: string;
     after_label: string;
     after: string;
+    after_image?: string;
   };
 }
 
@@ -167,6 +173,10 @@ function buildHighlight(section: TomlSection): PhilosophyHighlight {
     content: section.highlight_content || "",
   };
 
+  if (section.highlight_image) {
+    highlight.image = section.highlight_image;
+  }
+
   if (
     section.comparison_before_label &&
     section.comparison_before &&
@@ -176,8 +186,10 @@ function buildHighlight(section: TomlSection): PhilosophyHighlight {
     highlight.comparison = {
       before_label: section.comparison_before_label,
       before: section.comparison_before,
+      ...(section.comparison_before_image ? { before_image: section.comparison_before_image } : {}),
       after_label: section.comparison_after_label,
       after: section.comparison_after,
+      ...(section.comparison_after_image ? { after_image: section.comparison_after_image } : {}),
     };
   }
 

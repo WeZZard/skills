@@ -1,6 +1,6 @@
 {
-  "sourceHash": "9dba6fd37bdcc166",
-  "generatedAt": "2026-02-07T17:55:16.376Z",
+  "sourceHash": "d0671412ef63dbe6",
+  "generatedAt": "2026-02-09T18:35:40.654Z",
   "skillOrder": [
     "using-skills",
     "brainstorming",
@@ -124,7 +124,7 @@
       "highlight": {
         "type": "insight",
         "title": "Plan",
-        "content": "Agent-first and human-first-oriented plan structure design.",
+        "content": "Explains the plan with diagrams and before/after comparisons.",
         "comparison": {
           "before_label": "Raw",
           "before": "Freeform",
