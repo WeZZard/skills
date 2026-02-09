@@ -376,7 +376,7 @@ async function main() {
             name: plugin.name,
             displayName: pluginToml.display_name,
             tagline: pluginToml.tagline,
-            ...(pluginToml.repo ? { repo: pluginToml.repo.toLowerCase() } : {}),
+            ...(pluginToml.repo ? { repo: pluginToml.repo } : {}),
             skillCount: plugin.skillNames.length,
             skills: plugin.skillNames,
             marketplaceCommand,
