@@ -361,7 +361,7 @@ async function main() {
     const pluginExistingHash = getExistingHash(pluginOutputPath);
 
     const ownerName = marketplaceConfig.owner.name;
-    const marketplaceCommand = `/plugin marketplace add ${ownerName}/skills`;
+    const marketplaceCommand = `/plugin marketplace add ${ownerName.toLowerCase()}/skills`;
     const installCommand = `/plugin install ${plugin.name}@${marketplaceConfig.name}`;
 
     if (pluginCurrentHash === pluginExistingHash) {
