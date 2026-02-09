@@ -158,6 +158,8 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
             data-philosophy={phil.id}
           >
             <div class="highlight-panel">
+              <h4 class="highlight-title">{phil.highlight.title}</h4>
+              <p class="highlight-content">{phil.highlight.content}</p>
               {phil.highlight.image && (
                 <img
                   class="highlight-image"
@@ -166,8 +168,6 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
                   loading="lazy"
                 />
               )}
-              <h4 class="highlight-title">{phil.highlight.title}</h4>
-              <p class="highlight-content">{phil.highlight.content}</p>
               {phil.highlight.comparison && (
                 <div class="highlight-comparison">
                   <div class="comparison-item">
@@ -214,6 +214,8 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
         data-philosophy={phil.id}
       >
         <div class="highlight-panel">
+          <h4 class="highlight-title">{phil.highlight.title}</h4>
+          <p class="highlight-content">{phil.highlight.content}</p>
           {phil.highlight.image && (
             <img
               class="highlight-image"
@@ -222,8 +224,6 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
               loading="lazy"
             />
           )}
-          <h4 class="highlight-title">{phil.highlight.title}</h4>
-          <p class="highlight-content">{phil.highlight.content}</p>
           {phil.highlight.comparison && (
             <div class="highlight-comparison">
               <div class="comparison-item">
@@ -803,7 +803,7 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     background: var(--color-surface);
     padding: var(--space-3);
     box-sizing: border-box;
-    margin-bottom: var(--space-3);
+    margin-top: var(--space-3);
   }
 
   /* ---- Comparison Layout ---- */
