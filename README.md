@@ -22,7 +22,6 @@ If you host on GitHub later:
 
 ```bash
 /plugin install amplify@wezzard-skills
-/plugin install walkthrough@wezzard-skills
 ```
 
 3. Run a skill:
@@ -33,11 +32,6 @@ If you host on GitHub later:
 /amplify:write-plan
 /amplify:execute-plan
 /amplify:recover-from-errors
-
-# walkthrough plugin skills
-/walkthrough:run
-/walkthrough:analyze
-/walkthrough:ada-doctor
 ```
 
 ## Available Plugins
@@ -53,16 +47,6 @@ Development workflow skills for planning and execution.
 | `execute-plan`        | Execute a plan file step by step                                   |
 | `recover-from-errors` | Recover from errors during execution                               |
 
-### walkthrough
-
-Debugging skills that capture and analyze program execution with voice, screen, and trace correlation. **Automatically fetched from [GitHub Releases](https://github.com/WeZZard/Recall/releases)**.
-
-| Skill        | Description                                                                      |
-| ------------ | -------------------------------------------------------------------------------- |
-| `run`        | Capture a debugging session with voice narration, screen recording, and tracing  |
-| `analyze`    | Analyze captured sessions using voice-first intent extraction and evidence correlation |
-| `ada-doctor` | Run system diagnostics to verify Walkthrough dependencies and configuration           |
-
 ## Repo layout
 
 ```text
@@ -75,7 +59,6 @@ Notes:
 
 - Only `plugin.json` lives inside `.claude-plugin/`. All other folders stay at the plugin root.
 - Skills are namespaced as `/<plugin-name>:<skill-name>`.
-- The walkthrough plugin is fetched from GitHub Releases (not stored in this repo).
 
 ## Add a new skill
 
