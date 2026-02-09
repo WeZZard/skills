@@ -31,6 +31,7 @@ interface MarketplaceConfig {
 interface PluginTomlConfig {
   display_name: string;
   tagline: string;
+  repo?: string;
 }
 
 interface SkillTomlEntry {
@@ -53,6 +54,7 @@ interface PluginGenerated {
     name: string;
     displayName: string;
     tagline: string;
+    repo?: string;
     skillCount: number;
     skills: string[];
     marketplaceCommand: string;
@@ -374,6 +376,7 @@ async function main() {
             name: plugin.name,
             displayName: pluginToml.display_name,
             tagline: pluginToml.tagline,
+            ...(pluginToml.repo ? { repo: pluginToml.repo } : {}),
             skillCount: plugin.skillNames.length,
             skills: plugin.skillNames,
             marketplaceCommand,

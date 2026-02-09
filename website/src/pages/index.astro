@@ -12,6 +12,7 @@ interface PluginData {
     name: string;
     displayName: string;
     tagline: string;
+    repo?: string;
     skillCount: number;
     skills: string[];
     marketplaceCommand: string;
@@ -60,6 +61,7 @@ plugins.sort((a, b) => a.plugin.displayName.localeCompare(b.plugin.displayName))
                 name={p.plugin.name}
                 displayName={p.plugin.displayName}
                 tagline={p.plugin.tagline}
+                repo={p.plugin.repo}
                 skillCount={p.plugin.skillCount}
                 marketplaceCommand={p.plugin.marketplaceCommand}
                 installCommand={p.plugin.installCommand}

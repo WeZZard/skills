@@ -1,10 +1,11 @@
 {
-  "sourceHash": "aabec2b24029d1ab",
-  "generatedAt": "2026-02-07T17:52:02.731Z",
+  "sourceHash": "e2a722bdc9644e23",
+  "generatedAt": "2026-02-09T08:21:01.537Z",
   "plugin": {
     "name": "amplify",
     "displayName": "Amplify",
     "tagline": "Scale your AI-driven workflows.",
+    "repo": "WeZZard/skills",
     "skillCount": 6,
     "skills": [
       "audit-plan",
@@ -14,7 +15,7 @@
       "using-skills",
       "write-plan"
     ],
-    "marketplaceCommand": "/plugin marketplace add wezzard/skills",
+    "marketplaceCommand": "/plugin marketplace add WeZZard/skills",
     "installCommand": "/plugin install amplify@wezzard-skills"
   }
 }

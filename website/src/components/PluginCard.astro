@@ -3,18 +3,20 @@
  * PluginCard Component
  * Action-oriented plugin card with description on left, install command on right
  */
+import GitHubStars from "./GitHubStars.astro";
 
 interface Props {
   name: string;
   displayName: string;
   tagline: string;
+  repo?: string;
   skillCount: number;
   marketplaceCommand: string;
   installCommand: string;
   index: number;
 }
 
-const { name, displayName, tagline, skillCount, marketplaceCommand, installCommand, index } = Astro.props;
+const { name, displayName, tagline, repo, skillCount, marketplaceCommand, installCommand, index } = Astro.props;
 ---
 
 <article class="plugin-entry" style={`--delay: ${index * 120}ms`}>
@@ -23,7 +25,9 @@ const { name, displayName, tagline, skillCount, marketplaceCommand, installComma
       <a href={`/claude/${name}`} class="plugin-name-link">
         <h2 class="plugin-name">{displayName}</h2>
       </a>
-      <a href={`/claude/${name}`} class="plugin-badge">{skillCount} skills</a>
+      {repo && (
+        <GitHubStars repo={repo} />
+      )}
     </header>
 
     <a href={`/claude/${name}`} class="plugin-description-link">
@@ -124,15 +128,14 @@ const { name, displayName, tagline, skillCount, marketplaceCommand, installComma
   .plugin-info {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: var(--space-2);
   }
 
   .plugin-header {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: var(--space-3);
     flex-wrap: wrap;
-    margin-bottom: var(--space-2);
   }
 
   .plugin-name-link {
@@ -195,6 +198,7 @@ const { name, displayName, tagline, skillCount, marketplaceCommand, installComma
     display: inline-flex;
     align-items: center;
     gap: var(--space-2);
+    margin-top: var(--space-1);
     font-size: var(--text-sm);
     font-weight: 500;
     color: var(--color-text-muted);
