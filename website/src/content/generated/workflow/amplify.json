@@ -90,8 +90,10 @@
         "comparison": {
           "before_label": "Raw",
           "before": "Codebase only",
+          "before_image": "/images/philosophies/ground-truth-first-raw.jpg",
           "after_label": "Amplify",
-          "after": "Explore the web and codebase"
+          "after": "Explore the web and codebase",
+          "after_image": "/images/philosophies/ground-truth-first-amplify.jpg"
         }
       },
       "relatedSkills": [
@@ -126,8 +128,10 @@
         "comparison": {
           "before_label": "Raw",
           "before": "Freeform",
+          "before_image": "/images/philosophies/clear-plan-raw.jpg",
           "after_label": "Amplify",
-          "after": "Before/after comparison. Explicit diagrams for algorithms and workflow."
+          "after": "Before/after comparison. Explicit diagrams for algorithms and workflow.",
+          "after_image": "/images/philosophies/clear-plan-amplify.jpg"
         }
       },
       "relatedSkills": [
@@ -158,7 +162,8 @@
       "highlight": {
         "type": "feature",
         "title": "Task",
-        "content": "Every user prompt triggers a reminder to spawn subagents for independent tasks, ensuring maximum throughput without manual orchestration."
+        "content": "Every user prompt triggers a reminder to spawn subagents for independent tasks, ensuring maximum throughput without manual orchestration.",
+        "image": "/images/philosophies/parallelism.jpg"
       },
       "relatedSkills": [
         "execute-plan"
@@ -180,7 +185,8 @@
       "highlight": {
         "type": "feature",
         "title": "Plan-File-Based Audit",
-        "content": "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
+        "content": "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing.",
+        "image": "/images/philosophies/plan-audit.jpg"
       },
       "relatedSkills": [
         "audit-plan"
@@ -206,8 +212,10 @@
         "comparison": {
           "before_label": "Raw",
           "before": "Tool fails → guess new params → drift from goal → waste context",
+          "before_image": "/images/philosophies/error-recovery-raw.jpg",
           "after_label": "Amplify",
-          "after": "Tool fails → check plan → verify alignment → fix specific issue"
+          "after": "Tool fails → check plan → verify alignment → fix specific issue",
+          "after_image": "/images/philosophies/error-recovery-amplify.jpg"
         }
       },
       "relatedSkills": [

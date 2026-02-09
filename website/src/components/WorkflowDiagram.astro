@@ -29,11 +29,14 @@ interface Philosophy {
     type: string;
     title: string;
     content: string;
+    image?: string;
     comparison?: {
       before_label: string;
       before: string;
+      before_image?: string;
       after_label: string;
       after: string;
+      after_image?: string;
     };
   };
   relatedEvents?: string[];
@@ -155,18 +158,34 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
             data-philosophy={phil.id}
           >
             <div class="highlight-panel">
+              {phil.highlight.image && (
+                <img
+                  class="highlight-image"
+                  src={phil.highlight.image}
+                  alt={`Illustration for ${phil.highlight.title}`}
+                  loading="lazy"
+                />
+              )}
               <h4 class="highlight-title">{phil.highlight.title}</h4>
               <p class="highlight-content">{phil.highlight.content}</p>
               {phil.highlight.comparison && (
                 <div class="highlight-comparison">
                   <div class="comparison-item">
                     <div class="comparison-label">{phil.highlight.comparison.before_label}</div>
-                    <div class="comparison-text">{phil.highlight.comparison.before}</div>
+                    {phil.highlight.comparison.before_image ? (
+                      <img class="comparison-image" src={phil.highlight.comparison.before_image} alt={phil.highlight.comparison.before} loading="lazy" />
+                    ) : (
+                      <div class="comparison-text">{phil.highlight.comparison.before}</div>
+                    )}
                   </div>
                   <div class="comparison-arrow">→</div>
                   <div class="comparison-item">
                     <div class="comparison-label">{phil.highlight.comparison.after_label}</div>
-                    <div class="comparison-text">{phil.highlight.comparison.after}</div>
+                    {phil.highlight.comparison.after_image ? (
+                      <img class="comparison-image" src={phil.highlight.comparison.after_image} alt={phil.highlight.comparison.after} loading="lazy" />
+                    ) : (
+                      <div class="comparison-text">{phil.highlight.comparison.after}</div>
+                    )}
                   </div>
                 </div>
               )}
@@ -195,18 +214,34 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
         data-philosophy={phil.id}
       >
         <div class="highlight-panel">
+          {phil.highlight.image && (
+            <img
+              class="highlight-image"
+              src={phil.highlight.image}
+              alt={`Illustration for ${phil.highlight.title}`}
+              loading="lazy"
+            />
+          )}
           <h4 class="highlight-title">{phil.highlight.title}</h4>
           <p class="highlight-content">{phil.highlight.content}</p>
           {phil.highlight.comparison && (
             <div class="highlight-comparison">
               <div class="comparison-item">
                 <div class="comparison-label">{phil.highlight.comparison.before_label}</div>
-                <div class="comparison-text">{phil.highlight.comparison.before}</div>
+                {phil.highlight.comparison.before_image ? (
+                  <img class="comparison-image" src={phil.highlight.comparison.before_image} alt={phil.highlight.comparison.before} loading="lazy" />
+                ) : (
+                  <div class="comparison-text">{phil.highlight.comparison.before}</div>
+                )}
               </div>
               <div class="comparison-arrow">↓</div>
               <div class="comparison-item">
                 <div class="comparison-label">{phil.highlight.comparison.after_label}</div>
-                <div class="comparison-text">{phil.highlight.comparison.after}</div>
+                {phil.highlight.comparison.after_image ? (
+                  <img class="comparison-image" src={phil.highlight.comparison.after_image} alt={phil.highlight.comparison.after} loading="lazy" />
+                ) : (
+                  <div class="comparison-text">{phil.highlight.comparison.after}</div>
+                )}
               </div>
             </div>
           )}
@@ -758,6 +793,16 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     margin-bottom: 0;
   }
 
+  /* ---- Image Layout ---- */
+  .highlight-image {
+    width: 100%;
+    max-height: 180px;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-earth-200);
+    margin-bottom: var(--space-3);
+  }
+
   /* ---- Comparison Layout ---- */
   .highlight-comparison {
     display: grid;
@@ -790,6 +835,14 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     border: 1px solid var(--color-earth-200);
     border-radius: var(--radius-md);
     padding: var(--space-3);
+  }
+
+  .comparison-image {
+    width: 100%;
+    max-height: 140px;
+    object-fit: cover;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-earth-200);
   }
 
   .comparison-arrow {
