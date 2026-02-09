@@ -93,50 +93,50 @@ const philosophyPrompts: PhilosophyPrompt[] = [
     id: "ground-truth-first-raw",
     filename: "ground-truth-first-raw.jpg",
     prompt: `${COMPARISON_STYLE_PREAMBLE}
-Draw a single closed book, viewed from a slight angle, centered on a white background. The book is drawn with thick charcoal (#2C2416) outlines only — no fill color, no accent color. The book is small relative to the canvas, surrounded by empty white space. Nothing else in the image. Conveys: isolation, single source, limitation.`,
+Draw a single terminal window or code editor icon — a rounded rectangle with two small circles in the top-left corner (like a macOS window) and three horizontal lines inside representing code. This represents a local codebase. Drawn with thick charcoal (#2C2416) outlines only, no fill color. The window sits alone, centered, with generous whitespace. Nothing else in the image. Conveys: working only from local code, no external information.`,
   },
   {
     id: "ground-truth-first-amplify",
     filename: "ground-truth-first-amplify.jpg",
     prompt: `${COMPARISON_STYLE_PREAMBLE}
-Draw an open book in the center with three simple circles (nodes) floating above it, connected by thin lines forming a small network. The book and connecting lines are charcoal (#2C2416). The three nodes are filled with sage green (#7D9B84). White background. Conveys: knowledge expanding outward, multiple verified sources connected.`,
+Draw the same terminal/code editor window icon (rounded rectangle with two dots in top-left, horizontal lines for code) in charcoal (#2C2416) on the left side. To its right, draw a small globe icon (simple circle with two curved latitude/longitude lines) in sage green (#7D9B84). Connect them with a double-headed arrow in sage green. White background. Conveys: the codebase is now connected to web search — local code plus verified web knowledge working together.`,
   },
   {
     id: "clear-plan-raw",
     filename: "clear-plan-raw.jpg",
     prompt: `${COMPARISON_STYLE_PREAMBLE}
-Draw three sticky notes or small squares, overlapping each other at random angles, slightly rotated. Drawn with thick charcoal (#2C2416) outlines only — no fill, no accent color. They look scattered and disorganized. White background, generous whitespace. Conveys: freeform, unstructured, ad-hoc.`,
+Draw a document icon (rectangle with folded corner) filled with many tightly packed horizontal lines of varying lengths, representing a wall of dense text. The lines are close together, creating a heavy, text-heavy appearance. All in charcoal (#2C2416), no accent color. White background. Conveys: a plan that is all text — dense, hard to review, creates reading pressure.`,
   },
   {
     id: "clear-plan-amplify",
     filename: "clear-plan-amplify.jpg",
     prompt: `${COMPARISON_STYLE_PREAMBLE}
-Draw three rectangles neatly stacked vertically with equal spacing, connected by a single vertical line on the left side (like a simple flowchart or outline). The rectangles have charcoal (#2C2416) outlines. The connecting line and small bullet dots are sage green (#7D9B84). White background. Conveys: structured, organized, clear hierarchy.`,
+Draw a document icon (rectangle with folded corner) that contains a small flowchart diagram inside it — three small boxes connected by arrows in a top-down flow. The document outline is charcoal (#2C2416). The flowchart boxes and arrows inside are sage green (#7D9B84). White background. Conveys: a plan that uses diagrams instead of walls of text — graphical, easy to review at a glance, reduces review pressure.`,
   },
   {
     id: "error-recovery-raw",
     filename: "error-recovery-raw.jpg",
     prompt: `${COMPARISON_STYLE_PREAMBLE}
-Draw a single straight path (thick line) going from left toward a target (simple circle) on the right. Midway, the path hits a gap (break in the line) and then continues as a dashed zigzag line veering downward away from the target. All in charcoal (#2C2416), no accent color. White background. Conveys: hitting an error and drifting off course.`,
+Draw a simple diagram: on the left, a small circle (start point). A solid horizontal arrow points right toward a large X mark (representing a tool failure). After the X, a dashed arrow continues rightward but curves downward, ending with a question mark. All in charcoal (#2C2416), no accent color. White background. Conveys: after a tool fails, the agent guesses and drifts away from the goal — no plan to fall back on.`,
   },
   {
     id: "error-recovery-amplify",
     filename: "error-recovery-amplify.jpg",
     prompt: `${COMPARISON_STYLE_PREAMBLE}
-Draw a single straight path (thick line) going from left toward a target (simple circle) on the right. Midway, the path hits a gap (break in the line), but then curves smoothly back upward and reconnects to reach the target. The path is charcoal (#2C2416). The target circle is filled with sage green (#7D9B84). White background. Conveys: hitting an error but recovering to reach the goal.`,
+Draw a simple diagram: on the left, a small circle (start point). A solid horizontal arrow points right toward a large X mark (representing a tool failure) in charcoal (#2C2416). After the X, instead of drifting, a curved arrow loops back upward to a small document icon (the plan file) drawn in sage green (#7D9B84), then a new solid arrow continues rightward from the document to a filled circle (the goal) in sage green. White background. Conveys: after a tool fails, the agent consults the plan file and recovers back on course to the goal.`,
   },
   // ── Single illustrations (no comparison) ──────────────────────────────
   {
     id: "parallelism",
     filename: "parallelism.jpg",
     prompt: `${STYLE_PREAMBLE}
-Draw three horizontal lines (tracks) running parallel from left to right, evenly spaced. Each track has a small circle on it at a different position along the track, like three tasks progressing simultaneously. On the right side, the three tracks merge into a single point (a filled circle). The tracks and circles are charcoal (#2C2416). The merge point is filled with terracotta (#C4704B). White background. Conveys: parallel execution converging to completion.`,
+Draw a diagram showing task parallelism: On the left, a single filled circle (the orchestrator). From it, three arrows fan out to the right, each pointing to a separate small rectangle (representing three independent subagent tasks running simultaneously). Each rectangle has a small gear or cog icon inside it. From each rectangle, arrows converge to a single filled circle on the far right (the merged result). The orchestrator and result circles are terracotta (#C4704B). The three task rectangles and their gears are charcoal (#2C2416). The arrows are charcoal. White background. Conveys: one orchestrator spawns multiple parallel tasks that run simultaneously and merge results.`,
   },
   {
     id: "plan-audit",
     filename: "plan-audit.jpg",
     prompt: `${STYLE_PREAMBLE}
-Draw a simple document outline (rectangle with a folded corner) on the left. To its right, draw three horizontal rows. The first two rows have a small filled circle (checkmark indicator) in terracotta (#C4704B). The third row has a half-filled circle. Thin charcoal (#2C2416) lines connect the document to each row. White background. Conveys: systematic verification of a plan, task-by-task audit.`,
+Draw a complete document icon (rectangle with folded corner, fully visible with clear top and bottom edges) on the left side. Inside the document, draw four horizontal lines representing plan items. To the right of the document, draw four status indicators aligned with each line: the first three are filled circles in terracotta (#C4704B) representing "Done", the fourth is a half-filled circle (left half filled, right half empty) in terracotta representing "Partial". Thin dotted lines in charcoal (#2C2416) connect each document line to its status indicator. The document outline is charcoal. White background, generous whitespace. Conveys: each item in the plan file is systematically checked and given an evidence-based status — Done or Partial.`,
   },
 ];
 
