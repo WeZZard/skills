@@ -189,6 +189,9 @@ if (workflowData?.skillOrder) {
     <!-- Page Footer -->
     <footer class="page-footer">
       <span>Content generated {new Date(pluginData.generatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+      {plugin.name === "amplify" && (
+        <span class="inspired-by">Inspired by <a href="https://github.com/obra/superpowers" target="_blank" rel="noopener noreferrer">Superpowers</a> by Jesse Vincent</span>
+      )}
     </footer>
   </div>
 </Base>
@@ -418,6 +421,19 @@ if (workflowData?.skillOrder) {
     border-top: 1px solid var(--color-border);
     color: var(--color-text-light);
     font-size: var(--text-xs);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .inspired-by a {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+
+  .inspired-by a:hover {
+    text-decoration: underline;
   }
 
   /* Desktop - larger hero spacing */
