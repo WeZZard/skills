@@ -45,7 +45,7 @@ You SHALL create plan file with the following template by following the guidance
 
 **DO** output with one of the following forms:
 
-- Workflow diagram with ordered task number and name if non-linear and graph-level dependencies are appeared.
+- Workflow diagram with ordered task number and name if non-linear and graph-level dependencies are appeared. DO NOT output Mermaid syntax.
 - Ordered list or cascaded ordered list with task number and name if linear/tree dependencies are appeared. DO NOT connect list items with `|` in this case.
 
 **DO NOT** illustrate with any of the following forms:
@@ -102,7 +102,7 @@ You SHALL NOT just illustrate the tech stack before OR after the changes and ill
 
 **DO** illustrate with one of the following forms:
 
-- Diagrams
+- Diagrams, DO NOT output Mermaid syntax.
 - Ordered list
 
 **DO NOT** illustrate with any of the following forms:
@@ -126,7 +126,7 @@ You SHALL NOT just illustrate the architecture before OR after the changes and i
 
 **DO** illustrate with one of the following forms:
 
-- Diagrams
+- Diagrams, DO NOT output Mermaid syntax.
 
 **DO NOT** illustrate with any of the following forms:
 
@@ -148,7 +148,7 @@ You SHALL use the following template when the algorithm design if new algorithms
 
 **DO** illustrate with one of the following forms:
 
-- Diagrams
+- Diagrams, DO NOT output Mermaid syntax.
 
 **DO NOT** illustrate with any of the following forms:
 
