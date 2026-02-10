@@ -15,19 +15,24 @@ Load plan, execute tasks, raise human verification gate if necessary.
 
 ## The Process
 
-### Step 1: Load The Plan File
+### Step 1: Check If It Is Necessary to Execute The Plan
 
-1. Read plan file
+The user may pause execution after approving the plan file or when the plan file is loaded at the start of a session.
+You **CAN** continue the plan execution **ONLY** after you receive an explicit “continue” signal in the conversation and confirm there are no newer conflicting instructions.
 
-### Step 2: Execute Tasks by Maximizing the Parallelism
+### Step 2: Load The Plan File
+
+Read plan file
+
+### Step 3: Execute Tasks by Maximizing the Parallelism
 
 You **MUST** execute the tasks with subagents by maximizing the parallelism but also take the tasks dependencies into consideration.
 
-### Step 3: Raise Human Verification Gate If Neccessary
+### Step 4: Raise Human Verification Gate If Neccessary
 
 Some tasks may require human verification. Stop execution and raise a gate with the AskUserQuestion tool for human verification.
 
-### Step 4: Continue
+### Step 5: Continue
 
 Based on feedback:
 
