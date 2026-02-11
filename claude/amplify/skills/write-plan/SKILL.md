@@ -27,7 +27,7 @@ You SHALL create plan file with the following template by following the guidance
 
 > **For Claude:**
 > MANDATORY SUB-SKILL: You SHALL use amplify:execute-plan to execut this plan.
-> MANDATORY SUB-SKILL: You SHALL use amplify:review to review the result after the plan was executed.
+> MANDATORY SUB-SKILL: You SHALL use amplify:audit-plan to audit the result after the plan was executed.
 
 **Goal:** <!-- One sentence describing what this plan achieves. Write in line. -->
 
