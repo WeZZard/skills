@@ -27,6 +27,7 @@ Read plan file
 ### Step 3: Execute Tasks by Maximizing the Parallelism
 
 You **MUST** spawn subagents to execute the tasks as much as possible.
+
 On top of that, you **MUST** take the tasks dependencies into consideration.
 
 ### Step 4: Raise Human Verification Gate If Neccessary
