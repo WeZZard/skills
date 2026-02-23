@@ -28,7 +28,9 @@ Read plan file
 
 You **MUST** spawn subagents to execute the tasks as much as possible.
 
-On top of that, you **MUST** take the tasks dependencies into consideration.
+On top of that:
+You **MUST** take the tasks dependencies into consideration.
+You **MUST** allocate subagent per task.
 
 ### Step 4: Raise Human Verification Gate If Neccessary
 
