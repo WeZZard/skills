@@ -23,15 +23,6 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "AskUserQuestion",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "afplay ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-Item-Get-Solved.mp3 &"
-          }
-        ]
-      },
-      {
         "matcher": "ExitPlanMode",
         "hooks": [
           {

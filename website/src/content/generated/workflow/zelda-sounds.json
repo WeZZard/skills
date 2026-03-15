@@ -1,0 +1,155 @@
+{
+  "sourceHash": "27f30a19d2843b3a",
+  "generatedAt": "2026-03-15T18:23:00.208Z",
+  "diagram": {
+    "events": [
+      {
+        "id": "SessionStart",
+        "edge": "top",
+        "position": 0.33,
+        "label": "Session Start"
+      },
+      {
+        "id": "UserPromptSubmit",
+        "edge": "top",
+        "position": 0.67,
+        "label": "User Prompt Submit"
+      },
+      {
+        "id": "PreToolUse",
+        "edge": "right",
+        "position": 0.25,
+        "label": "Pre Tool Use"
+      },
+      {
+        "id": "PostToolUse",
+        "edge": "right",
+        "position": 0.5,
+        "label": "Post Tool Use"
+      },
+      {
+        "id": "PostToolUseFailure",
+        "edge": "right",
+        "position": 0.75,
+        "label": "Post Tool Use Failure"
+      },
+      {
+        "id": "ExitPlanMode",
+        "edge": "bottom",
+        "position": 0.25,
+        "label": "Exit Plan Mode"
+      },
+      {
+        "id": "AskUserQuestion",
+        "edge": "bottom",
+        "position": 0.5,
+        "label": "Ask User Question"
+      },
+      {
+        "id": "EnterPlanMode",
+        "edge": "bottom",
+        "position": 0.75,
+        "label": "Enter Plan Mode"
+      },
+      {
+        "id": "Stop",
+        "edge": "left",
+        "position": 0.25,
+        "label": "Stop"
+      },
+      {
+        "id": "SubagentStop",
+        "edge": "left",
+        "position": 0.5,
+        "label": "Subagent Stop"
+      },
+      {
+        "id": "SubagentSpawn",
+        "edge": "left",
+        "position": 0.75,
+        "label": "Subagent Spawn"
+      }
+    ],
+    "rect": {
+      "width": 600,
+      "height": 400,
+      "rx": 24
+    }
+  },
+  "philosophies": [
+    {
+      "id": "attention-cue",
+      "title": "Attention Cue",
+      "additions": [
+        {
+          "id": "pre-ask-puzzle",
+          "event": "AskUserQuestion",
+          "type": "hook",
+          "label": "Puzzle Solved",
+          "description": "Plays the shrine-clear jingle before AskUserQuestion",
+          "effect": "Alerts you that Claude is about to request input"
+        },
+        {
+          "id": "pre-exit-puzzle",
+          "event": "ExitPlanMode",
+          "type": "hook",
+          "label": "Puzzle Solved",
+          "description": "Plays the shrine-clear jingle before ExitPlanMode",
+          "effect": "Signals that the plan is ready for your review"
+        }
+      ],
+      "highlight": {
+        "type": "feature",
+        "title": "Attention!",
+        "content": "",
+        "image": "/images/philosophies/zelda-sounds-attention-cue.jpg",
+        "sound": "/sounds/zelda-sounds/Zelda-BotW-Puzzle-Solved.mp3"
+      },
+      "relatedSkills": []
+    },
+    {
+      "id": "plan-approval",
+      "title": "Plan Approval",
+      "additions": [
+        {
+          "id": "post-exit-plan",
+          "event": "ExitPlanMode",
+          "type": "hook",
+          "label": "New Location",
+          "description": "Plays the discovery melody after plan approval",
+          "effect": "Marks the transition from planning to execution"
+        }
+      ],
+      "highlight": {
+        "type": "feature",
+        "title": "A New Oriental",
+        "content": "",
+        "image": "/images/philosophies/zelda-sounds-completion-feedback.jpg",
+        "sound": "/sounds/zelda-sounds/Zelda-BotW-New-Location.mp3"
+      },
+      "relatedSkills": []
+    },
+    {
+      "id": "finale",
+      "title": "Finale",
+      "additions": [
+        {
+          "id": "stop-fanfare",
+          "event": "Stop",
+          "type": "hook",
+          "label": "High Value Item Get",
+          "description": "Plays the spirit-orb fanfare when the agent stops",
+          "effect": "Celebrates the completion of the entire work session"
+        }
+      ],
+      "highlight": {
+        "type": "feature",
+        "title": "Triumph",
+        "content": "",
+        "image": "/images/philosophies/zelda-sounds-session-finale.jpg",
+        "sound": "/sounds/zelda-sounds/Zelda-BotW-High-Value-Item-Get.mp3"
+      },
+      "relatedSkills": []
+    }
+  ]
+}

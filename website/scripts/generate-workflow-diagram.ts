@@ -12,14 +12,26 @@ import TOML from "toml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const PLUGIN_DIR = join(__dirname, "../../claude/amplify");
-const HOOKS_JSON = join(PLUGIN_DIR, "hooks/hooks.json");
-const WEBSITE_TOML = join(PLUGIN_DIR, "website.philosophy.toml");
-const SKILLS_DIR = join(PLUGIN_DIR, "skills");
+const PLUGINS_DIR = join(__dirname, "../../claude");
 const OUTPUT_DIR = join(__dirname, "../src/content/generated/workflow");
 
 // Ensure output directory exists
 mkdirSync(OUTPUT_DIR, { recursive: true });
+
+// --- Plugin discovery ---
+
+function discoverPluginsWithPhilosophy(): Array<{ name: string; dir: string }> {
+  const plugins: Array<{ name: string; dir: string }> = [];
+  const entries = readdirSync(PLUGINS_DIR, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const pluginDir = join(PLUGINS_DIR, entry.name);
+    if (existsSync(join(pluginDir, "website.philosophy.toml"))) {
+      plugins.push({ name: entry.name, dir: pluginDir });
+    }
+  }
+  return plugins;
+}
 
 // --- Types ---
 
@@ -44,6 +56,7 @@ interface TomlSection {
   highlight_title?: string;
   highlight_content?: string;
   highlight_image?: string;
+  highlight_sound?: string;
   comparison_before_label?: string;
   comparison_before?: string;
   comparison_before_image?: string;
@@ -76,6 +89,7 @@ interface PhilosophyHighlight {
   title: string;
   content: string;
   image?: string;
+  sound?: string;
   comparison?: {
     before_label: string;
     before: string;
@@ -128,20 +142,21 @@ function toId(title: string): string {
 
 // --- Source loading ---
 
-function loadWebsiteConfig(): WebsiteConfig {
-  const content = readFileSync(WEBSITE_TOML, "utf-8");
+function loadWebsiteConfig(pluginDir: string): WebsiteConfig {
+  const content = readFileSync(join(pluginDir, "website.philosophy.toml"), "utf-8");
   return TOML.parse(content) as unknown as WebsiteConfig;
 }
 
-function discoverSkills(): Array<{ name: string; content: string }> {
+function discoverSkills(pluginDir: string): Array<{ name: string; content: string }> {
   const skills: Array<{ name: string; content: string }> = [];
+  const skillsDir = join(pluginDir, "skills");
 
-  if (!existsSync(SKILLS_DIR)) return skills;
+  if (!existsSync(skillsDir)) return skills;
 
-  const entries = readdirSync(SKILLS_DIR, { withFileTypes: true });
+  const entries = readdirSync(skillsDir, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    const skillMdPath = join(SKILLS_DIR, entry.name, "SKILL.md");
+    const skillMdPath = join(skillsDir, entry.name, "SKILL.md");
     if (existsSync(skillMdPath)) {
       skills.push({
         name: entry.name,
@@ -177,6 +192,10 @@ function buildHighlight(section: TomlSection): PhilosophyHighlight {
     highlight.image = section.highlight_image;
   }
 
+  if (section.highlight_sound) {
+    highlight.sound = section.highlight_sound;
+  }
+
   if (
     section.comparison_before_label &&
     section.comparison_before &&
@@ -196,18 +215,19 @@ function buildHighlight(section: TomlSection): PhilosophyHighlight {
   return highlight;
 }
 
-// --- Main ---
+// --- Process a single plugin ---
 
-function main() {
-  const forceRegenerate = process.argv.includes("--force");
+function processPlugin(plugin: { name: string; dir: string }, forceRegenerate: boolean): void {
+  console.log(`\n📦 Plugin: ${plugin.name}`);
 
-  console.log("🔄 Generating workflow diagram data for amplify\n");
+  const hooksJsonPath = join(plugin.dir, "hooks/hooks.json");
+  const websiteTomlPath = join(plugin.dir, "website.philosophy.toml");
 
   // Load source files
-  const hooksRaw = readFileSync(HOOKS_JSON, "utf-8");
-  const websiteRaw = readFileSync(WEBSITE_TOML, "utf-8");
-  const websiteConfig = loadWebsiteConfig();
-  const skills = discoverSkills();
+  const hooksRaw = existsSync(hooksJsonPath) ? readFileSync(hooksJsonPath, "utf-8") : "{}";
+  const websiteRaw = readFileSync(websiteTomlPath, "utf-8");
+  const websiteConfig = loadWebsiteConfig(plugin.dir);
+  const skills = discoverSkills(plugin.dir);
 
   console.log(`  Found ${websiteConfig.philosophy.sections.length} philosophy section(s)`);
   console.log(`  Found ${skills.length} skill(s)`);
@@ -216,7 +236,7 @@ function main() {
   const tomlEvents = websiteConfig.philosophy.events || [];
   if (tomlEvents.length === 0) {
     console.error("  ✗ No events defined in website.philosophy.toml [philosophy.events]");
-    process.exit(1);
+    return;
   }
   console.log(`  Found ${tomlEvents.length} diagram event(s) in TOML`);
 
@@ -224,20 +244,19 @@ function main() {
   const skillContents = skills.map((s) => s.content);
   const currentHash = computeCombinedHash(hooksRaw, websiteRaw, skillContents);
 
-  const outputPath = join(OUTPUT_DIR, "amplify.json");
+  const outputPath = join(OUTPUT_DIR, `${plugin.name}.json`);
   const existingHash = getExistingHash(outputPath);
 
   // Skip regeneration if sources unchanged and output exists (unless --force)
   if (!forceRegenerate && currentHash === existingHash) {
-    console.log(`\n  ✓ Sources unchanged (hash: ${currentHash})`);
-    console.log("\n✨ Done!");
+    console.log(`  ✓ Sources unchanged (hash: ${currentHash})`);
     return;
   }
 
   if (forceRegenerate) {
-    console.log(`\n  ⟳ Forced regeneration requested...`);
+    console.log(`  ⟳ Forced regeneration requested...`);
   } else {
-    console.log(`\n  ⟳ Sources changed (hash: ${currentHash}), regenerating...`);
+    console.log(`  ⟳ Sources changed (hash: ${currentHash}), regenerating...`);
   }
 
   // Assemble diagram events from TOML
@@ -279,6 +298,19 @@ function main() {
 
   writeFileSync(outputPath, JSON.stringify(output, null, 2) + "\n");
   console.log(`  ✓ Generated workflow diagram (hash: ${currentHash})`);
+}
+
+// --- Main ---
+
+function main() {
+  const forceRegenerate = process.argv.includes("--force");
+  const plugins = discoverPluginsWithPhilosophy();
+
+  console.log(`🔄 Generating workflow diagram data for ${plugins.length} plugin(s)`);
+
+  for (const plugin of plugins) {
+    processPlugin(plugin, forceRegenerate);
+  }
 
   console.log("\n✨ Done!");
 }

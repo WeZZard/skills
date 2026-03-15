@@ -29,6 +29,7 @@ interface Philosophy {
     type: string;
     title: string;
     content: string;
+    sound?: string;
     image?: string;
     comparison?: {
       before_label: string;
@@ -157,37 +158,63 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
             class:list={["highlight-group", { "is-active": phil.id === defaultId }]}
             data-philosophy={phil.id}
           >
-            <div class="highlight-panel">
-              <h4 class="highlight-title">{phil.highlight.title}</h4>
-              <p class="highlight-content">{phil.highlight.content}</p>
-              {phil.highlight.image && (
-                <img
-                  class="highlight-image"
-                  src={phil.highlight.image}
-                  alt={`Illustration for ${phil.highlight.title}`}
-                  loading="lazy"
-                />
-              )}
-              {phil.highlight.comparison && (
-                <div class="highlight-comparison">
-                  <div class="comparison-item">
-                    <div class="comparison-label">{phil.highlight.comparison.before_label}</div>
-                    {phil.highlight.comparison.before_image ? (
-                      <img class="comparison-image" src={phil.highlight.comparison.before_image} alt={phil.highlight.comparison.before} loading="lazy" />
-                    ) : (
-                      <div class="comparison-text">{phil.highlight.comparison.before}</div>
-                    )}
+            <div class:list={["highlight-panel", { "highlight-panel--sound": !!phil.highlight.sound }]}>
+              {phil.highlight.sound ? (
+                <>
+                  {phil.highlight.image && (
+                    <img
+                      class="highlight-image highlight-image--cover"
+                      src={phil.highlight.image}
+                      alt={`Illustration for ${phil.highlight.title}`}
+                      loading="lazy"
+                    />
+                  )}
+                  <div class="highlight-sound-bar">
+                    <h4 class="highlight-title">{phil.highlight.title}</h4>
+                    <button class="sound-play-btn" data-sound={phil.highlight.sound} type="button" aria-label={`Play ${phil.highlight.title} sound`}>
+                      <svg class="sound-icon-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                      <svg class="sound-icon-stop" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="6" width="12" height="12" rx="2"/>
+                      </svg>
+                    </button>
                   </div>
-                  <div class="comparison-arrow">→</div>
-                  <div class="comparison-item">
-                    <div class="comparison-label">{phil.highlight.comparison.after_label}</div>
-                    {phil.highlight.comparison.after_image ? (
-                      <img class="comparison-image" src={phil.highlight.comparison.after_image} alt={phil.highlight.comparison.after} loading="lazy" />
-                    ) : (
-                      <div class="comparison-text">{phil.highlight.comparison.after}</div>
-                    )}
-                  </div>
-                </div>
+                </>
+              ) : (
+                <>
+                  <h4 class="highlight-title">{phil.highlight.title}</h4>
+                  <p class="highlight-content">{phil.highlight.content}</p>
+                  {phil.highlight.image && (
+                    <img
+                      class="highlight-image"
+                      src={phil.highlight.image}
+                      alt={`Illustration for ${phil.highlight.title}`}
+                      loading="lazy"
+                    />
+                  )}
+                  {phil.highlight.comparison && (
+                    <div class="highlight-comparison">
+                      <div class="comparison-item">
+                        <div class="comparison-label">{phil.highlight.comparison.before_label}</div>
+                        {phil.highlight.comparison.before_image ? (
+                          <img class="comparison-image" src={phil.highlight.comparison.before_image} alt={phil.highlight.comparison.before} loading="lazy" />
+                        ) : (
+                          <div class="comparison-text">{phil.highlight.comparison.before}</div>
+                        )}
+                      </div>
+                      <div class="comparison-arrow">→</div>
+                      <div class="comparison-item">
+                        <div class="comparison-label">{phil.highlight.comparison.after_label}</div>
+                        {phil.highlight.comparison.after_image ? (
+                          <img class="comparison-image" src={phil.highlight.comparison.after_image} alt={phil.highlight.comparison.after} loading="lazy" />
+                        ) : (
+                          <div class="comparison-text">{phil.highlight.comparison.after}</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             {phil.relatedSkills.length > 0 && (
@@ -213,37 +240,63 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
         class:list={["highlight-group", { "is-active": phil.id === defaultId }]}
         data-philosophy={phil.id}
       >
-        <div class="highlight-panel">
-          <h4 class="highlight-title">{phil.highlight.title}</h4>
-          <p class="highlight-content">{phil.highlight.content}</p>
-          {phil.highlight.image && (
-            <img
-              class="highlight-image"
-              src={phil.highlight.image}
-              alt={`Illustration for ${phil.highlight.title}`}
-              loading="lazy"
-            />
-          )}
-          {phil.highlight.comparison && (
-            <div class="highlight-comparison">
-              <div class="comparison-item">
-                <div class="comparison-label">{phil.highlight.comparison.before_label}</div>
-                {phil.highlight.comparison.before_image ? (
-                  <img class="comparison-image" src={phil.highlight.comparison.before_image} alt={phil.highlight.comparison.before} loading="lazy" />
-                ) : (
-                  <div class="comparison-text">{phil.highlight.comparison.before}</div>
-                )}
+        <div class:list={["highlight-panel", { "highlight-panel--sound": !!phil.highlight.sound }]}>
+          {phil.highlight.sound ? (
+            <>
+              {phil.highlight.image && (
+                <img
+                  class="highlight-image highlight-image--cover"
+                  src={phil.highlight.image}
+                  alt={`Illustration for ${phil.highlight.title}`}
+                  loading="lazy"
+                />
+              )}
+              <div class="highlight-sound-bar">
+                <h4 class="highlight-title">{phil.highlight.title}</h4>
+                <button class="sound-play-btn" data-sound={phil.highlight.sound} type="button" aria-label={`Play ${phil.highlight.title} sound`}>
+                  <svg class="sound-icon-play" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                  <svg class="sound-icon-stop" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="2"/>
+                  </svg>
+                </button>
               </div>
-              <div class="comparison-arrow">↓</div>
-              <div class="comparison-item">
-                <div class="comparison-label">{phil.highlight.comparison.after_label}</div>
-                {phil.highlight.comparison.after_image ? (
-                  <img class="comparison-image" src={phil.highlight.comparison.after_image} alt={phil.highlight.comparison.after} loading="lazy" />
-                ) : (
-                  <div class="comparison-text">{phil.highlight.comparison.after}</div>
-                )}
-              </div>
-            </div>
+            </>
+          ) : (
+            <>
+              <h4 class="highlight-title">{phil.highlight.title}</h4>
+              <p class="highlight-content">{phil.highlight.content}</p>
+              {phil.highlight.image && (
+                <img
+                  class="highlight-image"
+                  src={phil.highlight.image}
+                  alt={`Illustration for ${phil.highlight.title}`}
+                  loading="lazy"
+                />
+              )}
+              {phil.highlight.comparison && (
+                <div class="highlight-comparison">
+                  <div class="comparison-item">
+                    <div class="comparison-label">{phil.highlight.comparison.before_label}</div>
+                    {phil.highlight.comparison.before_image ? (
+                      <img class="comparison-image" src={phil.highlight.comparison.before_image} alt={phil.highlight.comparison.before} loading="lazy" />
+                    ) : (
+                      <div class="comparison-text">{phil.highlight.comparison.before}</div>
+                    )}
+                  </div>
+                  <div class="comparison-arrow">↓</div>
+                  <div class="comparison-item">
+                    <div class="comparison-label">{phil.highlight.comparison.after_label}</div>
+                    {phil.highlight.comparison.after_image ? (
+                      <img class="comparison-image" src={phil.highlight.comparison.after_image} alt={phil.highlight.comparison.after} loading="lazy" />
+                    ) : (
+                      <div class="comparison-text">{phil.highlight.comparison.after}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
         {phil.relatedSkills.length > 0 && (
@@ -334,12 +387,56 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     });
   }
 
+  // --- Sound player ---
+  let currentAudio: HTMLAudioElement | null = null;
+  let currentBtn: HTMLButtonElement | null = null;
+
+  function stopSound() {
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;
+      currentAudio = null;
+    }
+    if (currentBtn) {
+      currentBtn.classList.remove("is-playing");
+      currentBtn = null;
+    }
+  }
+
+  function initSoundPlayers() {
+    document.querySelectorAll<HTMLButtonElement>(".sound-play-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const src = btn.dataset.sound;
+        if (!src) return;
+
+        if (currentBtn === btn && currentAudio) {
+          stopSound();
+          return;
+        }
+
+        stopSound();
+        currentAudio = new Audio(src);
+        currentBtn = btn;
+        btn.classList.add("is-playing");
+        currentAudio.addEventListener("ended", stopSound);
+        currentAudio.play();
+      });
+    });
+  }
+
   // Run on initial load and on Astro page transitions
-  document.addEventListener("astro:page-load", initWorkflowDiagram);
+  document.addEventListener("astro:page-load", () => {
+    initWorkflowDiagram();
+    initSoundPlayers();
+  });
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initWorkflowDiagram);
+    document.addEventListener("DOMContentLoaded", () => {
+      initWorkflowDiagram();
+      initSoundPlayers();
+    });
   } else {
     initWorkflowDiagram();
+    initSoundPlayers();
   }
 </script>
 
@@ -804,6 +901,73 @@ function getEdgeColor(edge: string): { main: string; soft: string } {
     padding: var(--space-3);
     box-sizing: border-box;
     margin-top: var(--space-3);
+  }
+
+  .highlight-image--cover {
+    object-fit: cover;
+    padding: 0;
+    margin-top: 0;
+    border: none;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    max-height: 200px;
+  }
+
+  /* ---- Sound Panel Variant ---- */
+  .highlight-panel--sound {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .highlight-sound-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-5);
+  }
+
+  .highlight-sound-bar .highlight-title {
+    margin-bottom: 0;
+  }
+
+  .sound-play-btn {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 2px solid var(--color-accent);
+    background: var(--color-surface);
+    color: var(--color-accent);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+      background var(--transition-fast),
+      color var(--transition-fast),
+      transform var(--transition-fast);
+  }
+
+  .sound-play-btn:hover {
+    background: var(--color-accent);
+    color: var(--color-surface);
+    transform: scale(1.08);
+  }
+
+  .sound-play-btn .sound-icon-stop {
+    display: none;
+  }
+
+  .sound-play-btn.is-playing .sound-icon-play {
+    display: none;
+  }
+
+  .sound-play-btn.is-playing .sound-icon-stop {
+    display: block;
+  }
+
+  .sound-play-btn.is-playing {
+    background: var(--color-accent);
+    color: var(--color-surface);
   }
 
   /* ---- Comparison Layout ---- */

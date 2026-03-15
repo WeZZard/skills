@@ -167,24 +167,26 @@ if (workflowData?.skillOrder) {
     )}
 
     <!-- Skills Section -->
-    <section class="skills-section">
-      <header class="section-header">
-        <h2>Skills</h2>
-        <span class="skill-count">{skills.length} available</span>
-      </header>
+    {skills.length > 0 && (
+      <section class="skills-section">
+        <header class="section-header">
+          <h2>Skills</h2>
+          <span class="skill-count">{skills.length} available</span>
+        </header>
 
-      <div class="skills-grid">
-        {skills.map((s, index) => (
-          <SkillCard
-            name={s.skill.name}
-            displayName={s.skill.displayName}
-            pluginName={plugin.name}
-            tagline={s.skill.tagline}
-            index={index}
-          />
-        ))}
-      </div>
-    </section>
+        <div class="skills-grid">
+          {skills.map((s, index) => (
+            <SkillCard
+              name={s.skill.name}
+              displayName={s.skill.displayName}
+              pluginName={plugin.name}
+              tagline={s.skill.tagline}
+              index={index}
+            />
+          ))}
+        </div>
+      </section>
+    )}
 
     <!-- Page Footer -->
     <footer class="page-footer">
