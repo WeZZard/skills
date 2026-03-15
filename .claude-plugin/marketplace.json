@@ -8,6 +8,11 @@
       "name": "amplify",
       "source": "./claude/amplify",
       "description": "WeZZard's Claude Code skills: brainstorming, planning, execution, error recovery"
+    },
+    {
+      "name": "zelda-sounds",
+      "source": "./claude/zelda-sounds",
+      "description": "Zelda BotW sound effects for Claude Code events"
     }
   ]
 }
