@@ -1,5 +1,5 @@
 {
   "name": "zelda-sounds",
-  "description": "Zelda BotW sound effects for Claude Code events",
-  "version": "1.0.1"
+  "description": "Zelda BotW & TotK sound effects for Claude Code events with GUI configurator",
+  "version": "2.0.0"
 }

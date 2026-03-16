@@ -1,5 +1,5 @@
 {
-  "description": "Zelda BotW sound effects for Claude Code events",
+  "description": "Zelda sound effects for Claude Code events",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-Puzzle-Solved.mp3 &"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/play-sound.sh ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-Puzzle-Solved.mp3"
           }
         ]
       },
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-Puzzle-Solved.mp3 &"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/play-sound.sh ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-Puzzle-Solved.mp3"
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-New-Location.mp3 &"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/play-sound.sh ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-New-Location.mp3"
           }
         ]
       }
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "afplay ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-High-Value-Item-Get.mp3 &"
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/play-sound.sh ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-High-Value-Item-Get.mp3"
           }
         ]
       }
