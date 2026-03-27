@@ -20,7 +20,8 @@ Assume they are a skilled user but new to our toolset and domain.
 
 ## MANDATORY: Plan File Template
 
-You SHALL create plan file with the following template by following the guidance in the HTML comments.
+You MUST create plan file with the following template by following the guidance in the HTML comments.
+You MUST not to miss points in the plan to be written.
 
 ```markdown
 # Plan of [Feature Name]

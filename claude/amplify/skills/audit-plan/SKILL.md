@@ -28,6 +28,7 @@ For each task in the plan you **MUST** spawn subagents and send them in ONE mess
 2. **Check file content:** Verify the changes match what the plan specified (exact code, structure, config values)
 3. **Check deletions:** Confirm files or code blocks the plan said to remove are actually gone
 4. **Run verification commands:** If the plan included commands with expected output, run them
+5. **Argue with the results:** Understand the task goal and compare it with the actual results. If there are any discrepancies, you MUST report them.
 
 ### Step 3: Report
 

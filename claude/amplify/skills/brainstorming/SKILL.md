@@ -15,16 +15,18 @@ Start by understanding the current project context, then ask questions one at a 
 
 **Understanding the Idea:**
 
-- Check out the current project state first (files, docs, recent commits)
-- Ask questions one at a time to refine the idea
-- Prefer multiple choice questions when possible, but open-ended is fine too
-- Only one question per message - if a topic needs more exploration, break it into multiple questions
-- Focus on understanding: purpose, constraints, success criteria
+- Check out the current project state first (files, docs, recent commits).
+- Recall the goal, purpose, design principles, and other relevant information from memories.
+- Ask questions one at a time to refine the idea with **AskUserQuestion** tool.
+- Prefer multiple choice questions when possible, but open-ended is fine too.
+- Only one question per message - if a topic needs more exploration, break it into multiple questions.
+- Focus on understanding: purpose, constraints, success criteria.
+- Explain your options by taking the user's strength and weakness into consideration.
 
 **Exploring Approaches:**
 
 - Propose 2-3 different approaches with trade-offs
-- Use `WebSearch` to gather ground truth on relevant technologies, especially for rapidly changing libraries or APIs
+- You MUST use `WebSearch` to gather ground truth on relevant technologies, especially for rapidly changing libraries or APIs
 - Present options conversationally with your recommendation and reasoning
 - Lead with your recommended option and explain why
 
@@ -45,8 +47,9 @@ Start by understanding the current project context, then ask questions one at a 
 
 **Update the Plan:**
 
-If you are in plan mode, you **MUST** use the amplify:write-plan skill update the plan file.
-If you are **NOT** in plan mode, do nothing in this step.
+1. If you are **NOT** in plan mode, call **EnterPlanMode**.
+2. Use the amplify:write-plan skill update the session plan file.
+3. Call **ExitPlanMode** for the human review.
 
 ## Key Principles
 
