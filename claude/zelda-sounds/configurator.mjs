@@ -325,7 +325,7 @@ var HTML = `<!DOCTYPE html>
     z-index: -3; pointer-events: none; }
   h1, h2, h3 { font-family: 'Playfair Display', serif; }
   .app { max-width: 1180px; margin: 0 auto; padding: 32px 24px calc(48px + env(safe-area-inset-bottom, 0px)); }
-  .header { max-width: 760px; padding: min(18vh, 180px) 0 22px; }
+  .header { max-width: 760px; padding: min(18vh, 180px) 0 64px; }
   .header-kicker { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: var(--radius-full);
     background: rgba(255,255,255,0.7); border: 1px solid rgba(232,224,212,0.92); color: var(--text-secondary);
     font-size: 0.76rem; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; backdrop-filter: blur(8px); }
@@ -410,9 +410,10 @@ var HTML = `<!DOCTYPE html>
   .tuning-status.error { color: #c0392b; }
   .moment-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--moment-card-spacing); align-items: start; }
   .moment-panel-actions { display: flex; justify-content: center; gap: 12px; margin-top: calc(var(--moment-card-spacing) * 0.4); padding-top: 4px; padding-bottom: 22px; }
-  .moment-item { position: relative; overflow: hidden; isolation: isolate; border: none; border-radius: 18px; padding: var(--moment-element-spacing); transition: none;
+  .moment-item { position: relative; overflow: visible; border: none; border-radius: 18px; padding: var(--moment-element-spacing); transition: none;
     background: transparent; box-shadow: none; }
   .moment-item:hover { background: transparent; }
+  .moment-item.menu-open { z-index: 10; }
   .moment-top { position: relative; z-index: 1; margin-bottom: 0; padding-left: 14px; padding-right: 0; }
   .moment-title-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: calc(var(--moment-element-spacing) * 0.25); }
   .moment-label { font-weight: 600; font-size: 0.98rem; min-width: 0; line-height: var(--moment-line-spacing); }
@@ -422,7 +423,7 @@ var HTML = `<!DOCTYPE html>
     color: var(--text-secondary); font-size: 0.72rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .moment-badge.invalid { background: rgba(255,242,240,0.96); color: #c0392b; }
   .moment-item.invalid { background: transparent; box-shadow: none; }
-  .moment-input-wrap { position: relative; z-index: 1; margin-top: 8px; margin-right: 0; }
+  .moment-input-wrap { position: relative; z-index: 2; margin-top: 24px; margin-right: 0; }
   .moment-input { width: 100%; padding: 12px 48px 12px 14px; border: 1px solid rgba(232,224,212,0.95); border-radius: var(--radius-md);
     font-family: inherit; font-size: 0.9rem; background: var(--earth-100); outline: none; }
   .moment-input:focus { border-color: var(--accent); background: white; }
@@ -439,23 +440,23 @@ var HTML = `<!DOCTYPE html>
     border-radius: var(--radius-full); padding: 7px 12px; font-family: inherit; font-size: 0.76rem; font-weight: 600; cursor: pointer;
     transition: all 0.15s ease; }
   .default-btn:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
-  .moment-meta { position: relative; z-index: 1; margin-top: calc(var(--moment-element-spacing) * 0.5); min-height: 18px; color: var(--text-muted); font-size: 0.77rem; line-height: var(--moment-line-spacing); }
+  .moment-meta { position: relative; z-index: 0; margin-top: calc(var(--moment-element-spacing) * 0.5); min-height: 18px; color: var(--text-muted); font-size: 0.77rem; line-height: var(--moment-line-spacing); }
   .moment-meta.invalid { color: #c0392b; }
-  .candidate-menu { position: absolute; top: auto; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 12; padding: 8px;
+  .candidate-menu { position: absolute; top: calc(100% + 4px); bottom: auto; left: 0; right: 0; z-index: 12; padding: 8px;
     border-radius: 14px; border: 1px solid rgba(232,224,212,0.96); background: rgba(255,255,255,0.98);
-    box-shadow: 0 18px 38px rgba(31,24,14,0.16); display: grid; gap: 6px; backdrop-filter: blur(10px);
-    max-height: min(48vh, 420px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+    box-shadow: 0 8px 28px rgba(31,24,14,0.14); display: grid; gap: 4px; backdrop-filter: blur(10px);
+    max-height: min(40vh, 360px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
   .candidate-menu.empty { padding: 10px 12px; color: var(--text-muted); font-size: 0.8rem; }
   .candidate-item { width: 100%; border: 1px solid transparent; background: transparent; border-radius: 10px;
     transition: all 0.14s ease; display: flex; align-items: center; gap: 0; }
   .candidate-item:hover, .candidate-item.active { border-color: rgba(196,112,75,0.28); background: var(--accent-soft); }
-  .candidate-select { flex: 1; min-width: 0; border: none; background: transparent; padding: 9px 12px;
+  .candidate-select { flex: 1; min-width: 0; border: none; background: transparent; padding: 7px 10px;
     text-align: left; cursor: pointer; display: block; font-family: inherit; color: inherit; }
-  .candidate-main { min-width: 0; display: grid; gap: 4px; }
-  .candidate-name { font-size: 0.84rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .candidate-source { display: inline-flex; width: fit-content; font-size: 0.68rem; color: var(--text-muted); background: var(--earth-100);
-    padding: 3px 8px; border-radius: var(--radius-full); }
-  .candidate-preview-btn { width: 30px; height: 30px; flex-shrink: 0; align-self: center; margin-right: 10px; margin-left: 0; }
+  .candidate-main { min-width: 0; display: grid; gap: 2px; }
+  .candidate-name { font-size: 0.8rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .candidate-source { display: inline-flex; width: fit-content; font-size: 0.65rem; color: var(--text-muted); background: var(--earth-100);
+    padding: 2px 6px; border-radius: var(--radius-full); }
+  .candidate-preview-btn { width: 26px; height: 26px; flex-shrink: 0; align-self: center; margin-right: 8px; margin-left: 0; }
   .empty-state { padding: 18px; border-radius: 18px; border: 1px dashed var(--earth-300); color: var(--text-muted); text-align: center; background: rgba(255,255,255,0.58); }
   .save-btn { padding: 12px 32px; background: var(--accent); color: white; border: none;
     border-radius: var(--radius-full); font-family: inherit; font-size: 0.95rem; font-weight: 600; cursor: pointer;
@@ -1146,7 +1147,7 @@ function renderMoments(focusState) {
     const showBadge = Boolean(moment.error || !effectiveSound);
     const menuClass = 'candidate-menu';
 
-    return '<article class="moment-item' + (moment.error ? ' invalid' : '') + '" data-id="' + escapeHtml(moment.id) + '">' +
+    return '<article class="moment-item' + (moment.error ? ' invalid' : '') + (openMenuIndex === index ? ' menu-open' : '') + '" data-id="' + escapeHtml(moment.id) + '">' +
       '<div class="moment-top">' +
       '<div class="moment-title-row">' +
       '<div class="moment-label">' + escapeHtml(moment.label) + '</div>' +
@@ -1394,7 +1395,7 @@ document.getElementById('save').addEventListener('click', async function () {
 
     const refreshed = await fetch('/api/config').then(function (res) { return res.json(); });
     refreshConfigState(refreshed);
-    status.textContent = 'Saved. Run /reload-plugins once to apply the updated configuration.';
+    status.textContent = 'Saved. Changes take effect immediately.';
     status.className = 'status success';
   } catch (error) {
     status.textContent = 'Error: ' + error.message;
@@ -1510,7 +1511,15 @@ async function handler(req, res) {
   res.end(HTML);
 }
 var server = createServer(handler);
-server.listen(PORT, () => {
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE" && PORT !== 0) {
+    console.log(`  Port ${PORT} in use, trying a random port\u2026`);
+    server.listen(0, onListening);
+  } else {
+    throw err;
+  }
+});
+function onListening() {
   const addr = server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;
   const appUrl = `http://localhost:${port}`;
@@ -1521,4 +1530,5 @@ server.listen(PORT, () => {
   console.log(`  Press Ctrl+C to stop
 `);
   if (SHOULD_OPEN_BROWSER) openBrowser(appUrl);
-});
+}
+server.listen(PORT, onListening);

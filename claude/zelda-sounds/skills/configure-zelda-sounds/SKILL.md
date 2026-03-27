@@ -10,7 +10,13 @@ Launch the Zelda Sounds configurator — a GUI that opens in your browser to let
 
 ## What to do
 
-Run the configurator in the background with `PORT=0` so it picks a free port automatically:
+First, rebuild the configurator bundle to ensure it's up to date:
+
+```bash
+cd "${CLAUDE_PLUGIN_ROOT}/configurator" && npm install --silent && npm run build --silent
+```
+
+Then run the configurator in the background with `PORT=0` so it picks a free port automatically:
 
 ```bash
 PORT=0 node "${CLAUDE_PLUGIN_ROOT}/configurator.mjs"
