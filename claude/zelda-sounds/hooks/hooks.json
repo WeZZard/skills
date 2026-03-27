@@ -1,35 +1,15 @@
 {
   "description": "Zelda sound effects for Claude Code events",
   "hooks": {
-    "PreToolUse": [
+    "SessionStart": [
       {
-        "matcher": "AskUserQuestion",
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/play-sound.sh ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-Puzzle-Solved.mp3"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/play-configured-sound.mjs\" \"session-started\""
           }
-        ]
-      },
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/play-sound.sh ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-Puzzle-Solved.mp3"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/play-sound.sh ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-New-Location.mp3"
-          }
-        ]
+        ],
+        "matcher": "startup|resume"
       }
     ],
     "Stop": [
@@ -37,9 +17,82 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/play-sound.sh ${CLAUDE_PLUGIN_ROOT}/sounds/Zelda-BotW-High-Value-Item-Get.mp3"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/play-configured-sound.mjs\" \"task-complete\""
           }
         ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/play-configured-sound.mjs\" \"attention-needed\""
+          }
+        ],
+        "matcher": "AskUserQuestion"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/play-configured-sound.mjs\" \"plan-ready\""
+          }
+        ],
+        "matcher": "ExitPlanMode"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/play-configured-sound.mjs\" \"plan-mode-entered\""
+          }
+        ],
+        "matcher": "EnterPlanMode"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/play-configured-sound.mjs\" \"plan-approved\""
+          }
+        ],
+        "matcher": "ExitPlanMode"
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/play-configured-sound.mjs\" \"subagent-done\""
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/play-configured-sound.mjs\" \"notification\""
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/play-configured-sound.mjs\" \"error\""
+          }
+        ],
+        "matcher": ".*"
       }
     ]
   }
