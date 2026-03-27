@@ -1,0 +1,13 @@
+{
+  "name": "zelda-sounds-configurator",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --experimental-strip-types src/server.ts",
+    "start": "node --experimental-strip-types src/server.ts",
+    "build": "esbuild src/server.ts --bundle --format=esm --platform=node --target=node18 --outfile=../configurator.mjs --banner:js='#!/usr/bin/env node'"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
