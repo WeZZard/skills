@@ -1502,7 +1502,7 @@ document.getElementById('save').addEventListener('click', async function () {
 
     const refreshed = await fetch('/api/config').then(function (res) { return res.json(); });
     refreshConfigState(refreshed);
-    status.textContent = 'Saved. Run /reload-plugins once to apply the updated configuration.';
+    status.textContent = 'Saved. Changes take effect immediately.';
     status.className = 'status success';
   } catch (error) {
     status.textContent = 'Error: ' + error.message;
