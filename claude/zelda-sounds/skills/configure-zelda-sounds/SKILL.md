@@ -1,25 +1,25 @@
 ---
-name: configure-sounds
+name: configure-zelda-sounds
 description: Launch the Zelda Sounds configurator GUI to assign sound effects to Claude Code hook events
 user_invocable: true
 ---
 
-# Configure Sounds
+# Configure Zelda Sounds
 
 Launch the Zelda Sounds configurator — a GUI that opens in your browser to let you assign sound effects to Claude Code events.
 
 ## What to do
 
-Run the configurator:
+Run the configurator in the background with `PORT=0` so it picks a free port automatically:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/configurator.mjs"
+PORT=0 node "${CLAUDE_PLUGIN_ROOT}/configurator.mjs"
 ```
 
-The configurator will:
-1. Start a local web server
-2. Open your default browser to the configurator UI
-3. Let you preview sounds, choose a configuration file path, and assign sounds to 9 semantic moments
-4. Save user overrides to the chosen configuration file while hooks fall back to packaged defaults
+The server prints `http://localhost:<port>` to stdout. Tell the user the URL so they can open it.
 
-After saving, remind the user to run `/reload-plugins` once if they need Claude Code to pick up the config-driven hook dispatcher.
+The configurator will:
+1. Start a local web server on an available port
+2. Open the default browser to the configurator UI
+3. Let the user preview sounds, choose a configuration file path, and assign sounds to 9 semantic moments
+4. Save user overrides to the chosen configuration file — changes take effect immediately, no reload needed

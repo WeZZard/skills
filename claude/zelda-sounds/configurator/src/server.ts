@@ -1636,7 +1636,15 @@ async function handler(req: IncomingMessage, res: ServerResponse) {
 }
 
 const server = createServer(handler);
-server.listen(PORT, () => {
+server.on("error", (err: NodeJS.ErrnoException) => {
+  if (err.code === "EADDRINUSE" && PORT !== 0) {
+    console.log(`  Port ${PORT} in use, trying a random port…`);
+    server.listen(0, onListening);
+  } else {
+    throw err;
+  }
+});
+function onListening() {
   const addr = server.address();
   const port = typeof addr === "object" && addr ? addr.port : 0;
   const appUrl = `http://localhost:${port}`;
@@ -1644,4 +1652,5 @@ server.listen(PORT, () => {
   console.log(`  ${appUrl}\n`);
   console.log(`  Press Ctrl+C to stop\n`);
   if (SHOULD_OPEN_BROWSER) openBrowser(appUrl);
-});
+}
+server.listen(PORT, onListening);
