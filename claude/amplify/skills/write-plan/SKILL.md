@@ -22,6 +22,7 @@ Assume they are a skilled user but new to our toolset and domain.
 
 You MUST create plan file with the following template by following the guidance in the HTML comments.
 You MUST not to miss points in the plan to be written.
+You MUST keep the plan file consistent with the points you have met with the user.
 
 ```markdown
 # Plan of [Feature Name]
@@ -175,6 +176,8 @@ You SHALL present testing in the following format. Multiple test files CAN be in
 
 **Veritication Steps:**
 
+<!-- For manual verifications: Present the reason why the following steps shall be verified manually. -->
+
 <!--
 1. Step 1
 2. Step 2
@@ -183,7 +186,7 @@ You SHALL present testing in the following format. Multiple test files CAN be in
 
 <!-- AUTOMATE VERIFICATION BEGIN: Present the following contents when the automate verification approach is invovled -->
 
-**Testing Framework:** [the framework used for testing, only applicable for automate the testing approach]
+**Testing System:** [the system used for testing, only applicable for automate the testing approach]
 
 **Test Cases:**
 
@@ -244,7 +247,7 @@ You SHALL recognize hypotheses in the plan and organize the task with the depend
 
 ## MANDATORY: Recognize Hypotheses in The Plan
 
-**Any points from reasoning but without ground truths from web search, web fetch, successful build and tests are hypotheses.**
+**Any points from reasoning but without ground truths get from web search, web fetch, successful build, tests and user verification are hypotheses.**
 
 You SHALL ALWAYS not jump to conclusion when any hypotheses are not validate in the plan.
 

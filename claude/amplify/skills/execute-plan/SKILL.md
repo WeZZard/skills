@@ -26,11 +26,49 @@ Read plan file
 
 ### Step 3: Execute Tasks by Maximizing the Parallelism
 
-You **MUST** spawn subagents to execute the tasks as much as possible.
+#### 3.1: Build the Task Dependency Graph
 
-On top of that:
-You **MUST** take the tasks dependencies into consideration.
-You **MUST** allocate subagent per task.
+Before executing any task, analyze the plan's task list and build a dependency graph:
+
+1. Identify each task and its declared dependencies (upstream tasks it depends on).
+2. Determine the **topological levels** of the graph:
+   - **Level 0 (leaf tasks):** Tasks with no upstream dependencies.
+   - **Level 1:** Tasks whose dependencies are all in Level 0.
+   - **Level N:** Tasks whose dependencies are all in levels < N.
+
+#### 3.2: Execute Level by Level, Leaves First
+
+You **MUST** execute in topological order — start from Level 0 and proceed upward:
+
+1. Execute **all tasks in the current level** in parallel.
+2. Wait for **all tasks in the current level** to complete.
+3. Merge and propagate results to the next level.
+4. Repeat until all levels are complete.
+
+#### 3.3: Decide Subagent vs Inline Execution per Task
+
+You **MUST NOT** blindly spawn a subagent for every task. Apply the following decision rule:
+
+**Spawn a subagent** when the task involves ANY of:
+- Multiple file edits
+- Running commands and interpreting output
+- Research or web searches
+- Non-trivial reasoning or multi-step logic
+
+**Execute inline** (in the current agent context) when the task is ALL of:
+- A single, small, self-contained action (e.g., one file edit under ~30 lines, one config change, one simple rename)
+- Independent of other concurrent tasks' outputs
+- Quick enough that subagent orchestration overhead would exceed the task itself
+
+When multiple small independent tasks at the same level each qualify for inline execution, batch them together and execute them sequentially inline rather than spawning multiple subagents.
+
+#### 3.4: Subagent Allocation Rules
+
+When spawning subagents:
+- You **MUST** spawn multiple agents in ONE message to maximize the parallelism.
+- You **MUST** allocate one subagent per task (do not combine unrelated tasks into one subagent).
+- You **MUST** provide each subagent with the full context it needs: relevant file paths, expected inputs from completed upstream tasks, and clear success criteria.
+- You **MUST** wait for all subagents at the current level to complete before proceeding to the next level.
 
 ### Step 4: Raise Human Verification Gate If Neccessary
 
