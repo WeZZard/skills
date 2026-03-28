@@ -51,6 +51,14 @@ Present a structured summary:
 - **Partial** — Some changes present, others missing or incorrect
 - **Missing** — Task was not implemented
 
+### Step 4: Fix Missing Points If Applicable
+
+If there are any missing points in the plan, you MUST spawn subagents and send them in ONE message to:
+
+1. **Fix the missing points:** Understand the task goal and fix the missing points
+2. **Verify the fix:** Verify the fix by following the guidance in the Step 2
+3. **Audit again:** Go back to **Step 2** and audit the plan execution again
+
 ## Remember
 
 - Read the plan file first, every time

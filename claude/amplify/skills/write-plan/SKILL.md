@@ -27,8 +27,10 @@ You MUST not to miss points in the plan to be written.
 # Plan of [Feature Name]
 
 > **For Claude:**
+>
 > MANDATORY SUB-SKILL: You SHALL use amplify:execute-plan to execut this plan.
-> MANDATORY SUB-SKILL: You SHALL use amplify:audit-plan to audit the result after the plan was executed.
+>
+> MANDATORY SUB-SKILL: You SHALL use amplify:audit-plan to audit the result after the plan has completed execution.
 
 **Goal:** <!-- One sentence describing what this plan achieves. Write in line. -->
 
