@@ -1,28 +1,116 @@
 ---
 name: write-plan
-description:  You MUST invoke this skill before update the plan file of the Claude Code session.
+description:  You MUST invoke this skill before writing or updating the plan file of the Claude Code session.
 ---
 
-# Update Plan
+# Write / Update Plan
 
 **Announce at start:** "I'm using the write-plan skill to plan."
 
-## Operating assumptions
+## Operating Assumptions
 
 Assume the user has zero context for the codebase and questionable taste. Document everything they need to know:
 
 - Exact files to touch (code, tests, docs).
 - You SHALL recognize hypotheses and define verification approaches, listing what evidence supports each hypothesis.
 - You SHALL recognize human verification needs, documenting how to verify them and **prioritize the relevant tasks** in the plan.
-- How to test it. What evidence do the user need to confirm it works?
+- How to test it. What evidence does the user need to confirm it works?
 
 Assume they are a skilled user but new to our toolset and domain.
 
-## MANDATORY: Plan File Template
+---
 
-You MUST create plan file with the following template by following the guidance in the HTML comments.
-You MUST not to miss points in the plan to be written.
-You MUST keep the plan file consistent with the points you have met with the user.
+## SECTION 1: Write a Plan
+
+Follow these steps **in order** when creating a new plan from scratch. Do NOT skip steps.
+
+### Step 1.1 — Assess Component Readiness
+
+Before writing anything, review the **Component Templates** in Section 3. For each component template, determine:
+
+1. Whether it applies to this plan (does the change involve project structure, tech stack, architecture, algorithm design, etc.?).
+2. Whether you have sufficient evidence (from prior exploration, user input, or tool output) to produce solid content for that component — or whether you would be guessing.
+
+Do NOT produce visible output for this step. This is a silent self-assessment. Proceed directly to Step 1.2 with your assessment.
+
+### Step 1.2 — Confidence Gate: Fill Knowledge Gaps
+
+For every component where **Confident? = No**, you MUST do one or both of the following before proceeding:
+
+**(a) Ask the user questions.** Surface specific unknowns as questions. Do NOT guess.
+
+**(b) Explore the codebase (or run commands / web searches).** Gather the missing ground truth. After exploration, re-evaluate confidence.
+
+You MUST NOT proceed to write the plan file while any component you intend to include has **Confident? = No**.
+
+**Escape hatch:** If after reasonable exploration and user interaction a component remains uncertain, you SHALL:
+- Explicitly mark it as a **hypothesis** (see Section 4: Recognize Hypotheses).
+- Add a verification task in the plan to resolve it before dependent work begins.
+
+### Step 1.3 — Draft the Plan
+
+Only after all included components pass the confidence gate (or are explicitly marked as hypotheses with verification tasks), write the plan file.
+
+- Use the **Plan File Template** from Section 3.
+- Use the relevant **Component Templates** from Section 3 for each included component.
+- Follow the **Plan Design Principles** and **Task Design Principles** from Section 3.
+
+### Step 1.4 — Self-Check
+
+After drafting, verify the plan against:
+
+1. **Hypothesis recognition** (Section 4) — Are there any ungrounded claims that should be marked as hypotheses?
+2. **Human verification recognition** (Section 4) — Does any part of the plan require human verification? If so, is it documented and prioritized?
+3. **Plan design principles** (Section 3) — Exact file paths? Complete code? Exact commands?
+4. **Task design principles** (Section 3) — One aspect per task? Hypothesis dependency order correct?
+
+If the self-check reveals gaps, loop back to Step 1.2 or fix the draft before presenting to the user.
+
+---
+
+## SECTION 2: Update a Plan
+
+Follow these steps **in order** when modifying an existing plan. Do NOT skip steps.
+
+### Step 2.1 — Identify the Delta
+
+Determine what changed since the plan was last written:
+
+- New user input or feedback
+- Exploration results (code reading, command output, web search)
+- Hypothesis validated or invalidated
+- Scope change
+
+### Step 2.2 — Scope the Update
+
+Determine which plan components are affected by the delta. List them explicitly.
+
+### Step 2.3 — Confidence Gate
+
+Apply the same confidence gate as Step 1.2, but **only for the affected components**. Unaffected components keep their existing content.
+
+### Step 2.4 — Apply Updates
+
+Modify only the affected sections. Preserve unaffected sections exactly as they are.
+
+### Step 2.5 — Re-Check Consistency
+
+Ensure the updated plan is internally consistent:
+
+- Task dependencies still hold after the change.
+- Verification steps still cover the modified scope.
+- Hypothesis markers are updated if any hypothesis was resolved.
+- Human verification gates are updated if scope changed.
+
+---
+
+## SECTION 3: Plan File Template & Evaluation Principles (Reference)
+
+This section contains the **reference material** used during Sections 1 and 2. It is NOT a workflow — it is consulted during the drafting and self-check steps.
+
+### Plan File Template
+
+You MUST create plan files following this template by following the guidance in the HTML comments. You MUST not miss points in the plan to be written. You MUST keep the plan file consistent with the points you have met with the user.
 
 ```markdown
 # Plan of [Feature Name]
@@ -64,13 +152,13 @@ You MUST keep the plan file consistent with the points you have met with the use
 
 ```
 
-## MANDATORY: Plan File Component Templates
+### Component Templates
 
-You SHALL ALWAYS use the following plan file component templates to generate relevant contents in the plan file.
+You SHALL use the following component templates to generate relevant contents in the plan file when the corresponding component is included.
 
 **Project Structure:**
 
-You SHALL use the following template when the project structure changes if additions, removals or changes are introduced to the project structure.
+You SHALL use this template when additions, removals, or changes are introduced to the project structure.
 
 ```markdown
 ## Project Structure
@@ -95,7 +183,7 @@ You SHALL NOT just illustrate the project structure before OR after the changes 
 
 **Tech Stack:**
 
-You SHALL use the following template when the tech stack changes if additions, removals or changes are introduced to the tech stack.
+You SHALL use this template when additions, removals, or changes are introduced to the tech stack.
 
 ```markdown
 ## Tech Stack
@@ -119,7 +207,7 @@ You SHALL NOT just illustrate the tech stack before OR after the changes and ill
 
 **Architecture:**
 
-You SHALL use the following template when the architecture changes if additions, removals or changes are introduced to the architecture.
+You SHALL use this template when additions, removals, or changes are introduced to the architecture.
 
 ```markdown
 ## Architecture
@@ -143,7 +231,7 @@ You SHALL NOT just illustrate the architecture before OR after the changes and i
 
 **Algorithm Design:**
 
-You SHALL use the following template when the algorithm design if new algorithms are introduced or changes are introduced to existing algorithm designs.
+You SHALL use this template when new algorithms are introduced or changes are introduced to existing algorithm designs.
 
 ```markdown
 ## Algorithm Design
@@ -164,7 +252,7 @@ Formulae are allowed if can be expressed in markdown.
 
 **Verification:**
 
-You SHALL use the following template when the plan involves codes, configurations or prompts addition, removal and changes.
+You SHALL use this template when the plan involves code, configuration, or prompt additions, removals, and changes.
 
 ```markdown
 ## Verification
@@ -213,7 +301,7 @@ You SHALL present testing in the following format. Multiple test files CAN be in
 
 **Human Verification Gate:**
 
-You shall use the following template when any part of the plan requires human verification based on the human verification criteria mentioned below.
+You SHALL use this template when any part of the plan requires human verification based on the criteria in Section 4.
 
 ```markdown
 ## Human Verification Gate
@@ -226,7 +314,7 @@ You SHALL present the human verification requirements in following format.
 **Reason:** "<cite which IS item from the category definition below this matches>"
 ```
 
-## MANDATORY: Plan Design Principles
+### Plan Design Principles
 
 **DO:**
 
@@ -237,21 +325,27 @@ You SHALL present the human verification requirements in following format.
 
 **DO NOT:**
 
-## MANDATORY: Task Design Principles
+### Task Design Principles
 
-You SHALL make each task concentrate on one aspect of the task and aware of context window size.
-You SHALL not put too many actions into one task.
-You SHALL slice big tasks into smaller ones to maintain context effectiveness.
-You SHALL recognize which task requires human verification and prioritize it to the plan start.
-You SHALL recognize hypotheses in the plan and organize the task with the dependency order.
+- You SHALL make each task concentrate on one aspect of the task and aware of context window size.
+- You SHALL not put too many actions into one task.
+- You SHALL slice big tasks into smaller ones to maintain context effectiveness.
+- You SHALL recognize which task requires human verification and prioritize it to the plan start.
+- You SHALL recognize hypotheses in the plan and organize the task with the dependency order.
 
-## MANDATORY: Recognize Hypotheses in The Plan
+---
+
+## SECTION 4: Hypotheses & Human Verification (Reference)
+
+This section contains the **recognition criteria** used during the self-check steps in Sections 1 and 2. It is NOT a workflow — it is consulted during confidence gating and self-checks.
+
+### Recognize Hypotheses in The Plan
 
 **Any points from reasoning but without ground truths get from web search, web fetch, successful build, tests and user verification are hypotheses.**
 
-You SHALL ALWAYS not jump to conclusion when any hypotheses are not validate in the plan.
+You SHALL ALWAYS not jump to conclusion when any hypotheses are not validated in the plan.
 
-## MANDATORY: Recognize Human Verification
+### Recognize Human Verification
 
 You SHALL recognize which part of the plan requires human verification with the following criteria.
 
