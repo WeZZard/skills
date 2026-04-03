@@ -46,6 +46,7 @@ Development workflow skills for planning and execution.
 | `write-plan`          | Create and update plan files with structured templates             |
 | `execute-plan`        | Execute a plan file step by step                                   |
 | `recover-from-errors` | Recover from errors during execution                               |
+| `same-page`           | Explain previous message with adaptive layout, evidence, confidence, and ASCII art |
 
 ## Repo layout
 
