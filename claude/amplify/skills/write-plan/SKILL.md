@@ -14,7 +14,12 @@ Assume the user has zero context for the codebase and questionable taste. Docume
 - Exact files to touch (code, tests, docs).
 - You **MUST** recognize hypotheses and define verification approaches, listing what evidence supports each hypothesis.
 - You **MUST** recognize human verification needs, documenting how to verify them and **prioritize the relevant tasks** in the plan.
-- How to test it. What evidence does the user need to confirm it works?
+- **Testing strategy:**
+  - **Unit tests:** When you add or change behavior, plan unit tests in the same slice—cover the happy path and material edge cases; name exact test files in the plan.
+  - **Integration tests:** When multiple units/modules are orchestrated (collaborating classes/functions, boundaries, I/O), plan integration tests that exercise those interactions.
+  - **End-to-end tests:** When the workflow is connected and you must prove the full path, plan E2E (or equivalent) coverage at the appropriate layer for your stack.
+  - **Regression (bug-fix plans):** When the plan fixes a reported issue, plan a failing reproducer (or automated regression) **before** any fix task; fix tasks depend on it.
+  - Not every plan needs every layer—match scope; if a layer is skipped, state why briefly.
 
 Assume they are a skilled user but new to our toolset and domain.
 
@@ -54,7 +59,7 @@ Only after all included components pass the confidence gate (or are explicitly m
 
 - Use the **Plan File Template** from Appendix A.
 - Use the relevant **Component Templates** from Appendix A for each included component.
-- Follow the **Plan Design Principles** and **Task Design Principles** from Appendix A.
+- Follow the **Testing strategy principles**, **Plan Design Principles**, and **Task Design Principles** from Appendix A.
 
 ### Step 1.4 — Self-Check
 
@@ -64,6 +69,9 @@ After drafting, verify the plan against:
 2. **Human verification recognition** (Appendix B) — Does any part of the plan require human verification? If so, is it documented and prioritized?
 3. **Plan design principles** (Appendix A) — Exact file paths? Complete code? Exact commands?
 4. **Task design principles** (Appendix A) — One aspect per task? Hypothesis dependency order correct?
+5. **Testing strategy** (Appendix A) — Does the plan include the right mix of unit/integration/E2E for the scope, with rationale if a layer is intentionally omitted?
+6. **Bug-fix ordering** — If this plan fixes a bug/issue, is there a regression/reproducer task **before** implementation tasks?
+7. **Verification as specification** (Appendix A, Verification template) — For the risk level of this plan, are automated tests in **Verification** documented with enough **spec-style** detail (layers, **Specifies**, GWT/AAA or equivalent, edges where needed, reproducer label for bug-fix; optional **Coverage map** for large scope) that an agent could implement and audit against them without guessing?
 
 If the self-check reveals gaps, loop back to Step 1.2 or fix the draft before presenting to the user.
 
@@ -81,6 +89,7 @@ Determine what changed since the plan was last written:
 - Exploration results (code reading, command output, web search)
 - Hypothesis validated or invalidated
 - Scope change
+- Testing or verification scope changed (new boundary, bug reproducer, added/removed E2E, etc.)
 
 ### Step 2.2 — Scope the Update
 
@@ -102,6 +111,8 @@ Ensure the updated plan is internally consistent:
 - Verification steps still cover the modified scope.
 - Hypothesis markers are updated if any hypothesis was resolved.
 - Human verification gates are updated if scope changed.
+- Testing strategy still matches the delta (unit/integration/E2E/regression-first for bug-fix); update tasks and Verification if not.
+- **Verification as specification:** If verification scope changed, do spec-style fields (layers, Specifies, GWT/AAA, coverage map, reproducer) still match the new scope and depth-for-risk?
 
 ---
 
@@ -258,12 +269,20 @@ You **MUST** use this template when the plan involves code, configuration, or pr
 ```markdown
 ## Verification
 <!--
-You **MUST** present testing in the following format. Multiple test files CAN be involved in the **Test Cases** sesion. Multiple test cases CAN be involved under one test file item in the test file list. At lest, but not limited to, one key assertion CAN be involved under each test case sub list.
+You **MUST** present testing in the following format. Multiple test files CAN be involved in the **Test Cases** section. Multiple test cases CAN be involved under one test file item in the test file list. At least, but not limited to, one key assertion CAN be involved under each test case sub list.
+
+You **MUST** map automated tests to layers: **Unit**, **Integration**, **E2E**, or **Regression** (bug reproducer). Tag each file or group in **Test Cases**, or summarize under **Automated test layers:** below.
+
+You **MUST** treat each test case (or test file for small plans) as a specification: include **Specifies** (one line: what behavior or requirement this case locks in); short **Given / When / Then** or **Arrange / Act / Assert** where useful (especially integration/E2E); list **Edge / negative** cases when not obvious from names. Depth **MUST** scale with plan risk—do not require full GWT for trivial refactors.
+
+For large scopes, you **MAY** add a **Coverage map** (requirement, user story, or risk → test file or case id).
+
+For bug-fix plans, the first automated case **MUST** be labeled **Reproducer** (expected failure before fix, pass after).
 -->
 
 **Verification Approach:** [Automate | Manual | Hybrid: automate and manual]
 
-**Veritication Steps:**
+**Verification Steps:**
 
 <!-- For manual verifications: Present the reason why the following steps **MUST** be verified manually. -->
 
@@ -273,14 +292,20 @@ You **MUST** present testing in the following format. Multiple test files CAN be
 3. Step 2
 -->
 
-<!-- AUTOMATE VERIFICATION BEGIN: Present the following contents when the automate verification approach is invovled -->
+<!-- AUTOMATE VERIFICATION BEGIN: Present the following contents when the automate verification approach is involved -->
+
+**Automated test layers (optional if each file is tagged in Test Cases):** [e.g. Unit: [unit_test_file]; Integration: [integration_test_file]]
+
+**Coverage map (optional, large scopes):** [e.g. REQ-1 → [test_file] case A; risk: [risk description] → [workflow_test_file]]
 
 **Testing System:** [the system used for testing, only applicable for automate the testing approach]
 
 **Test Cases:**
 
-<!-- You **MUST** present the test cases with the following nested list format.
+<!-- You **MUST** present the test cases with the following nested list format. You **MAY** place spec metadata on lines under each ADD|MODIFY entry, e.g. **Test layer:**, **Specifies:**, **Given / When / Then:** or **Arrange / Act / Assert:**, **Reproducer:** yes | no, **Edge / negative:** ...
 1. ADD|MODIFY: [test_filename_1]
+    <!-- **Test layer:** Unit | Integration | E2E | Regression -->
+    <!-- **Specifies:** <one-line spec hook> | **Reproducer:** yes (bug-fix first case only) -->
     1. ADD|MODIFY: [test_case_1]: [test_filename_1_test_case_1_description]
         1. ADD|MODIFY: [key assertion 1]
         2. ADD|MODIFY: [key assertion 2]
@@ -315,6 +340,14 @@ You **MUST** present the human verification requirements in following format.
 **Reason:** "<cite which IS item from the category definition below this matches>"
 ```
 
+### Testing strategy principles
+
+- **Unit:** Plan production code and unit tests together; include happy path and edge cases; use exact paths for both.
+- **Integration:** Plan integration tests when components are orchestrated across boundaries (modules, processes, DB, network, etc.).
+- **E2E:** Plan E2E (or stack-appropriate) tests when the full workflow must be proven after wiring.
+- **Bug-fix / issue-fix:** You **MUST** schedule a regression reproducer (failing test or minimal repro) before tasks that apply the fix; ordering must be explicit in **Tasks**.
+- **TDD:** Prefer **DRY, YAGNI, TDD**—state in the plan whether the slice is test-first (red→green) or test co-located with implementation if either pattern applies.
+
 ### Plan Design Principles
 
 **DO:**
@@ -322,7 +355,7 @@ You **MUST** present the human verification requirements in following format.
 - You **MUST** use exact file paths.
 - You **MUST** provide complete code in the plan (avoid vague steps).
 - You **MUST** include exact commands with expected output.
-- You **MUST** DRY, YAGNI, TDD.
+- You **MUST** DRY, YAGNI, TDD (see **Testing strategy principles** for how tests and tasks align).
 
 **DO NOT:**
 
@@ -333,6 +366,7 @@ You **MUST** present the human verification requirements in following format.
 - You **MUST** slice big tasks into smaller ones to maintain context effectiveness.
 - You **MUST** recognize which task requires human verification and prioritize it to the plan start.
 - You **MUST** recognize hypotheses in the plan and organize the task with the dependency order.
+- You **MUST** order tasks to match the testing strategy (e.g., reproducer before fix for bugs; integration/E2E after their prerequisites unless the plan documents a different dependency).
 
 ---
 
