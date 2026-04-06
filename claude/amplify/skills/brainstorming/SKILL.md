@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: You MUST invoke this skill when the user wants to explore ideas, discuss approaches, research a topic, or has been stuck on a problem. Always brainstorm before beginning implementation.
+description: <MANDATORY>You MUST invoke this skill when the user wants to explore ideas, discuss approaches, research a topic, or has been stuck on a problem. Always brainstorm before beginning implementation.</MANDATORY>
 ---
 
 # Brainstorming Ideas Into Designs
@@ -26,7 +26,7 @@ Start by understanding the current project context, then ask questions one at a 
 **Exploring Approaches:**
 
 - Propose 2-3 different approaches with trade-offs
-- You MUST use `WebSearch` to gather ground truth on relevant technologies, especially for rapidly changing libraries or APIs
+- You **MUST** use `WebSearch` to gather ground truth for open source projects, platform specific technologies and research results.
 - Present options conversationally with your recommendation and reasoning
 - Lead with your recommended option and explain why
 
@@ -45,11 +45,11 @@ Start by understanding the current project context, then ask questions one at a 
 - Cover: architecture, components, data flow, error handling, testing
 - Be ready to go back and clarify if something doesn't make sense
 
-**Update the Plan:**
+**Update the Plan and Review the Plan:**
 
-1. If you are **NOT** in plan mode, call **EnterPlanMode**.
+1. You **MUST** call **EnterPlanMode** to enter plan mode.
 2. Use the amplify:write-plan skill update the session plan file.
-3. Call **ExitPlanMode** for the human review.
+3. You **MUST** call **ExitPlanMode** for the human review.
 
 ## Key Principles
 

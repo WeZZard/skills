@@ -1,6 +1,6 @@
 ---
 name: write-plan
-description:  You MUST invoke this skill before writing or updating the plan file of the Claude Code session.
+description:  <MANDATORY>You MUST invoke this skill before writing or updating the plan file of the Claude Code session.</MANDATORY>
 ---
 
 # Write / Update Plan
@@ -12,8 +12,8 @@ description:  You MUST invoke this skill before writing or updating the plan fil
 Assume the user has zero context for the codebase and questionable taste. Document everything they need to know:
 
 - Exact files to touch (code, tests, docs).
-- You SHALL recognize hypotheses and define verification approaches, listing what evidence supports each hypothesis.
-- You SHALL recognize human verification needs, documenting how to verify them and **prioritize the relevant tasks** in the plan.
+- You **MUST** recognize hypotheses and define verification approaches, listing what evidence supports each hypothesis.
+- You **MUST** recognize human verification needs, documenting how to verify them and **prioritize the relevant tasks** in the plan.
 - How to test it. What evidence does the user need to confirm it works?
 
 Assume they are a skilled user but new to our toolset and domain.
@@ -26,7 +26,7 @@ Follow these steps **in order** when creating a new plan from scratch. Do NOT sk
 
 ### Step 1.1 — Assess Component Readiness
 
-Before writing anything, review the **Component Templates** in Section 3. For each component template, determine:
+Before writing anything, review the **Component Templates** in Appendix A. For each component template, determine:
 
 1. Whether it applies to this plan (does the change involve project structure, tech stack, architecture, algorithm design, etc.?).
 2. Whether you have sufficient evidence (from prior exploration, user input, or tool output) to produce solid content for that component — or whether you would be guessing.
@@ -43,26 +43,27 @@ For every component where **Confident? = No**, you MUST do one or both of the fo
 
 You MUST NOT proceed to write the plan file while any component you intend to include has **Confident? = No**.
 
-**Escape hatch:** If after reasonable exploration and user interaction a component remains uncertain, you SHALL:
-- Explicitly mark it as a **hypothesis** (see Section 4: Recognize Hypotheses).
+**Escape hatch:** If after reasonable exploration and user interaction a component remains uncertain, you **MUST**:
+
+- Explicitly mark it as a **hypothesis** (see Appendix B: Recognize Hypotheses).
 - Add a verification task in the plan to resolve it before dependent work begins.
 
 ### Step 1.3 — Draft the Plan
 
 Only after all included components pass the confidence gate (or are explicitly marked as hypotheses with verification tasks), write the plan file.
 
-- Use the **Plan File Template** from Section 3.
-- Use the relevant **Component Templates** from Section 3 for each included component.
-- Follow the **Plan Design Principles** and **Task Design Principles** from Section 3.
+- Use the **Plan File Template** from Appendix A.
+- Use the relevant **Component Templates** from Appendix A for each included component.
+- Follow the **Plan Design Principles** and **Task Design Principles** from Appendix A.
 
 ### Step 1.4 — Self-Check
 
 After drafting, verify the plan against:
 
-1. **Hypothesis recognition** (Section 4) — Are there any ungrounded claims that should be marked as hypotheses?
-2. **Human verification recognition** (Section 4) — Does any part of the plan require human verification? If so, is it documented and prioritized?
-3. **Plan design principles** (Section 3) — Exact file paths? Complete code? Exact commands?
-4. **Task design principles** (Section 3) — One aspect per task? Hypothesis dependency order correct?
+1. **Hypothesis recognition** (Appendix B) — Are there any ungrounded claims that should be marked as hypotheses?
+2. **Human verification recognition** (Appendix B) — Does any part of the plan require human verification? If so, is it documented and prioritized?
+3. **Plan design principles** (Appendix A) — Exact file paths? Complete code? Exact commands?
+4. **Task design principles** (Appendix A) — One aspect per task? Hypothesis dependency order correct?
 
 If the self-check reveals gaps, loop back to Step 1.2 or fix the draft before presenting to the user.
 
@@ -104,9 +105,9 @@ Ensure the updated plan is internally consistent:
 
 ---
 
-## SECTION 3: Plan File Template & Evaluation Principles (Reference)
+## Appendix A: Plan File Template & Evaluation Principles (Reference)
 
-This section contains the **reference material** used during Sections 1 and 2. It is NOT a workflow — it is consulted during the drafting and self-check steps.
+This appendix contains the **reference material** used during SECTION 1 and SECTION 2. It is NOT a workflow — it is consulted during the drafting and self-check steps.
 
 ### Plan File Template
 
@@ -117,9 +118,9 @@ You MUST create plan files following this template by following the guidance in 
 
 > **For Claude:**
 >
-> MANDATORY SUB-SKILL: You SHALL use amplify:execute-plan to execut this plan.
+> MANDATORY SUB-SKILL: You **MUST** use amplify:execute-plan to execut this plan.
 >
-> MANDATORY SUB-SKILL: You SHALL use amplify:audit-plan to audit the result after the plan has completed execution.
+> MANDATORY SUB-SKILL: You **MUST** use amplify:audit-plan to audit the result after the plan has completed execution.
 
 **Goal:** <!-- One sentence describing what this plan achieves. Write in line. -->
 
@@ -133,7 +134,7 @@ You MUST create plan files following this template by following the guidance in 
 
 ## Tasks
 
-<!-- You SHALL always list the tasks.
+<!-- You **MUST** always list the tasks.
 
 **DO** output with one of the following forms:
 
@@ -148,24 +149,24 @@ You MUST create plan files following this template by following the guidance in 
 
 ## Verification
 
-<!-- You SHALL always list the verification steps. -->
+<!-- You **MUST** always list the verification steps. -->
 
 ```
 
 ### Component Templates
 
-You SHALL use the following component templates to generate relevant contents in the plan file when the corresponding component is included.
+You **MUST** use the following component templates to generate relevant contents in the plan file when the corresponding component is included.
 
 **Project Structure:**
 
-You SHALL use this template when additions, removals, or changes are introduced to the project structure.
+You **MUST** use this template when additions, removals, or changes are introduced to the project structure.
 
 ```markdown
 ## Project Structure
 
 <!-- 
-You SHALL illustrate the project structure before AND after the changes.
-You SHALL NOT just illustrate the project structure before OR after the changes and illustrate another with text descriptions.
+You **MUST** illustrate the project structure before AND after the changes.
+You **MUST** NOT just illustrate the project structure before OR after the changes and illustrate another with text descriptions.
 
 **DO** illustrate with one of the following forms:
 
@@ -183,14 +184,14 @@ You SHALL NOT just illustrate the project structure before OR after the changes 
 
 **Tech Stack:**
 
-You SHALL use this template when additions, removals, or changes are introduced to the tech stack.
+You **MUST** use this template when additions, removals, or changes are introduced to the tech stack.
 
 ```markdown
 ## Tech Stack
 
 <!--
-You SHALL illustrate the tech stack before AND after the changes.
-You SHALL NOT just illustrate the tech stack before OR after the changes and illustrate another with text descriptions.
+You **MUST** illustrate the tech stack before AND after the changes.
+You **MUST** NOT just illustrate the tech stack before OR after the changes and illustrate another with text descriptions.
 
 **DO** illustrate with one of the following forms:
 
@@ -207,14 +208,14 @@ You SHALL NOT just illustrate the tech stack before OR after the changes and ill
 
 **Architecture:**
 
-You SHALL use this template when additions, removals, or changes are introduced to the architecture.
+You **MUST** use this template when additions, removals, or changes are introduced to the architecture.
 
 ```markdown
 ## Architecture
 
 <!--
-You SHALL illustrate the architecture before AND after the changes.
-You SHALL NOT just illustrate the architecture before OR after the changes and illustrate another with text descriptions.
+You **MUST** illustrate the architecture before AND after the changes.
+You **MUST** NOT just illustrate the architecture before OR after the changes and illustrate another with text descriptions.
 
 **DO** illustrate with one of the following forms:
 
@@ -231,7 +232,7 @@ You SHALL NOT just illustrate the architecture before OR after the changes and i
 
 **Algorithm Design:**
 
-You SHALL use this template when new algorithms are introduced or changes are introduced to existing algorithm designs.
+You **MUST** use this template when new algorithms are introduced or changes are introduced to existing algorithm designs.
 
 ```markdown
 ## Algorithm Design
@@ -252,19 +253,19 @@ Formulae are allowed if can be expressed in markdown.
 
 **Verification:**
 
-You SHALL use this template when the plan involves code, configuration, or prompt additions, removals, and changes.
+You **MUST** use this template when the plan involves code, configuration, or prompt additions, removals, and changes.
 
 ```markdown
 ## Verification
 <!--
-You SHALL present testing in the following format. Multiple test files CAN be involved in the **Test Cases** sesion. Multiple test cases CAN be involved under one test file item in the test file list. At lest, but not limited to, one key assertion CAN be involved under each test case sub list.
+You **MUST** present testing in the following format. Multiple test files CAN be involved in the **Test Cases** sesion. Multiple test cases CAN be involved under one test file item in the test file list. At lest, but not limited to, one key assertion CAN be involved under each test case sub list.
 -->
 
 **Verification Approach:** [Automate | Manual | Hybrid: automate and manual]
 
 **Veritication Steps:**
 
-<!-- For manual verifications: Present the reason why the following steps shall be verified manually. -->
+<!-- For manual verifications: Present the reason why the following steps **MUST** be verified manually. -->
 
 <!--
 1. Step 1
@@ -278,7 +279,7 @@ You SHALL present testing in the following format. Multiple test files CAN be in
 
 **Test Cases:**
 
-<!-- You SHALL present the test cases with the following nested list format.
+<!-- You **MUST** present the test cases with the following nested list format.
 1. ADD|MODIFY: [test_filename_1]
     1. ADD|MODIFY: [test_case_1]: [test_filename_1_test_case_1_description]
         1. ADD|MODIFY: [key assertion 1]
@@ -301,12 +302,12 @@ You SHALL present testing in the following format. Multiple test files CAN be in
 
 **Human Verification Gate:**
 
-You SHALL use this template when any part of the plan requires human verification based on the criteria in Section 4.
+You **MUST** use this template when any part of the plan requires human verification based on the criteria in Appendix B.
 
 ```markdown
 ## Human Verification Gate
 <!--
-You SHALL present the human verification requirements in following format.
+You **MUST** present the human verification requirements in following format.
 -->
 
 **Criterion:** "<description of what needs validation>"
@@ -318,38 +319,38 @@ You SHALL present the human verification requirements in following format.
 
 **DO:**
 
-- You SHALL use exact file paths.
-- You SHALL provide complete code in the plan (avoid vague steps).
-- You SHALL include exact commands with expected output.
-- You SHALL DRY, YAGNI, TDD.
+- You **MUST** use exact file paths.
+- You **MUST** provide complete code in the plan (avoid vague steps).
+- You **MUST** include exact commands with expected output.
+- You **MUST** DRY, YAGNI, TDD.
 
 **DO NOT:**
 
 ### Task Design Principles
 
-- You SHALL make each task concentrate on one aspect of the task and aware of context window size.
-- You SHALL not put too many actions into one task.
-- You SHALL slice big tasks into smaller ones to maintain context effectiveness.
-- You SHALL recognize which task requires human verification and prioritize it to the plan start.
-- You SHALL recognize hypotheses in the plan and organize the task with the dependency order.
+- You **MUST** make each task concentrate on one aspect of the task and aware of context window size.
+- You **MUST** not put too many actions into one task.
+- You **MUST** slice big tasks into smaller ones to maintain context effectiveness.
+- You **MUST** recognize which task requires human verification and prioritize it to the plan start.
+- You **MUST** recognize hypotheses in the plan and organize the task with the dependency order.
 
 ---
 
-## SECTION 4: Hypotheses & Human Verification (Reference)
+## Appendix B: Hypotheses & Human Verification (Reference)
 
-This section contains the **recognition criteria** used during the self-check steps in Sections 1 and 2. It is NOT a workflow — it is consulted during confidence gating and self-checks.
+This appendix contains the **recognition criteria** used during the self-check steps in SECTION 1 and SECTION 2. It is NOT a workflow — it is consulted during confidence gating and self-checks.
 
 ### Recognize Hypotheses in The Plan
 
 **Any points from reasoning but without ground truths get from web search, web fetch, successful build, tests and user verification are hypotheses.**
 
-You SHALL ALWAYS not jump to conclusion when any hypotheses are not validated in the plan.
+You **MUST** ALWAYS not jump to conclusion when any hypotheses are not validated in the plan.
 
 ### Recognize Human Verification
 
-You SHALL recognize which part of the plan requires human verification with the following criteria.
+You **MUST** recognize which part of the plan requires human verification with the following criteria.
 
-**Before applying these criteria, you SHALL explore this computer to find available tools to determine actual capabilities.** Do not assume limitations — verify them.
+**Before applying these criteria, you **MUST** explore this computer to find available tools to determine actual capabilities.** Do not assume limitations — verify them.
 
 **No Computer Use** — Agent lacks computer use capability
 
