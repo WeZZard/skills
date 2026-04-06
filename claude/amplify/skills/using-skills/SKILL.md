@@ -55,6 +55,7 @@ When multiple skills could apply, use this order:
 
 | Skill | When to Use |
 |-------|-------------|
+| `be-thorough` | Before concluding: investigation, evidence for assumptions, reference verification, testing |
 | `brainstorming` | BEFORE any creative work: features, components, modifications |
 | `write-plan` | After brainstorming, to create structured implementation plan |
 | `execute-plan` | When you have a finalized plan file ready to implement |
