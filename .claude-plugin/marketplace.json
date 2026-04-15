@@ -13,6 +13,11 @@
       "name": "zelda-sounds",
       "source": "./claude/zelda-sounds",
       "description": "Zelda BotW sound effects for Claude Code events"
+    },
+    {
+      "name": "skill-kit",
+      "source": "./claude/skill-kit",
+      "description": "Tools for auditing and improving Claude Code skill definitions"
     }
   ]
 }
