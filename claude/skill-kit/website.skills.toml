@@ -1,0 +1,44 @@
+# Skill Kit - Skills Configuration
+# This file configures skill display content on the website
+
+[skills.skill-lint]
+display_name = "Skill Lint"
+tagline = "Catch structural issues and format coherence problems in skill definitions before they cause downstream divergence"
+short_summary = "Audit skill/prompt files for 10 categories of structural and JSON schema format coherence issues using automated checks and LLM semantic analysis."
+full_summary = "This skill reads a skill or prompt definition file (or directory), extracts all JSON schema blocks, and systematically checks every field against ten categories of issues spanning two phases. Phase 1 uses automated deterministic checks for frontmatter validation, step continuity, and cross-reference integrity. Phase 2 uses 5 parallel LLM subagents with model-matched complexity to detect MUST/MUST NOT contradictions, numeric fields quoted as strings, ungrounded fields, missing format constraints, inconsistent field names, open-ended enums, and structured data serialized as free-text. It produces a detailed report with severity ratings and concrete suggested fixes."
+
+[[skills.skill-lint.highlights]]
+title = "Two-Phase Analysis"
+description = "Phase 1 uses automated tools (Grep, Glob, regex) for definitive pass/fail structural checks. Phase 2 uses LLM judgment via parallel subagents for semantic analysis of JSON schema coherence. This separation ensures deterministic issues are caught reliably while nuanced problems get appropriate reasoning."
+
+[[skills.skill-lint.highlights]]
+title = "5 Parallel Subagents"
+description = "Semantic checks are distributed across 5 parallel subagents with models matched to check complexity: Sonnet for reasoning-heavy tasks (MUST consistency, cross-schema naming, verbatim-transfer semantics) and Haiku for pattern-matching tasks (numeric strings, open enums, structured data detection)."
+
+[[skills.skill-lint.highlights]]
+title = "10 Detection Categories"
+description = "Covers frontmatter validation, step continuity, cross-reference integrity, MUST/MUST NOT consistency, numeric fields quoted as strings, ungrounded fields, missing format constraints, inconsistent field names, open-ended enums, and structured data serialized as free-text."
+
+[[skills.skill-lint.highlights]]
+title = "Concrete Suggested Fixes"
+description = "Every finding includes the exact current text, a clear explanation of the issue, and a concrete replacement suggestion. Fixes preserve semantic meaning while correcting structural and format coherence problems."
+
+[[skills.skill-lint.workflow]]
+name = "Resolve Input"
+description = "Accept a directory or file path and discover all relevant files."
+details = "The skill takes a path as argument, resolves whether it's a directory or file, and uses Glob to find all skill definition files. Explore subagents gather context about referenced tools and skills."
+
+[[skills.skill-lint.workflow]]
+name = "Automated Checks"
+description = "Run Phase 1 deterministic checks for frontmatter, step continuity, and cross-references."
+details = "Uses Grep, Glob, and regex to verify mechanically checkable properties. Checks frontmatter fields, step numbering sequences, and cross-reference integrity against known tool and skill names. Results are definitive pass/fail."
+
+[[skills.skill-lint.workflow]]
+name = "Semantic Analysis"
+description = "Launch 5 parallel subagents for Phase 2 LLM-driven checks."
+details = "Each subagent receives the file content and its specific category definitions. Models are matched to complexity: Sonnet for reasoning-heavy checks, Haiku for pattern-matching. All agents run in parallel for maximum throughput."
+
+[[skills.skill-lint.workflow]]
+name = "Compile Report"
+description = "Merge all findings into a structured report with severity ratings and suggested fixes."
+details = "Results from both phases are combined into a single report with summary tables, per-finding detail blocks, and severity classifications. Categories with no findings are omitted for clarity."
