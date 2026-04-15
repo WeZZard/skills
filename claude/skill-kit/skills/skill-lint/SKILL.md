@@ -1,17 +1,23 @@
 ---
 name: skill-lint
-description: Audit skill/prompt files for structural issues and JSON schema format coherence issues. Accepts a directory or file path, runs automated deterministic checks and LLM semantic analysis via parallel subagents.
+description: Audit skill/prompt files for structural issues and JSON schema format coherence issues. Requires --agent parameter to select LLM backend (codex, gemini, copilot, claude, cursor, kimi) for semantic analysis.
 ---
 
 # Skill Lint
 
 ## Overview
 
-Audit skill/prompt files for structural issues, step continuity, cross-reference integrity, and JSON schema format coherence. Uses a two-phase approach: automated deterministic checks followed by LLM semantic analysis via 5 parallel subagents.
+Audit skill/prompt files for structural issues, step continuity, cross-reference integrity, and JSON schema format coherence. Uses a two-phase approach: automated deterministic checks followed by LLM semantic analysis dispatched to the agent specified by `--agent`.
 
 **This is a rigid skill. Follow it exactly.**
 
-**Announce at start:** "I'm using the skill-lint skill to audit [path]."
+**Usage:** `/skill-lint --agent <agent> <path>`
+
+**`--agent` is required.** One of: `codex`, `gemini`, `copilot`, `claude`, `cursor`, `kimi`.
+
+If `--agent` is omitted, announce: "Error: `--agent` is required. Usage: `/skill-lint --agent <codex|gemini|copilot|claude|cursor|kimi> <path>`" and stop.
+
+**Announce at start:** "I'm using the skill-lint skill to audit [path] with [agent] as the LLM backend."
 
 ## The Process
 
@@ -49,83 +55,68 @@ Use Grep, Glob, and regex directly (no subagents) to verify mechanically checkab
 - Skill names referenced (e.g., "invoke `amplify:write-plan`") follow valid `plugin:skill` format
 - No obvious typos in tool/skill references
 
-### Step 3: Phase 2 — LLM Semantic Checks via 5 Parallel Subagents
+### Step 3: Phase 2 — LLM Semantic Checks
 
-Launch **5 subagents in a single message** for maximum parallelism. Each agent receives the full file content and its specific check instructions.
+Dispatch semantic analysis to the agent specified by `--agent`. The checks are split into 5 groups, each with its own prompt template in the `prompts/` directory adjacent to this SKILL.md.
 
-#### Subagent Design
+#### Check Groups
 
-| Agent | Categories | Model | Rationale |
-|-------|-----------|-------|-----------|
-| Agent 1 | D: MUST/MUST NOT Consistency | Sonnet | Needs full-file reasoning to detect contradictions and redundancy across distant sections |
-| Agent 2 | E1: Numeric as String + E2: Ungrounded Fields | Haiku | Pattern-matching with clear heuristics; high-volume, low-complexity |
-| Agent 3 | E3: Non-Interpretation Fields Without Format Constraints | Sonnet | Requires understanding of verbatim-transfer semantics and domain context |
-| Agent 4 | E4: Inconsistent Field Names Across Schemas | Sonnet | Cross-schema semantic similarity analysis; needs nuanced judgment |
-| Agent 5 | E5: Open-Ended Enums + E6: Structured Data as Free-Text | Haiku | Pattern-based detection with clear signals |
+| Group | Prompt Template | Categories |
+|-------|----------------|------------|
+| 1 | `prompts/agent1-must-consistency.md` | D: MUST/MUST NOT Consistency |
+| 2 | `prompts/agent2-numeric-ungrounded.md` | E1: Numeric as String + E2: Ungrounded Fields |
+| 3 | `prompts/agent3-format-constraints.md` | E3: Non-Interpretation Fields Without Format Constraints |
+| 4 | `prompts/agent4-field-names.md` | E4: Inconsistent Field Names Across Schemas |
+| 5 | `prompts/agent5-enums-freetext.md` | E5: Open-Ended Enums + E6: Structured Data as Free-Text |
 
-Each agent MUST return findings as a structured list with: **category**, **field path**, **current text**, **issue**, **suggested fix**, **severity**.
+Each agent MUST return findings as a JSON array with fields: **category**, **field_path**, **current_text**, **issue**, **suggested_fix**, **severity**.
 
-#### Category D: MUST/MUST NOT Consistency (Agent 1, Sonnet)
+#### When `--agent claude`
 
-- No contradictory MUST rules (e.g., "MUST use subagents" and "MUST NOT use subagents" for the same context)
-- MUST rules have actionable criteria (not vague like "MUST be good")
-- MUST rules are not redundant (same rule stated differently in multiple places)
+Launch **5 internal Claude Code subagents in a single message** for maximum parallelism. Each subagent receives the full file content and the check instructions from the corresponding prompt template.
 
-#### Category E1: Numeric Fields Quoted as Strings (Agent 2, Haiku) — High Severity
+| Subagent | Prompt Template | Model | Rationale |
+|----------|----------------|-------|-----------|
+| 1 | `agent1-must-consistency.md` | Sonnet | Needs full-file reasoning to detect contradictions and redundancy across distant sections |
+| 2 | `agent2-numeric-ungrounded.md` | Haiku | Pattern-matching with clear heuristics; high-volume, low-complexity |
+| 3 | `agent3-format-constraints.md` | Sonnet | Requires understanding of verbatim-transfer semantics and domain context |
+| 4 | `agent4-field-names.md` | Sonnet | Cross-schema semantic similarity analysis; needs nuanced judgment |
+| 5 | `agent5-enums-freetext.md` | Haiku | Pattern-based detection with clear signals |
 
-Detect placeholders that describe numeric values but are wrapped in quotes, causing type confusion.
+#### When `--agent` is an external agent
 
-**Detection heuristic:** Placeholder contains "number"/"count"/"total"/"amount"/"index"/"size"/"length"/"percentage"/"score"/"duration" and is wrapped in quotes.
+For each of the 5 check groups:
 
-**Before:** `"count": "[number of items]"`
-**After:** `"count": "[integer: number of items]"`
+1. Read the prompt template file from `prompts/`.
+2. Substitute `{FILE_CONTENT}` with the actual content of the file being linted.
+3. Write the composed prompt to a temporary file.
+4. Invoke the external agent via a **background Bash call** (`run_in_background: true`, no timeout).
 
-#### Category E2: Ungrounded Fields (Agent 2, Haiku) — Medium Severity
+Launch all **5 background Bash calls in a single message** for maximum parallelism. Wait for all 5 to complete (you will be notified automatically).
 
-Detect generic placeholders with no source attribution.
+**CLI invocation patterns:**
 
-**Detection heuristic:** Generic placeholder (`[value]`, `[name]`, `[identifier]`) with no source attribution ("from X", "per Y", "as returned by Z").
+| Agent | Command |
+|-------|---------|
+| `codex` | `codex exec -q "$(cat <prompt_file>)"` |
+| `gemini` | `gemini -p "$(cat <prompt_file>)" --sandbox` |
+| `copilot` | `gh copilot explain "$(cat <prompt_file>)"` |
+| `cursor` | `cursor agent "$(cat <prompt_file>)" --print` |
+| `kimi` | `kimi "$(cat <prompt_file>)"` |
 
-**Before:** `"source_id": "[identifier]"`
-**After:** `"source_id": "[identifier from /sources API response]"`
+After all 5 complete, parse each result's stdout as a JSON array. If an agent wraps the JSON in markdown fences or prose, extract the JSON array from the output.
 
-#### Category E3: Non-Interpretation Fields Without Format Constraints (Agent 3, Sonnet) — Medium Severity
+#### Category Reference
 
-Detect verbatim-transfer fields lacking MUST rules or format examples.
+The full category definitions are in the prompt template files. For quick reference:
 
-**Patterns to check:**
-- Register/argument values → should say "copied verbatim"
-- CLI commands → "literal command"
-- File paths → specify "absolute/relative"
-- Identifiers → specify "source-level/mangled"
-
-**Before:** `"register_value": "[the register value]"`
-**After:** `"register_value": "[hex string, e.g. '0x1A2B3C4D', MUST copy verbatim from tool output]"`
-
-#### Category E4: Inconsistent Field Names Across Schemas (Agent 4, Sonnet) — High Severity
-
-Detect the same concept using different field names across schemas (semantic similarity, not just string match).
-
-**Before:** `"function"` in one schema vs `"function_signature"` in another; `"file"` + line combined vs separated
-**After:** Unified naming across all schemas
-
-#### Category E5: Open-Ended Enums (Agent 5, Haiku) — Low Severity
-
-Detect unclosed enumeration lists.
-
-**Detection heuristic:** "etc.", "and so on", "such as", "e.g." with open lists, or arrays ending with `"..."`.
-
-**Before:** `"status": "[e.g. active, inactive, etc.]"`
-**After:** `"status": "active | inactive | suspended | archived"`
-
-#### Category E6: Structured Data Serialized as Free-Text (Agent 5, Haiku) — High Severity
-
-Detect single string fields whose placeholder implies multiple sub-values.
-
-**Detection heuristic:** Single string field whose placeholder contains commas listing distinct attributes, or "and" joining different data types.
-
-**Before:** `"location": "[city, state, and zip code]"`
-**After:** Decompose into `"city"`, `"state"`, `"zip_code"`
+- **D: MUST/MUST NOT Consistency** — contradictory, vague, or redundant MUST rules
+- **E1: Numeric as String** (High) — numeric placeholders wrapped in quotes
+- **E2: Ungrounded Fields** (Medium) — generic placeholders without source attribution
+- **E3: Missing Format Constraints** (Medium) — verbatim-transfer fields lacking format specs
+- **E4: Inconsistent Field Names** (High) — same concept, different names across schemas
+- **E5: Open-Ended Enums** (Low) — unclosed enumeration lists
+- **E6: Structured Data as Free-Text** (High) — multiple sub-values crammed into one string field
 
 ### Step 4: Compile Report
 
@@ -136,6 +127,7 @@ Merge Phase 1 and Phase 2 results into a single report using this exact format:
 
 **Files analyzed:** [count]
 **Issues found:** [count] ([N] automated, [M] semantic)
+**LLM backend:** [agent name]
 
 ### Phase 1: Automated Checks
 
