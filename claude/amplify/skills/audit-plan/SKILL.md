@@ -1,6 +1,6 @@
 ---
 name: audit-plan
-description: You MUST invoke after plan execution completes to verify all planned changes were implemented correctly. Use as the final step of a plan-based workflow.
+description: "Verifies plan execution by comparing planned changes against actual file state, running verification commands, and reporting a structured audit summary. Use after plan execution completes to confirm all tasks were implemented correctly, or as the final step of a plan-based workflow."
 ---
 
 # Audit Plan Execution
@@ -66,4 +66,3 @@ If there are any missing points in the plan, you **MUST** spawn subagents and se
 - Check actual files, don't rely on memory of what was done
 - Report evidence for each verdict
 - If a task has no verifiable artifacts (e.g., "research X"), mark as Done if conversation shows it happened
-- Don't fix issues found — just report them. The user decides next steps.

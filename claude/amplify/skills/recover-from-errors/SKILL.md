@@ -1,6 +1,6 @@
 ---
 name: recover-from-errors
-description: <MANDATORY>You MUST invoke this skill immediately when you encounter repeated errors, unexpected failures, or blockers during plan execution.</MANDATORY>
+description: "Recovers from repeated tool errors by re-aligning to the session plan. Checks the plan file, verifies whether the failing action is part of the current task, and either fixes the specific issue or stops drifting. Use when encountering repeated errors, unexpected failures, or blockers during plan execution."
 ---
 
 # Recover from Errors
