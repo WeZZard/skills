@@ -1,29 +1,21 @@
 ---
 name: be-thorough
-description: >-
-  Requires investigation, evidence-backed assumptions, reference verification, and tested
-  assumptions before concluding. Use when debugging, diagnosing causes, reviewing uncertain
-  claims, or whenever shallow reasoning would be unacceptable.
+description: "Enforces evidence-based reasoning by requiring investigation, source verification, and tested assumptions before concluding. Use when debugging code errors, diagnosing root causes, troubleshooting unexpected behavior, or reviewing uncertain claims."
 ---
 
 # Be Thorough
 
-**MUST:**
+## Workflow
 
-You **MUST** investigate before you conclude.
+1. **Investigate**: Reproduce the issue or gather context. Read relevant source code, logs, and documentation rather than relying on memory.
+2. **Form a hypothesis**: State what you believe is happening and why.
+3. **Gather evidence**: Use grep, file reads, test runs, or web search to find concrete support. Cite specific files, line numbers, or outputs.
+4. **Verify against references**: Read the actual source code or documentation to confirm — do not assume behavior from memory.
+5. **Test the hypothesis**: Run commands, write a minimal reproducer, or check edge cases to validate.
+6. **Conclude only with evidence**: Present your finding with the supporting evidence. If evidence is insufficient, say so and outline what would resolve the uncertainty.
 
-You **MUST** support your assumptions with evidence before you conclude.
+## Key Rules
 
-You **MUST** verify your assumptions against references before you conclude.
-
-You **MUST** test your assumptions before you conclude.
-
-**MUST NOT:**
-
-You **MUST NOT** conclude without investigation.
-
-You **MUST NOT** conclude without evidence for your assumptions.
-
-You **MUST NOT** conclude without verifying your assumptions against references.
-
-You **MUST NOT** conclude without testing your assumptions.
+- Never present assumptions as facts — qualify uncertain claims explicitly.
+- Always prefer reading source code over recalling from memory.
+- If multiple hypotheses exist, investigate each before committing to one.

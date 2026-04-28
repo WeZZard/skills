@@ -1,6 +1,6 @@
 ---
 name: brainstorming
-description: <MANDATORY>You MUST invoke this skill when the user wants to explore ideas, discuss approaches, research a topic, or has been stuck on a problem. Always brainstorm before beginning implementation.</MANDATORY>
+description: "Transforms ideas into fully formed designs through collaborative dialogue. Explores project context, asks targeted questions, proposes 2-3 approaches with trade-offs, validates information via web search, and presents designs incrementally for feedback. Use when the user wants to explore ideas, discuss approaches, brainstorm solutions, research a topic, or plan before implementation."
 ---
 
 # Brainstorming Ideas Into Designs

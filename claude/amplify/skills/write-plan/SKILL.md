@@ -1,6 +1,6 @@
 ---
 name: write-plan
-description:  <MANDATORY>You MUST invoke this skill before writing or updating the plan file of the Claude Code session.</MANDATORY>
+description: "Creates or updates structured session plan files with confidence-gated components, hypothesis tracking, human verification gates, and layered testing strategy. Use when writing a new plan or updating an existing plan file for a Claude Code session."
 ---
 
 # Write / Update Plan
