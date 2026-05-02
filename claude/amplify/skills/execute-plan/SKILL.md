@@ -50,12 +50,14 @@ You **MUST** execute in topological order — start from Level 0 and proceed upw
 You **MUST NOT** blindly spawn a subagent for every task. Apply the following decision rule:
 
 **Spawn a subagent** when the task involves ANY of:
+
 - Multiple file edits
 - Running commands and interpreting output
 - Research or web searches
 - Non-trivial reasoning or multi-step logic
 
 **Execute inline** (in the current agent context) when the task is ALL of:
+
 - A single, small, self-contained action (e.g., one file edit under ~30 lines, one config change, one simple rename)
 - Independent of other concurrent tasks' outputs
 - Quick enough that subagent orchestration overhead would exceed the task itself
@@ -65,6 +67,7 @@ When multiple small independent tasks at the same level each qualify for inline 
 #### 3.4: Subagent Allocation Rules
 
 When spawning subagents:
+
 - You **MUST** spawn multiple agents in ONE message to maximize the parallelism.
 - You **MUST** allocate one subagent per task (do not combine unrelated tasks into one subagent).
 - You **MUST** provide each subagent with the full context it needs: relevant file paths, expected inputs from completed upstream tasks, and clear success criteria.
