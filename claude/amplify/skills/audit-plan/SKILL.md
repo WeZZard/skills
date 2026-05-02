@@ -1,6 +1,6 @@
 ---
 name: audit-plan
-description: You MUST invoke after plan execution completes to verify all planned changes were implemented correctly. Use as the final step of a plan-based workflow.
+description: <EXTREMELY_IMPORTANT>You MUST use this skill after plan execution completes to verify all planned changes were implemented correctly. Use as the final step of a plan-based workflow.</EXTREMELY_IMPORTANT>
 ---
 
 # Audit Plan Execution

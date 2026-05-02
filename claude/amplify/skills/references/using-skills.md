@@ -1,15 +1,10 @@
----
-name: using-skills
-description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions
----
+<EXTREMELY_IMPORTANT>
 
-<EXTREMELY-IMPORTANT>
-If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+**Below is the full content of your 'amplify' skill reference - your introduction to using skills. For all other skills, use the 'Skill' tool:**
 
-IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
-
+You ABSOLUTELY **MUST** invoke the skill If you think there is even a 1% chance a skill might apply to what you are doing.
+YOU **MUST** USE IT IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE.
 This is not negotiable. This is not optional. You cannot rationalize your way out of this.
-</EXTREMELY-IMPORTANT>
 
 ## How to Access Skills
 
@@ -26,7 +21,7 @@ This is not negotiable. This is not optional. You cannot rationalize your way ou
 These thoughts mean STOP—you're rationalizing:
 
 | Thought | Reality |
-|---------|---------|
+| ------- | ------- |
 | "This is just a simple question" | Questions are tasks. Check for skills. |
 | "I need more context first" | Skill check comes BEFORE clarifying questions. |
 | "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
@@ -44,7 +39,7 @@ These thoughts mean STOP—you're rationalizing:
 
 When multiple skills could apply, use this order:
 
-1. **Process skills first** (brainstorming, recover-from-errors) - these determine HOW to approach the task
+1. **Process skills first** (brainstorming, same-page, be-thorough, recover-from-errors) - these determine HOW to approach the task
 2. **Implementation skills second** (write-plan, execute-plan) - these guide execution
 3. **Verification skills last** (review) - these confirm execution results
 
@@ -54,22 +49,25 @@ When multiple skills could apply, use this order:
 ## Available Skills
 
 | Skill | When to Use |
-|-------|-------------|
-| `be-thorough` | Before concluding: investigation, evidence for assumptions, reference verification, testing |
+| ----- | ----------- |
+| `same-page` | AFTER the user asks you to explain, clarify, or justify your previous messages |
+| `be-thorough` | BEFORE concluding: investigation, evidence for assumptions, reference verification, testing |
 | `brainstorming` | BEFORE any creative work: features, components, modifications |
-| `write-plan` | After brainstorming, to create structured implementation plan |
+| `write-plan` | AFTER brainstorming, to create structured implementation plan |
 | `execute-plan` | When you have a finalized plan file ready to implement |
-| `review` | After plan execution completes, to verify all changes were implemented |
+| `audit-plan` | AFTER plan execution completes, to verify all changes were implemented |
 | `recover-from-errors` | After 2+ consecutive failures or when stuck |
 
 ## Skill Types
 
 **Rigid** (execute-plan, recover-from-errors): Follow exactly. Don't adapt away discipline.
 
-**Flexible** (brainstorming): Adapt principles to context.
+**Flexible** (brainstorming, same-page, be-thorough): Adapt principles to context.
 
 The skill itself tells you which.
 
 ## User Instructions
 
 Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
+
+</EXTREMELY_IMPORTANT>

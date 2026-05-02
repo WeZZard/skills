@@ -1,6 +1,6 @@
 ---
 name: recover-from-errors
-description: <MANDATORY>You MUST invoke this skill immediately when you encounter repeated errors, unexpected failures, or blockers during plan execution.</MANDATORY>
+description: <EXTREMELY_IMPORTANT>You MUST use recover-from-errors immediately when you encounter repeated errors, unexpected failures, or blockers during plan execution.</EXTREMELY_IMPORTANT>
 ---
 
 # Recover from Errors

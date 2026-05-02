@@ -1,6 +1,6 @@
 ---
 name: write-plan
-description:  <MANDATORY>You MUST invoke this skill before writing or updating the plan file of the Claude Code session.</MANDATORY>
+description:  <MANDATORY>You MUST use write-plan when write or update the Claude Code session plan file.</MANDATORY>
 ---
 
 # Write / Update Plan

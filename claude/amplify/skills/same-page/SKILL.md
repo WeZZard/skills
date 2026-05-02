@@ -1,6 +1,6 @@
 ---
 name: same-page
-description: You MUST invoke this skill when the user asks you to explain, clarify, or justify your previous message. Produces an adaptively structured explanation with evidence, confidence, and ASCII art—format is chosen per message, not fixed.
+description: <EXTREMELY_IMPORTANT>You MUST use same-page when the user asks you to explain, clarify, or justify your previous messages.</EXTREMELY_IMPORTANT>
 ---
 
 # Same Page

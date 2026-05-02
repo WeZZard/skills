@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Read using-skills content
-using_skills_content=$(cat "${PLUGIN_ROOT}/skills/using-skills/SKILL.md" 2>&1 || echo "Error reading using-skills skill")
+using_skills_content=$(cat "${PLUGIN_ROOT}/references/using-skills.md" 2>&1 || echo "Error reading using-skills reference")
 
 # Escape outputs for JSON using pure bash
 escape_for_json() {
@@ -36,7 +36,7 @@ cat <<EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "<EXTREMELY_IMPORTANT>\nYou have wezzard skills.\n\n**Below is the full content of your 'amplify:using-skills' skill - your introduction to using skills. For all other skills, use the 'Skill' tool:**\n\n${using_skills_escaped}\n\n</EXTREMELY_IMPORTANT>"
+    "additionalContext": "${using_skills_escaped}"
   }
 }
 EOF

@@ -1,9 +1,6 @@
 ---
 name: be-thorough
-description: >-
-  Requires investigation, evidence-backed assumptions, reference verification, and tested
-  assumptions before concluding. Use when debugging, diagnosing causes, reviewing uncertain
-  claims, or whenever shallow reasoning would be unacceptable.
+description: <EXTREMELY_IMPORTANT>You MUST use be-thorough when debugging, diagnosing causes, reviewing uncertain claims, or whenever shallow reasoning would be unacceptable.</EXTREMELY_IMPORTANT>
 ---
 
 # Be Thorough
