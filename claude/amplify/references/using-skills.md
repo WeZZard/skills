@@ -1,3 +1,5 @@
+# Using Amplify Skills
+
 <EXTREMELY_IMPORTANT>
 
 **Below is the full content of your 'amplify' skill reference - your introduction to using skills. For all other skills, use the 'Skill' tool:**
@@ -9,8 +11,6 @@ This is not negotiable. This is not optional. You cannot rationalize your way ou
 ## How to Access Skills
 
 **In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
-
-# Using Skills
 
 ## The Rule
 
