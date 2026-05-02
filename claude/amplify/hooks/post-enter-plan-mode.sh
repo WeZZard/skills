@@ -7,7 +7,7 @@ cat <<'EOF'
 {
   "hookSpecificOutput": {
     "hookEventName": "PostToolUse",
-    "additionalContext": "<EXTREMELY_IMPORTANT>\nBefore writing to the plan file, you MUST invoke the **amplify:write-plan** skill using the Skill tool.\n</EXTREMELY_IMPORTANT>"
+    "additionalContext": "<EXTREMELY_IMPORTANT>\nYou **MUST** use the **amplify:write-plan** skill to write or update the Claude Code session plan file.\n</EXTREMELY_IMPORTANT>"
   }
 }
 EOF

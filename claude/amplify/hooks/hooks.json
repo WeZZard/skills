@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-plan-mode.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-enter-plan-mode.sh",
             "timeout": 5
           }
         ]
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'You **MUST** spawn subagents to parallelize independent tasks and offload multi-step research sequences from the main context.'",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/user-prompt-submit.sh",
             "timeout": 5
           }
         ]
