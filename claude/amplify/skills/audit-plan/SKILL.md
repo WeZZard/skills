@@ -34,7 +34,7 @@ For each task in the plan you **MUST** spawn subagents and send them in ONE mess
 
 Present a structured summary:
 
-```
+```markdown
 ## Audit Summary
 
 | # | Task | Status | Evidence |

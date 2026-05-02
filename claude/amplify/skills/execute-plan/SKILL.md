@@ -1,6 +1,6 @@
 ---
 name: execute-plan
-description: You MUST invoke this skill immediately when you have a finalized plan file and are ready to begin implementation. Always use this skill before starting to write code based on a plan.
+description: <EXTREMELY_IMPORTANT>You MUST use execute-plan immediately when you have a finalized plan file and are ready to begin implementation. Always use this skill before starting to write code based on a plan.</EXTREMELY_IMPORTANT>
 ---
 
 # Executing Plans
