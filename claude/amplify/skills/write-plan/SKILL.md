@@ -12,8 +12,8 @@ description:  <MANDATORY>You MUST use write-plan when write or update the Claude
 Assume the user has zero context for the codebase and questionable taste. Document everything they need to know:
 
 - Exact files to touch (code, tests, docs).
-- You **MUST** recognize hypotheses and define verification approaches, listing what evidence supports each hypothesis.
-- You **MUST** recognize human verification needs, documenting how to verify them and **prioritize the relevant tasks** in the plan.
+- You **MUST** identify hypotheses and define verification approaches, listing what evidence supports each hypothesis.
+- You **MUST** identify human verification needs, documenting how to verify them and **prioritize the relevant tasks** in the plan.
 - **Testing strategy:**
   - **Unit tests:** When you add or change behavior, plan unit tests in the same slice—cover the happy path and material edge cases; name exact test files in the plan.
   - **Integration tests:** When multiple units/modules are orchestrated (collaborating classes/functions, boundaries, I/O), plan integration tests that exercise those interactions.
@@ -50,7 +50,7 @@ You MUST NOT proceed to write the plan file while any component you intend to in
 
 **Escape hatch:** If after reasonable exploration and user interaction a component remains uncertain, you **MUST**:
 
-- Explicitly mark it as a **hypothesis** (see Appendix B: Recognize Hypotheses).
+- Explicitly mark it as a **hypothesis** (see Appendix B: Hypotheses & Human Verification (Reference)).
 - Add a verification task in the plan to resolve it before dependent work begins.
 
 ### Step 1.3 — Draft the Plan
@@ -65,8 +65,8 @@ Only after all included components pass the confidence gate (or are explicitly m
 
 After drafting, verify the plan against:
 
-1. **Hypothesis recognition** (Appendix B) — Are there any ungrounded claims that should be marked as hypotheses?
-2. **Human verification recognition** (Appendix B) — Does any part of the plan require human verification? If so, is it documented and prioritized?
+1. **Hypothesis identification** (Appendix B) — Are there any ungrounded claims that should be marked as hypotheses?
+2. **Human verification identification** (Appendix B) — Does any part of the plan require human verification? If so, is it documented and prioritized?
 3. **Plan design principles** (Appendix A) — Exact file paths? Complete code? Exact commands?
 4. **Task design principles** (Appendix A) — One aspect per task? Hypothesis dependency order correct?
 5. **Testing strategy** (Appendix A) — Does the plan include the right mix of unit/integration/E2E for the scope, with rationale if a layer is intentionally omitted?
@@ -122,7 +122,23 @@ This appendix contains the **reference material** used during SECTION 1 and SECT
 
 ### Plan File Template
 
-You MUST create plan files following this template by following the guidance in the HTML comments. You MUST not miss points in the plan to be written. You MUST keep the plan file consistent with the points you have met with the user.
+**MUST:**
+
+You **MUST** make the plan contents focus on current task.
+You **MUST** create plan files from this template and follow the guidance in the HTML comments.
+You **MUST** keep the plan consistent with what you and the user agreed on.
+You **MUST** structure the plan body according to **The Pyramid Principle**.
+You **MUST** apply the standards reflected in the writing references below to the natural language you use for the plan.
+
+<WRITING_REFERENCES>
+English: The Elements of Style by E. B. White and William Strunk Jr.
+Chinese: 語文常談 by 呂叔湘
+Japanese: 日本語の作文技術 by 本多勝一, 文章読本 by 谷崎潤一郎, 理科系の作文技術 by 木下是雄
+</WRITING_REFERENCES>
+
+**MUST NOT:**
+
+You **MUST NOT** miss points in the plan to be written.
 
 ```markdown
 # Plan of [Feature Name]
@@ -364,25 +380,25 @@ You **MUST** present the human verification requirements in following format.
 - You **MUST** make each task concentrate on one aspect of the task and aware of context window size.
 - You **MUST** not put too many actions into one task.
 - You **MUST** slice big tasks into smaller ones to maintain context effectiveness.
-- You **MUST** recognize which task requires human verification and prioritize it to the plan start.
-- You **MUST** recognize hypotheses in the plan and organize the task with the dependency order.
+- You **MUST** identify which task requires human verification and prioritize it to the plan start.
+- You **MUST** identify hypotheses in the plan and organize the task with the dependency order.
 - You **MUST** order tasks to match the testing strategy (e.g., reproducer before fix for bugs; integration/E2E after their prerequisites unless the plan documents a different dependency).
 
 ---
 
 ## Appendix B: Hypotheses & Human Verification (Reference)
 
-This appendix contains the **recognition criteria** used during the self-check steps in SECTION 1 and SECTION 2. It is NOT a workflow — it is consulted during confidence gating and self-checks.
+This appendix contains the **identification criteria** used during the self-check steps in SECTION 1 and SECTION 2. It is NOT a workflow — it is consulted during confidence gating and self-checks.
 
-### Recognize Hypotheses in The Plan
+### Identify Hypotheses in The Plan
 
 **Any points from reasoning but without ground truths get from web search, web fetch, successful build, tests and user verification are hypotheses.**
 
 You **MUST** ALWAYS not jump to conclusion when any hypotheses are not validated in the plan.
 
-### Recognize Human Verification
+### Identify Human Verification
 
-You **MUST** recognize which part of the plan requires human verification with the following criteria.
+You **MUST** identify which part of the plan requires human verification with the following criteria.
 
 **Before applying these criteria, you **MUST** explore this computer to find available tools to determine actual capabilities.** Do not assume limitations — verify them.
 
