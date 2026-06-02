@@ -161,17 +161,71 @@ You **MUST NOT** miss points in the plan to be written.
 
 ## Tasks
 
-<!-- You **MUST** always list the tasks.
+<!--
 
-**DO** output with one of the following forms:
+**MUST:**
 
-- Workflow diagram with ordered task number and name if non-linear and graph-level dependencies are appeared. DO NOT output Mermaid syntax.
-- Ordered list or cascaded ordered list with task number and name if linear/tree dependencies are appeared. DO NOT connect list items with `|` in this case.
+1. You **MUST** output the tasks with: (1) a task list and (2) a paired execution diagram.
+2. You **MUST** output the task list in an ordered list with
+3. You **MUST** output the execution diagram with one of the following forms:
+    - Ordered list or cascaded ordered list with task number and name if linear/tree dependencies are appeared. You **MUST NOT** connect list items with `|` in this case.
+    - Workflow diagram with ordered task number and name ONLY if non-linear and graph-level dependencies are appeared. You **MUST NOT** output Mermaid syntax in this case.
 
-**DO NOT** illustrate with any of the following forms:
+**MUST NOT:**
 
+1. You **MUST NOT** illustrate with any of the following forms:
 - Unordered list
-- Dedicated text descriptions
+- Pure text descriptions
+
+<WORKFLOW_DIAGRAM_EXAMPLE>
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│   ┌─────────────────┐                                       │
+│   │ 1. {task-name}  │                                       │
+│   └────────┬────────┘                                       │
+│            │                                                │
+│            ▼                                                │
+│   ┌─────────────────┐                                       │
+│   │ 2. {task-name}  │                                       │
+│   └────────┬────────┘                                       │
+│            │                                                │
+│            ▼                                                │
+│   ┌─────────────────┐                                       │
+│   │ 3. {task-name}  │                                       │
+│   └─────────────────┘                                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+</WORKFLOW_DIAGRAM_EXAMPLE>
+
+**Workflow Diagram Rules:**
+
+1. **Always use bounding box** - Wrap in outer box
+2. **Sequential flow** - Use `│` and `▼` arrows between tasks
+3. **Parallel tasks** - Show side-by-side with horizontal connection:
+   ```
+   │            ┌─────────────────┐   ┌─────────────────┐
+   ├───────────►│ 2a. {task}      │   │ 2b. {task}      │◄────┤
+   │            └────────┬────────┘   └────────┬────────┘     │
+   │                     └──────────┬──────────┘              │
+   │                                ▼                         │
+   ```
+4. **Repetitive tasks** - Show with double-line box and loop indicator:
+   ```
+   │            │                                                │
+   │            ▼                                                │
+   │   ╔═════════════════════════╗                               │
+   │   ║ 2. {task-name}     [×N] ║ ◀─╮                           │
+   │   ╚═════════════════════════╝   │ repeat                    │
+   │            │ ───────────────────╯                           │
+   │            ▼                                                │
+   ```
+   - Use `╔═══╗` double-line box to highlight iteration
+   - Add loop arrow `◀─╮` with `│ repeat` and return line `───╯`
+
 -->
 
 ## Verification
