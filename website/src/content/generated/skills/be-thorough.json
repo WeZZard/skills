@@ -1,0 +1,55 @@
+{
+  "sourceHash": "0f149c2c4c76fae9",
+  "generatedAt": "2026-06-02T10:20:48.725Z",
+  "skill": {
+    "name": "be-thorough",
+    "displayName": "Be Thorough",
+    "pluginName": "amplify",
+    "tagline": "Investigate, verify, and test before you conclude.",
+    "shortSummary": "Forces rigorous investigation, evidence gathering, and testing before drawing conclusions.",
+    "fullSummary": "Be Thorough is a skill that enforces a disciplined approach to problem-solving and decision-making. It requires you to investigate, gather evidence, verify assumptions against references, and test your hypotheses before reaching any conclusion. This prevents shallow reasoning and ensures robust, reliable outcomes, especially in debugging, diagnosis, and review scenarios.",
+    "highlights": [
+      {
+        "title": "Evidence-Based Conclusions",
+        "description": "Forces you to support every assumption with concrete evidence before concluding. No guesswork or leaps of logic are allowed."
+      },
+      {
+        "title": "Reference Verification",
+        "description": "Requires cross-checking assumptions against authoritative references, ensuring your reasoning is grounded in facts."
+      },
+      {
+        "title": "Mandatory Testing",
+        "description": "Demands that you test your assumptions and hypotheses before finalizing any conclusion, reducing the risk of errors."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Investigate First",
+          "description": "Begin by gathering information without jumping to conclusions.",
+          "details": "Conduct a thorough investigation of the problem or claim. Collect all relevant data, logs, and context before forming any hypothesis."
+        },
+        {
+          "name": "Gather Evidence",
+          "description": "Support each assumption with concrete evidence.",
+          "details": "For every assumption you make, find and document supporting evidence. Do not rely on intuition or incomplete data."
+        },
+        {
+          "name": "Verify References",
+          "description": "Cross-check assumptions against reliable sources.",
+          "details": "Validate your assumptions by consulting documentation, code, or other authoritative references. Ensure alignment with known facts."
+        },
+        {
+          "name": "Test Assumptions",
+          "description": "Run tests to confirm your hypotheses.",
+          "details": "Design and execute tests that validate or invalidate your assumptions. Use the results to refine your understanding."
+        },
+        {
+          "name": "Conclude Only After",
+          "description": "Draw conclusions only after all steps are complete.",
+          "details": "Do not conclude until investigation, evidence, verification, and testing are all done. This ensures robust and reliable outcomes."
+        }
+      ]
+    }
+  }
+}

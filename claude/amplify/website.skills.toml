@@ -1,48 +1,6 @@
 # Amplify - Skills Configuration
 # This file configures skill display content on the website
 
-[skills.using-skills]
-display_name = "Using Skills"
-tagline = "Master Claude's skills first—check before any action to ensure disciplined, effective workflows."
-short_summary = "Always invoke relevant skills before responding or acting to maintain structured, efficient workflows."
-full_summary = "This foundational skill ensures you always check for applicable skills before taking any action, including asking clarifying questions. It establishes a disciplined approach where skill invocation takes priority, preventing wasted time and ensuring you follow established workflows. By checking first, you guarantee that all tasks benefit from Claude's structured processes."
-
-[[skills.using-skills.highlights]]
-title = "Mandatory Skill Check"
-description = "You must invoke any skill that might apply—even with just a 1% chance—before responding or acting. This rule is non-negotiable and ensures you never skip essential workflows. Checking first prevents rationalization and keeps you on the most effective path."
-
-[[skills.using-skills.highlights]]
-title = "Prevents Rationalization"
-description = "Common thoughts like 'This is just a simple question' or 'I need more context first' are red flags that mean you should stop and check for skills. The skill provides a table of these rationalizations to help you recognize and avoid them. This discipline prevents wasted effort and ensures consistent application of best practices."
-
-[[skills.using-skills.highlights]]
-title = "Skill Priority Order"
-description = "When multiple skills could apply, follow this order: process skills (like brainstorming) first, then implementation skills (like write-plan), then verification skills (like review). This logical sequence ensures you approach tasks methodically, from planning through execution to validation."
-
-[[skills.using-skills.highlights]]
-title = "Rigid vs Flexible Skills"
-description = "Skills are categorized as rigid (must be followed exactly, like execute-plan) or flexible (principles can be adapted, like brainstorming). This distinction helps you understand when to stick strictly to the process versus when you can adjust based on context, balancing discipline with adaptability."
-
-[[skills.using-skills.workflow]]
-name = "Receive Request"
-description = "A user gives you a task or asks a question."
-details = "This could be any instruction, from a simple query to a complex development task. The key is to treat all user inputs as potential tasks that might require skill application."
-
-[[skills.using-skills.workflow]]
-name = "Check for Skills"
-description = "Immediately assess if any skills might apply to the situation."
-details = "Even if there's only a 1% chance a skill is relevant, you must invoke it using the Skill tool. Do not respond, ask clarifying questions, or take any other action before this check. This step is mandatory and non-negotiable."
-
-[[skills.using-skills.workflow]]
-name = "Invoke Skill"
-description = "Use the Skill tool to load and review the skill content."
-details = "If a skill applies, invoke it to see its current instructions. Follow the skill directly once loaded. If no skill applies after checking, you can proceed with your response or other actions."
-
-[[skills.using-skills.workflow]]
-name = "Follow Skill"
-description = "Execute the task according to the skill's guidance."
-details = "Adhere to the skill's workflow, whether it's rigid (follow exactly) or flexible (adapt principles). This ensures you use Claude's structured processes for optimal results, from brainstorming to execution and review."
-
 [skills.brainstorming]
 display_name = "Brainstorming"
 tagline = "Turn ideas into fully formed designs through collaborative dialogue"
@@ -256,3 +214,93 @@ details = "Ask yourself if the action you attempted is explicitly needed for the
 name = "Re-align to Plan"
 description = "Take appropriate action based on whether the failing tool is part of the plan."
 details = "If the tool is part of the plan, analyze and fix the specific issue. If not, stop calling the tool and return to the plan's specified tasks to prevent further drift."
+
+[skills.be-thorough]
+display_name = "Be Thorough"
+tagline = "Investigate, verify, and test before you conclude."
+short_summary = "Forces rigorous investigation, evidence gathering, and testing before drawing conclusions."
+full_summary = "Be Thorough is a skill that enforces a disciplined approach to problem-solving and decision-making. It requires you to investigate, gather evidence, verify assumptions against references, and test your hypotheses before reaching any conclusion. This prevents shallow reasoning and ensures robust, reliable outcomes, especially in debugging, diagnosis, and review scenarios."
+
+[[skills.be-thorough.highlights]]
+title = "Evidence-Based Conclusions"
+description = "Forces you to support every assumption with concrete evidence before concluding. No guesswork or leaps of logic are allowed."
+
+[[skills.be-thorough.highlights]]
+title = "Reference Verification"
+description = "Requires cross-checking assumptions against authoritative references, ensuring your reasoning is grounded in facts."
+
+[[skills.be-thorough.highlights]]
+title = "Mandatory Testing"
+description = "Demands that you test your assumptions and hypotheses before finalizing any conclusion, reducing the risk of errors."
+
+[[skills.be-thorough.workflow]]
+name = "Investigate First"
+description = "Begin by gathering information without jumping to conclusions."
+details = "Conduct a thorough investigation of the problem or claim. Collect all relevant data, logs, and context before forming any hypothesis."
+
+[[skills.be-thorough.workflow]]
+name = "Gather Evidence"
+description = "Support each assumption with concrete evidence."
+details = "For every assumption you make, find and document supporting evidence. Do not rely on intuition or incomplete data."
+
+[[skills.be-thorough.workflow]]
+name = "Verify References"
+description = "Cross-check assumptions against reliable sources."
+details = "Validate your assumptions by consulting documentation, code, or other authoritative references. Ensure alignment with known facts."
+
+[[skills.be-thorough.workflow]]
+name = "Test Assumptions"
+description = "Run tests to confirm your hypotheses."
+details = "Design and execute tests that validate or invalidate your assumptions. Use the results to refine your understanding."
+
+[[skills.be-thorough.workflow]]
+name = "Conclude Only After"
+description = "Draw conclusions only after all steps are complete."
+details = "Do not conclude until investigation, evidence, verification, and testing are all done. This ensures robust and reliable outcomes."
+
+[skills.same-page]
+display_name = "Same Page"
+tagline = "Re-explain your reasoning with evidence and visuals so users truly understand."
+short_summary = "Re-explains previous messages with evidence, confidence levels, and ASCII diagrams tailored to the content."
+full_summary = "Same Page helps users understand your reasoning by re-explaining previous messages in a clear, structured format. It dynamically designs the explanation shape based on the prior message—using evidence blocks, comparison tables, flow diagrams, or other layouts—and always includes at least one ASCII visualization. Each claim is backed by concrete evidence with a confidence rating (High/Medium/Low), ensuring transparency and trust."
+
+[[skills.same-page.highlights]]
+title = "Dynamic Explanation Design"
+description = "The explanation format adapts to the prior message: narrative arcs for single decisions, comparison tables for trade-offs, flow diagrams for processes, and more. No rigid templates."
+
+[[skills.same-page.highlights]]
+title = "Evidence with Confidence"
+description = "Every claim is supported by specific evidence (file, line, URL, command output) and rated High/Medium/Low with a basis. Low-confidence claims are explicitly flagged."
+
+[[skills.same-page.highlights]]
+title = "ASCII Visualizations"
+description = "At least one ASCII diagram per explanation, chosen dynamically: flow diagrams for processes, trees for hierarchies, tables for comparisons, etc. Compact and terminal-friendly."
+
+[[skills.same-page.highlights]]
+title = "Re-verify, Don't Recall"
+description = "Re-reads source files and re-runs commands to ensure accuracy, rather than relying on memory of earlier tool calls. Honest and up-to-date."
+
+[[skills.same-page.workflow]]
+name = "Identify Key Claims"
+description = "Extract key claims from the last substantive message."
+details = "Look at the most recent substantive message, extract decisions, facts, and recommendations. Group claims into 2-5 themes if the message is long."
+
+[[skills.same-page.workflow]]
+name = "Design Explanation Format"
+description = "Choose a layout that fits the prior message."
+details = "Select from narrative arcs, per-claim sections, comparison tables, flow diagrams, confidence overviews, or timelines. State the format choice briefly."
+
+[[skills.same-page.workflow]]
+name = "Gather Evidence & Rate Confidence"
+description = "Support each claim with concrete evidence and a confidence level."
+details = "For each claim, cite specific artifacts (file, line, URL, command output). Rate confidence High/Medium/Low with a one-line basis. Re-read files and re-run commands as needed."
+
+[[skills.same-page.workflow]]
+name = "Create ASCII Visualization"
+description = "Design at least one ASCII diagram to clarify structure."
+details = "Choose a visual style (flow, tree, stack, table, graph) that matches the content. Keep diagrams under ~20 lines and ~72 columns. Add a one-line caption."
+
+[[skills.same-page.workflow]]
+name = "Close with Synthesis"
+description = "End with a summary, caveats, or next steps."
+details = "Provide a short synthesis, checklist of caveats, or 'what to verify next'. Explicitly call out low-confidence areas and open questions."

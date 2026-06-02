@@ -1,0 +1,16 @@
+{
+  "sourceHash": "3160c8ab180b0f09",
+  "generatedAt": "2026-06-02T10:20:48.765Z",
+  "plugin": {
+    "name": "skill-kit",
+    "displayName": "Skill Kit",
+    "tagline": "Audit and improve your skill definitions.",
+    "repo": "WeZZard/skills",
+    "skillCount": 1,
+    "skills": [
+      "skill-lint"
+    ],
+    "marketplaceCommand": "/plugin marketplace add wezzard/skills",
+    "installCommand": "/plugin install skill-kit@wezzard-skills"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "sourceHash": "c1b6692c22c92a46",
+  "generatedAt": "2026-06-02T10:20:48.726Z",
+  "skill": {
+    "name": "same-page",
+    "displayName": "Same Page",
+    "pluginName": "amplify",
+    "tagline": "Re-explain your reasoning with evidence and visuals so users truly understand.",
+    "shortSummary": "Re-explains previous messages with evidence, confidence levels, and ASCII diagrams tailored to the content.",
+    "fullSummary": "Same Page helps users understand your reasoning by re-explaining previous messages in a clear, structured format. It dynamically designs the explanation shape based on the prior message—using evidence blocks, comparison tables, flow diagrams, or other layouts—and always includes at least one ASCII visualization. Each claim is backed by concrete evidence with a confidence rating (High/Medium/Low), ensuring transparency and trust.",
+    "highlights": [
+      {
+        "title": "Dynamic Explanation Design",
+        "description": "The explanation format adapts to the prior message: narrative arcs for single decisions, comparison tables for trade-offs, flow diagrams for processes, and more. No rigid templates."
+      },
+      {
+        "title": "Evidence with Confidence",
+        "description": "Every claim is supported by specific evidence (file, line, URL, command output) and rated High/Medium/Low with a basis. Low-confidence claims are explicitly flagged."
+      },
+      {
+        "title": "ASCII Visualizations",
+        "description": "At least one ASCII diagram per explanation, chosen dynamically: flow diagrams for processes, trees for hierarchies, tables for comparisons, etc. Compact and terminal-friendly."
+      },
+      {
+        "title": "Re-verify, Don't Recall",
+        "description": "Re-reads source files and re-runs commands to ensure accuracy, rather than relying on memory of earlier tool calls. Honest and up-to-date."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Identify Key Claims",
+          "description": "Extract key claims from the last substantive message.",
+          "details": "Look at the most recent substantive message, extract decisions, facts, and recommendations. Group claims into 2-5 themes if the message is long."
+        },
+        {
+          "name": "Design Explanation Format",
+          "description": "Choose a layout that fits the prior message.",
+          "details": "Select from narrative arcs, per-claim sections, comparison tables, flow diagrams, confidence overviews, or timelines. State the format choice briefly."
+        },
+        {
+          "name": "Gather Evidence & Rate Confidence",
+          "description": "Support each claim with concrete evidence and a confidence level.",
+          "details": "For each claim, cite specific artifacts (file, line, URL, command output). Rate confidence High/Medium/Low with a one-line basis. Re-read files and re-run commands as needed."
+        },
+        {
+          "name": "Create ASCII Visualization",
+          "description": "Design at least one ASCII diagram to clarify structure.",
+          "details": "Choose a visual style (flow, tree, stack, table, graph) that matches the content. Keep diagrams under ~20 lines and ~72 columns. Add a one-line caption."
+        },
+        {
+          "name": "Close with Synthesis",
+          "description": "End with a summary, caveats, or next steps.",
+          "details": "Provide a short synthesis, checklist of caveats, or 'what to verify next'. Explicitly call out low-confidence areas and open questions."
+        }
+      ]
+    }
+  }
+}

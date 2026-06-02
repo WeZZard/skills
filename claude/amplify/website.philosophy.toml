@@ -178,10 +178,11 @@ effect = "Prevents goal drift by prompting plan re-alignment"
 
 [skills]
 order = [
-  "using-skills",
   "brainstorming",
   "write-plan",
   "execute-plan",
   "audit-plan",
   "recover-from-errors",
+  "be-thorough",
+  "same-page",
 ]
