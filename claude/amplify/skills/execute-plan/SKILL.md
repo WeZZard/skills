@@ -58,10 +58,10 @@ Repeat until `ready` prints nothing:
    node "${CLAUDE_PLUGIN_ROOT}/scripts/concurrency.mjs" ready --id <GRAPH_ID>
    ```
 
-2. **Spawn every ready subnode.** You **MUST** spawn all ready subnodes; when more than one is ready you **MUST** spawn them in a **single message** so they advance in parallel. Map each subnode to a subagent:
+2. **Spawn every ready subnode.** You **MUST** spawn all ready subnodes; when more than one is ready you **MUST** spawn them in a **single message** so they advance in parallel. You **MUST** build each subagent's prompt from the **Spawning Prompt Template** in the relevant guideline — do not improvise it. Map each subnode to a subagent:
 
-   - `T.impl` → an **implementer** subagent, designed per `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md`. Provide the task's acceptance criteria, exact file paths, and the artifacts of completed dependency tasks. It returns the `STATUS: COMPLETE | BLOCKED` contract.
-   - `T.audit` → a blind **auditor** subagent, designed per `${CLAUDE_PLUGIN_ROOT}/references/auditor-design-guidelines.md`. It returns the `VERDICT: PASS | FAIL` contract.
+   - `T.impl` → an **implementer** subagent, built from the Spawning Prompt Template in `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md` (fill in acceptance criteria, exact file paths, upstream artifacts; on a re-spawn include the auditor's FINDINGS). It returns the `STATUS: COMPLETE | BLOCKED` contract.
+   - `T.audit` → a blind **auditor**, built from the Spawning Prompt Template in `${CLAUDE_PLUGIN_ROOT}/references/auditor-design-guidelines.md`. For `audit_level` 1, spawn the native Opus blind subagent. For `audit_level` 2, you **MUST** delegate via the `amplify:codex-driver` agent (`subagent_type: "amplify:codex-driver"`, `SANDBOX: read-only`) — never invoke Codex ad-hoc — and degrade to Level 1 if `command -v codex` fails. It returns the `VERDICT: PASS | FAIL` contract.
 
 3. **Apply each result to the engine:**
 

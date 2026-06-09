@@ -20,6 +20,7 @@
 3. You **MUST** output the execution diagram with one of the following forms:
     - Ordered list or cascaded ordered list with task number and name if linear/tree dependencies are appeared. You **MUST NOT** connect list items with `|` in this case.
     - Workflow diagram with ordered task number and name ONLY if non-linear and graph-level dependencies are appeared. You **MUST NOT** output Mermaid syntax in this case.
+4. You **MUST** ensure contents in the execution diagram and the task list consistent and aligned with each other.
 
 **MUST NOT:**
 

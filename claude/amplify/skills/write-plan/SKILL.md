@@ -119,7 +119,8 @@ You **MUST NOT** invent contents beyond the guidelines in ${CLAUDE_PLUGIN_ROOT}/
 
 **MUST:**
 
-You **MUST** read ${CLAUDE_PLUGIN_ROOT}/references/plan-task-guidelines.md and follow the steps mentioned in this document to design the tasks that implement the plan's design.
+1. You **MUST** read ${CLAUDE_PLUGIN_ROOT}/references/plan-task-guidelines.md and follow the steps mentioned in this document to design the tasks that implement the plan's design.
+2. You **MUST** ensure contents in **Tasks** section align to the latest design each time you update the plan file.
 
 **MUST NOT:**
 

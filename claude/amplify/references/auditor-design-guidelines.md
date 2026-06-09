@@ -38,6 +38,31 @@ You **MUST** reserve Level 2 for high-risk tasks (security, financial, or near a
 
 1. You **MUST NOT** grant the auditor tools that modify files. The auditor verifies, it does not fix.
 
+## Spawning Prompt Template
+
+You **MUST** replace every `<...>` placeholder.
+
+**Shared blind-audit prompt body:**
+
+<AUDITOR_SPAWNINING_PROMPT_TEMPLATE>
+
+````markdown
+## Goal
+
+You are a BLIND AUDITOR for task <id>.
+You did not implement it.
+Verify against evidence, not against any claim.
+Do not modify files.
+
+TASK GOAL: <task name / one-line goal>
+ARTIFACTS TO INSPECT: <changed files / globs>
+
+<ACCEPTANCE_CRITERIA>
+**ACCEPTANCE CRITERIA:**
+- <criterion 1>
+- <criterion 2>
+</ACCEPTANCE_CRITERIA>
+
 ## Verification Method
 
 **MUST:**
@@ -45,9 +70,9 @@ You **MUST** reserve Level 2 for high-risk tasks (security, financial, or near a
 1. You **MUST** check each acceptance criterion individually against concrete evidence: file contents (cite file:line), command output, presence or absence of expected artifacts, and deletions actually gone.
 2. You **MUST** argue with the result: understand the task goal and confirm the artifacts truly satisfy it, not merely that files exist.
 
-## Auditor Response Contract
+## Response
 
-The auditor's final message **MUST** be exactly this structured block. The orchestrator parses it.
+You **MUST** return **EXACTLY** this block as your final message, with no extra commentary:
 
 ```markdown
 TASK: <id>
@@ -61,5 +86,30 @@ FINDINGS: <if FAIL: concrete defects + specific fix directives for the next impl
 1. You **MUST** emit `VERDICT: PASS` only when every acceptance criterion passes with evidence.
 2. You **MUST** emit `VERDICT: FAIL` for any unmet criterion, with actionable FINDINGS that name concrete defects and specific fix directives for the next implementer attempt.
 3. You **MUST** treat the `VERDICT:` token as the single source of truth the orchestrator keys on.
+
+````
+
+</AUDITOR_SPAWNINING_PROMPT_TEMPLATE>
+
+### Level 1 — native blind Opus subagent (default)
+
+Spawn with the Agent tool:
+
+- `model:` `opus`
+- `tools:` `Read, Grep, Glob, Bash` (Bash for the verification commands only; no file-modifying tools)
+- prompt: the shared blind-audit prompt body above.
+
+### Level 2 — Codex via `amplify:codex-driver`
+
+1. Run `command -v codex`. If it fails, **degrade to Level 1** and note the degradation in `FINDINGS`.
+2. Otherwise spawn the `amplify:codex-driver` agent (Agent tool, `subagent_type: "amplify:codex-driver"`) with the prompt below. The `SANDBOX: read-only` directive runs Codex headless with no timeout and lets it read and inspect but **not** modify files:
+
+   ```text
+   SANDBOX: read-only
+   ---
+   <the shared blind-audit prompt body for task <id>>
+   ```
+
+The driver returns Codex's stdout verbatim; it **MUST** contain the `VERDICT:` block above, which the orchestrator keys on.
 
 </AUDITOR_DESIGN_GUIDELINES>
