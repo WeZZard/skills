@@ -5,102 +5,106 @@ description: <EXTREMELY_IMPORTANT>You MUST use execute-plan immediately when you
 
 # Executing Plans
 
-## Overview
-
-Load plan, execute tasks, raise human verification gate if necessary.
-
-**Core principle:** Execute with human verification gate.
-
 **Announce at start:** "I'm using the execute-plan skill to implement this plan."
 
 ## The Process
 
-### Step 1: Check If It Is Necessary to Execute The Plan
+### Step 1: Load The Plan File
 
-The user may pause execution after approving the plan file or when the plan file is loaded at the start of a session.
-You **CAN** continue the plan execution **ONLY** after you receive an explicit “continue” signal in the conversation and confirm there are no newer conflicting instructions.
+You **MUST** read the plan file and locate its task execution diagram: the ordered task list, where each task carries its **id**, **name**, **deps**, **acceptance criteria**, **audit level**, **max attempts**, and optional **human gate** (see `${CLAUDE_PLUGIN_ROOT}/references/plan-task-guidelines.md`).
 
-### Step 2: Load The Plan File
+### Step 2: Decide Inline vs Engine Execution
 
-Read plan file
+**Execute inline** (in the main agent, no engine) **ONLY** when the plan is trivial: a single task, or a few small independent tasks with no parallel coordination and no Level-2 audit. In that case implement the work, self-audit against each acceptance criterion, then go to **Step 6**.
 
-### Step 3: Execute Tasks by Maximizing the Parallelism
+**Otherwise use the engine** (Steps 4–6). You **MUST** use the engine whenever the plan has dependencies, parallelism, Level-2 audits, or non-trivial tasks.
 
-#### 3.1: Build the Task Dependency Graph
+### Step 3: Compile the Graph
 
-Before executing any task, analyze the plan's task list and build a dependency graph:
+#### 3.1 Dump the folded graph to JSON
 
-1. Identify each task and its declared dependencies (upstream tasks it depends on).
-2. Determine the **topological levels** of the graph:
-   - **Level 0 (leaf tasks):** Tasks with no upstream dependencies.
-   - **Level 1:** Tasks whose dependencies are all in Level 0.
-   - **Level N:** Tasks whose dependencies are all in levels < N.
+Transcribe the plan's folded task list into a folded JSON file — a **faithful 1:1 transcription**, not a creative conversion. Each task becomes one object:
 
-#### 3.2: Execute Level by Level, Leaves First
+```json
+{
+   "version": 1,
+   "nodes": [
+      {
+         "id": "...", "name": "...", "deps": ["..."],
+         "acceptance_criteria": ["...", "..."],
+         "audit_level": [audit_level], "human_gate": true|false, "max_attempts": [max_attempts]
+      }
+   ]
+}
+```
 
-You **MUST** execute in topological order — start from Level 0 and proceed upward:
+It **MUST** validate against `${CLAUDE_PLUGIN_ROOT}/schemas/task-graph.schema.json`. Write it to a temporary file.
 
-1. Execute **all tasks in the current level** in parallel.
-2. Wait for **all tasks in the current level** to complete.
-3. Merge and propagate results to the next level.
-4. Repeat until all levels are complete.
+#### 3.2 Initialize the engine
 
-#### 3.3: Decide Subagent vs Inline Execution per Task
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/concurrency.mjs" init --graph <tmp.json> --salt "<plan title>"
+```
 
-You **MUST NOT** blindly spawn a subagent for every task. Apply the following decision rule:
+The command prints a `GRAPH_ID` on stdout. Capture it; use it as `--id <GRAPH_ID>` for every subsequent call. The engine explodes each task `T` into `T.impl → T.audit` subnodes and stores state in an amplify-owned directory. If `init` reports validation errors, fix the dump (or stop and report if the plan itself is inconsistent).
 
-**Spawn a subagent** when the task involves ANY of:
+### Step 4: Run the Scheduling Loop
 
-- Multiple file edits
-- Running commands and interpreting output
-- Research or web searches
-- Non-trivial reasoning or multi-step logic
+Repeat until `ready` prints nothing:
 
-**Execute inline** (in the current agent context) when the task is ALL of:
+1. **Get ready subnodes:**
 
-- A single, small, self-contained action (e.g., one file edit under ~30 lines, one config change, one simple rename)
-- Independent of other concurrent tasks' outputs
-- Quick enough that subagent orchestration overhead would exceed the task itself
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/concurrency.mjs" ready --id <GRAPH_ID>
+   ```
 
-When multiple small independent tasks at the same level each qualify for inline execution, batch them together and execute them sequentially inline rather than spawning multiple subagents.
+2. **Spawn every ready subnode.** You **MUST** spawn all ready subnodes; when more than one is ready you **MUST** spawn them in a **single message** so they advance in parallel. Map each subnode to a subagent:
 
-#### 3.4: Subagent Allocation Rules
+   - `T.impl` → an **implementer** subagent, designed per `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md`. Provide the task's acceptance criteria, exact file paths, and the artifacts of completed dependency tasks. It returns the `STATUS: COMPLETE | BLOCKED` contract.
+   - `T.audit` → a blind **auditor** subagent, designed per `${CLAUDE_PLUGIN_ROOT}/references/auditor-design-guidelines.md`. It returns the `VERDICT: PASS | FAIL` contract.
 
-When spawning subagents:
+3. **Apply each result to the engine:**
 
-- You **MUST** spawn multiple agents in ONE message to maximize the parallelism.
-- You **MUST** allocate one subagent per task (do not combine unrelated tasks into one subagent).
-- You **MUST** provide each subagent with the full context it needs: relevant file paths, expected inputs from completed upstream tasks, and clear success criteria.
-- You **MUST** wait for all subagents at the current level to complete before proceeding to the next level.
+   - Implementer returns `STATUS: COMPLETE` → `complete --id <GRAPH_ID> --node T.impl` (this readies `T.audit`).
+   - Implementer returns `STATUS: BLOCKED` → stop and raise the human (genuine blocker; see **Step 7**).
+   - Auditor returns `VERDICT: PASS` → `complete --id <GRAPH_ID> --node T.audit` (this readies the successor tasks' `.impl`).
+   - Auditor returns `VERDICT: FAIL` → `fail --id <GRAPH_ID> --node T.audit --reason "<short reason>"`. The engine either reopens `T.impl` for another attempt (re-spawn the implementer **with the auditor's FINDINGS**) or, once `max_attempts` is reached, marks the task `failed`, logs it, and lets successors proceed. A `failed` task does **not** halt the plan.
 
-### Step 4: Raise Human Verification Gate If Neccessary
+   Each `complete`/`fail` prints the newly-ready subnode set — feed it into the next iteration.
 
-Some tasks may require human verification. Stop execution and raise a gate with the AskUserQuestion tool for human verification.
+4. **Human verification gates:** before completing a task whose `human_gate` is true, stop and raise a gate with the **AskUserQuestion** tool. Continue only after the user verifies.
 
-### Step 5: Continue
+### Step 5: Complete
 
-Based on feedback:
+1. Run the plan's **Verification** section as a single lightweight end-to-end integration check (run the test suite / commands the plan specifies).
+2. Emit the final audit table:
 
-- Apply changes if needed
-- Execute the tasks
-- Repeat until complete
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/concurrency.mjs" report --id <GRAPH_ID>
+   ```
 
-## Additional Conditions to Stop and Ask for Help
+   Present it to the user. Call out any task with verdict `FAILED` explicitly.
+
+### Step 6: Conditions to Stop and Ask for Help
 
 **STOP executing immediately when:**
 
-- Hit a blocker mid-batch (missing dependency, test fails, instruction unclear)
-- Findings indicate the plan has critical gaps preventing execution
-- You don't understand an instruction
-- Verification fails repeatedly
+- An implementer returns `STATUS: BLOCKED` (missing dependency, contradictory instruction).
+- The integration check fails in a way the per-task audits did not catch.
+- You don't understand an instruction, or the plan has critical gaps preventing execution.
 
-**Ask for clarification rather than guessing.**
+Audit exhaustion is **not** a stop condition — it is logged as a `failed` task and surfaced in the report. **Ask for clarification rather than guessing.**
 
 ## Remember
 
-- Review plan critically first
-- Follow plan steps exactly
-- Don't skip verifications
-- Reference skills when plan says to
-- Between batches: just report and wait
-- Stop when blocked, don't guess
+**MUST:**
+
+- Each task is implement-and-audit; never skip the auditor.
+- Spawn all ready subnodes at once; one message when several are ready.
+- You **MUST** drive the engine with `ready` / `complete` / `fail`;
+- Re-spawn a failed implementer with the auditor's findings; stop only on genuine blockers.
+- Finish with the integration check and the audit-table report.
+
+**MUST NOT:**
+
+- You **MUST NOT** track the graph by memory.

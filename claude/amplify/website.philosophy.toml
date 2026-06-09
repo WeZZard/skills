@@ -137,19 +137,19 @@ description = "Reminds to spawn subagents for independent tasks"
 effect = "Maximizes concurrent execution of independent work"
 
 [[philosophy.sections]]
-title = "Plan Audit"
-highlight_title = "Plan-File-Based Audit"
-highlight_content = "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing."
+title = "Per-Task Audit"
+highlight_title = "Per-Task Implement-and-Audit"
+highlight_content = "Each task is implemented by one subagent and verified by a separate blind auditor against its acceptance criteria. Successors run only after the audit passes; failures are logged and surfaced in a final audit table."
 highlight_image = "/images/philosophies/plan-audit.jpg"
-related_skills = ["audit-plan"]
+related_skills = ["execute-plan"]
 
 [[philosophy.sections.additions]]
-id = "subagent-stop-audit"
-event = "Stop"
-type = "hook"
-label = "Check Plan File"
-description = "Checks the plan file after plan execution."
-effect = "Measures the gap between plan execution and the goals in the plan file."
+id = "per-task-blind-audit"
+event = "SubagentSpawn"
+type = "event"
+label = "Blind Auditor"
+description = "Spawns a blind auditor subagent to verify each task before its successors run."
+effect = "Catches defects at task granularity instead of after the whole plan."
 
 [[philosophy.sections]]
 title = "Error Recovery"
@@ -181,7 +181,6 @@ order = [
   "brainstorming",
   "write-plan",
   "execute-plan",
-  "audit-plan",
   "recover-from-errors",
   "be-thorough",
   "same-page",

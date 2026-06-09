@@ -40,10 +40,9 @@ These thoughts mean STOP—you're rationalizing:
 When multiple skills could apply, use this order:
 
 1. **Process skills first** (brainstorming, same-page, be-thorough, recover-from-errors) - these determine HOW to approach the task
-2. **Implementation skills second** (write-plan, execute-plan) - these guide execution
-3. **Verification skills last** (review) - these confirm execution results
+2. **Implementation skills second** (write-plan, execute-plan) - these guide execution. execute-plan audits each task as it is implemented, so verification is built in.
 
-"Let's build X" → brainstorming first, then write-plan, then execute-plan, then review.
+"Let's build X" → brainstorming first, then write-plan, then execute-plan.
 "Fix this bug" → recover-from-errors if stuck, brainstorming if unclear.
 
 ## Available Skills
@@ -54,8 +53,7 @@ When multiple skills could apply, use this order:
 | `be-thorough` | BEFORE concluding: investigation, evidence for assumptions, reference verification, testing |
 | `brainstorming` | BEFORE any creative work: features, components, modifications |
 | `write-plan` | AFTER brainstorming, to create structured implementation plan |
-| `execute-plan` | When you have a finalized plan file ready to implement |
-| `audit-plan` | AFTER plan execution completes, to verify all changes were implemented |
+| `execute-plan` | When you have a finalized plan file ready to implement (each task is implemented and audited per task) |
 | `recover-from-errors` | After 2+ consecutive failures or when stuck |
 
 ## Skill Types

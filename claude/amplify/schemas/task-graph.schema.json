@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/WeZZard/skills/claude/amplify/task-graph.schema.json",
+  "title": "Amplify Folded Task Graph",
+  "description": "The folded (human-authored, machine-dumped) task graph that scripts/concurrency.mjs ingests. Each node is one 'implement-and-audit' task; the engine explodes it into <id>.impl and <id>.audit subnodes. Implementer/auditor model and tools are NOT stored here -- execute-plan chooses them at spawn time per the role design guidelines.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "nodes"],
+  "properties": {
+    "version": {
+      "description": "Schema version. Only 1 is supported.",
+      "const": 1
+    },
+    "nodes": {
+      "description": "The folded tasks. Task ids must be unique; every dep must reference an existing task id; the dependency graph must be acyclic.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/task" }
+    }
+  },
+  "$defs": {
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "deps", "acceptance_criteria", "audit_level", "max_attempts"],
+      "properties": {
+        "id": {
+          "description": "Unique task id. Must not contain '.', which the engine reserves as the subnode separator (<id>.impl / <id>.audit).",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "minLength": 1
+        },
+        "name": {
+          "description": "Short human-readable task title.",
+          "type": "string",
+          "minLength": 1
+        },
+        "deps": {
+          "description": "Task ids this task depends on. A successor's implementer waits until every dependency's auditor has passed.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }
+        },
+        "acceptance_criteria": {
+          "description": "Independently checkable statements that define done. The auditor verifies each against evidence.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "audit_level": {
+          "description": "1 = Opus blind subagent audit. 2 = external agent (Codex) audit, degrading to Opus when Codex is absent.",
+          "type": "integer",
+          "enum": [1, 2]
+        },
+        "human_gate": {
+          "description": "Optional. When true, this task requires a human verification gate before it is considered complete.",
+          "type": "boolean"
+        },
+        "max_attempts": {
+          "description": "Maximum implement->audit attempts before the task is marked 'failed' (logged, non-halting).",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

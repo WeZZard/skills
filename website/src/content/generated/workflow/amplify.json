@@ -5,7 +5,6 @@
     "brainstorming",
     "write-plan",
     "execute-plan",
-    "audit-plan",
     "recover-from-errors",
     "be-thorough",
     "same-page"
@@ -172,25 +171,25 @@
     },
     {
       "id": "plan-audit",
-      "title": "Plan Audit",
+      "title": "Per-Task Audit",
       "additions": [
         {
-          "id": "subagent-stop-audit",
-          "event": "Stop",
-          "type": "hook",
-          "label": "Check Plan File",
-          "description": "Checks the plan file after plan execution.",
-          "effect": "Measures the gap between plan execution and the goals in the plan file."
+          "id": "per-task-blind-audit",
+          "event": "SubagentSpawn",
+          "type": "event",
+          "label": "Blind Auditor",
+          "description": "Spawns a blind auditor subagent to verify each task before its successors run.",
+          "effect": "Catches defects at task granularity instead of after the whole plan."
         }
       ],
       "highlight": {
         "type": "feature",
-        "title": "Plan-File-Based Audit",
-        "content": "After execution, every task is verified against the plan with evidence-based status reporting: Done, Partial, or Missing.",
+        "title": "Per-Task Implement-and-Audit",
+        "content": "Each task is implemented by one subagent and verified by a separate blind auditor against its acceptance criteria. Successors run only after the audit passes; failures are logged and surfaced in a final audit table.",
         "image": "/images/philosophies/plan-audit.jpg"
       },
       "relatedSkills": [
-        "audit-plan"
+        "execute-plan"
       ]
     },
     {
