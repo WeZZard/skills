@@ -84,18 +84,35 @@
 
 ## Appendix A: Task Item Format
 
-Each task in the plan contains both the implementation and audit part.
+Each task in the plan contains both the implementation and audit information.
+
+You **MUST** present each task item with the following format:
+
+<TASK_ITEM_EXAMPLE>
+
+```markdown
+1. <Name>
+    - ID: <task_id>
+    - Dependencies: <task_id_1>, <task_id_2>, <task_id_3> ...
+    - Acceptance Criteria:
+        1. <criteria_1>
+        2. <criteria_2>
+        ...
+    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+```
+
+</TASK_ITEM_EXAMPLE>
 
 **MUST:**
 
-1. You **MUST** give each task the following attributes (these map one-to-one to `schemas/task-graph.schema.json`):
-    - **id** — a unique identifier matching `^[A-Za-z0-9_-]+$` (no dots; the engine reserves `.` for subnode names).
-    - **name** — a short human-readable title.
-    - **deps** — the ids of the tasks this task depends on. A task's implementer starts only after every dependency's audit has passed.
-    - **acceptance_criteria** — independently checkable statements that define done. The auditor verifies each against evidence.
-    - **audit_level** — Use **$AMPLIFY_PLAN_AUDIT_LEVEL**. `1` for an Opus blind-subagent audit (the default), or `2` for an external-agent (Codex) audit that degrades to Level 1 when Codex is absent.
-    - **max_attempts** — the number of implement→audit attempts before the task is logged `failed` (non-halting).
-    - **human_gate** (optional) — set when the task requires human verification per **Appendix C: Identify Human Checkpoints** in `write-plan/SKILL.md`.
+1. You **MUST** attribute the corresponding item in each task with the following explanations (these map one-to-one to `schemas/task-graph.schema.json`):
+    - **Name** — a short human-readable title.
+    - **ID** — a unique identifier matching `^[A-Za-z0-9_-]+$` (no dots; the engine reserves `.` for subnode names).
+    - **Dependencies** — the ids of the tasks this task depends on. A task's implementer starts only after every dependency's audit has passed.
+    - **Acceptance Criteria** — independently checkable statements that define done. The auditor verifies each against evidence.
+    - **Audit Level** — Use **$AMPLIFY_PLAN_AUDIT_LEVEL**. `1` for an Opus blind-subagent audit (the default), or `2` for an external-agent (Codex) audit that degrades to Level 1 when Codex is absent.
+    - **Max Attempts** — the number of implement→audit attempts before the task is logged `failed` (non-halting).
+    - **Human Gate** (optional) — set when the task requires human verification per **Appendix C: Identify Human Checkpoints** in `write-plan/SKILL.md`.
 
 **MUST NOT:**
 
