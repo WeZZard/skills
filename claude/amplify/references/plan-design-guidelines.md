@@ -10,11 +10,13 @@
 2. You **MUST** pick the components in **Primary Contents** to form the design description according to **The Pyramid Principle**.
 3. You **MUST** pick the components in **Supplementary Contents** to complete the design description in the relevant aspects according to **The Pyramid Principle**.
 4. You **MUST** pick only necessary components to describe the plan design.
+5. You **MUST** treat each component as one mutually exclusive design concern and pick a set of components that is collectively exhaustive over the design concerns this plan touches, so the selection is **MECE** (Mutually Exclusive, Collectively Exhaustive).
 
 **MUST NOT:**
 
 1. You **MUST NOT** create dedicated sections in the session plan file like **Primary Contents** and **Supplementary Contents**.
 2. You **MUST NOT** pick more components when the picked components can clearly describe the plan design.
+3. You **MUST NOT** describe the same design concern under more than one component.
 
 ## Primary Contents
 
@@ -163,6 +165,88 @@ Formulae are allowed if can be expressed in markdown.
 
 1. **DO NOT** illustrate with any of the following forms:
     - Dedicated text descriptions
+-->
+```
+
+### Data Structure
+
+You **MUST** use this template when the plan introduces or changes the shape of data — schemas, types, records, or persistent storage models.
+
+```markdown
+## Data Structure
+
+<!--
+You **MUST** illustrate the data structure before AND after the changes.
+You **MUST** NOT just illustrate the data structure before OR after the changes and illustrate another with text descriptions.
+
+The data structure describes the static shape of data: the fields and their types, the records or entities, and the relationships among them. It does not describe runtime behavior or computational steps.
+
+You **MUST** illustrate with one of the following forms:
+
+- Diagrams drawn with box-drawing characters, for example an entity-and-field layout. DO NOT output Mermaid syntax.
+- Schema or type definition code blocks, for example a table schema or a type declaration.
+
+You **MUST NOT** illustrate with any of the following forms:
+
+- Mermaid syntax
+- Ordered list
+- Unordered list
+- Markdown table
+- Dedicated text descriptions
+-->
+```
+
+### User Interface
+
+You **MUST** use this template when the plan introduces or changes what the user sees — screens, layout, or visual components.
+
+```markdown
+## User Interface
+
+<!--
+You **MUST** illustrate the user interface before AND after the changes.
+You **MUST** NOT just illustrate the user interface before OR after the changes and illustrate another with text descriptions.
+
+The user interface describes the visual presentation: the screens, the layout, the components on each screen, and their visual hierarchy. It does not describe what happens when the user acts on the interface.
+
+You **MUST** illustrate with one of the following forms:
+
+- Wireframes or mockups drawn with box-drawing characters. DO NOT output Mermaid syntax.
+
+You **MUST NOT** illustrate with any of the following forms:
+
+- Mermaid syntax
+- Ordered list
+- Unordered list
+- Markdown table
+- Dedicated text descriptions
+-->
+```
+
+### User Interaction
+
+You **MUST** use this template when the plan introduces or changes how the user acts on the interface and how the interface responds — input, feedback, and the resulting state transitions.
+
+```markdown
+## User Interaction
+
+<!--
+You **MUST** illustrate the user interaction before AND after the changes.
+You **MUST** NOT just illustrate the user interaction before OR after the changes and illustrate another with text descriptions.
+
+The user interaction describes the dynamic behavior at the interface: the user's input, the feedback or response the system gives, and the state transitions that result. It does not describe the static visual presentation.
+
+You **MUST** illustrate with one of the following forms:
+
+- State or interaction-flow diagrams drawn with box-drawing characters. DO NOT output Mermaid syntax.
+
+You **MUST NOT** illustrate with any of the following forms:
+
+- Mermaid syntax
+- Ordered list
+- Unordered list
+- Markdown table
+- Dedicated text descriptions
 -->
 ```
 
