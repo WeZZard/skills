@@ -117,29 +117,36 @@ You **MUST** present the task list with the following format:
 <TASK_LIST_EXAMPLE>
 
 ```markdown
-1. <Task 1 Name>
-    - ID: <task_id_1>
-    - Acceptance Criteria:
-        1. <criteria_1>
-        2. <criteria_2>
-        ...
-    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
-2. <Task 2 Name>
-    - ID: <task_id_2>
-    - Dependencies: <task_id_1>
-    - Acceptance Criteria:
-        1. <criteria_1>
-        2. <criteria_2>
-        ...
-    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
-3. <Task 3 Name>
-    - ID: <task_id_2>
-    - Dependencies: <task_id_1>, <task_id_2>
-    - Acceptance Criteria:
-        1. <criteria_1>
-        2. <criteria_2>
-        ...
-    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+**1. <Task 1 Name>, ID: <task_id_1>:**
+
+Acceptance Criteria:
+1. <criteria_1>
+2. <criteria_2>
+...
+
+Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+
+**2. <Task 2 Name>, ID: <task_id_2>:**
+    
+Dependencies: <task_id_1>
+
+Acceptance Criteria:
+1. <criteria_1>
+2. <criteria_2>
+...
+
+Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+
+**3. <Task 3 Name>, ID: <task_id_2>:**
+
+Dependencies: <task_id_1>, <task_id_2>
+
+Acceptance Criteria:
+1. <criteria_1>
+2. <criteria_2>
+...
+
+Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
 ```
 
 </TASK_LIST_EXAMPLE>
