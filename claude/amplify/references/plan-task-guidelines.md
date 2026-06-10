@@ -16,7 +16,7 @@
 **MUST:**
 
 1. You **MUST** output the tasks with: (1) a task list and (2) a paired execution diagram.
-2. You **MUST** output the task list in an ordered list where each item carries the **Appendix A: Appendix A: Task Item Format** attributes.
+2. You **MUST** output the task list in an ordered list where each item follows the format in the **Appendix A: Appendix A: Task Item Format**.
 3. You **MUST** output the execution diagram with one of the following forms:
     - Ordered list or cascaded ordered list with task number and name if linear/tree dependencies are appeared. You **MUST NOT** connect list items with `|` in this case.
     - Workflow diagram with ordered task number and name ONLY if non-linear and graph-level dependencies are appeared. You **MUST NOT** output Mermaid syntax in this case.
