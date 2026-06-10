@@ -17,14 +17,16 @@
 
 **MUST:**
 
-1. You **MUST** identify which task requires human verification and prioritize it to the execution start.
-2. You **MUST** identify assumptions in the plan and develop the task dependencies based on the dependencies of the assumptions.
-3. You **MUST** order tasks to match the **testing strategy**.
+1. You **MUST** identify which task requires human verification.
+2. You **MUST** prioritize human verification tasks to the execution start or the execution end.
+3. You **MUST** identify assumptions in the plan and develop the task dependencies based on the dependencies of the assumptions.
+4. You **MUST** order tasks to match the **testing strategy**.
 
 <TESTING_STRATEGY_EXAMPLES>
 
 1. Reproducer before fix for bugs
 2. Integration/E2E after their prerequisites unless the plan documents a different dependency
+3. Always put the human verification tasks at the end of the execution.
 
 </TESTING_STRATEGY_EXAMPLES>
 

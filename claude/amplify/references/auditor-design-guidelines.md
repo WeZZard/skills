@@ -57,8 +57,9 @@ Do not modify files.
 TASK GOAL: <task name / one-line goal>
 ARTIFACTS TO INSPECT: <changed files / globs>
 
-<ACCEPTANCE_CRITERIA>
 **ACCEPTANCE CRITERIA:**
+
+<ACCEPTANCE_CRITERIA>
 - <criterion 1>
 - <criterion 2>
 </ACCEPTANCE_CRITERIA>
