@@ -38,61 +38,15 @@
 
 1. You **MUST** output the tasks with: (1) a task list and (2) a paired execution diagram.
 2. You **MUST** output the execution diagram before the tast list.
-3. You **MUST** output the task list in an ordered list follows the format in **Appendix A: Task List Format**.
-4. You **MUST** output the execution diagram follows the format in **Appendix B: Execution Diagram Format**.
+3. You **MUST** output the task list in an ordered list follows the format in **Appendix B: Task List Format**.
+4. You **MUST** output the execution diagram follows the format in **Appendix A: Execution Diagram Format**.
 5. You **MUST** ensure contents in the execution diagram and the task list consistent and aligned with each other.
-
-## Appendix A: Task List Format
-
-Each task in the plan contains both the implementation and audit information.
-
-You **MUST** present the task list with the following format:
-
-<TASK_LIST_EXAMPLE>
-
-```markdown
-1. <Task 1 Name>
-    - ID: <task_id_1>
-    - Acceptance Criteria:
-        1. <criteria_1>
-        2. <criteria_2>
-        ...
-    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
-2. <Task 2 Name>
-    - ID: <task_id_2>
-    - Dependencies: <task_id_1>
-    - Acceptance Criteria:
-        1. <criteria_1>
-        2. <criteria_2>
-        ...
-    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
-3. <Task 3 Name>
-    - ID: <task_id_2>
-    - Dependencies: <task_id_1>, <task_id_2>
-    - Acceptance Criteria:
-        1. <criteria_1>
-        2. <criteria_2>
-        ...
-    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
-```
-
-</TASK_LIST_EXAMPLE>
-
-**Task List Item Filling Rules:**
-
-- **Name** — a short human-readable title.
-- **ID** — a unique identifier matching `^[A-Za-z0-9_-]+$` (no dots; the engine reserves `.` for subnode names).
-- **Dependencies** — the ids of the tasks this task depends on. A task's implementer starts only after every dependency's audit has passed.
-- **Acceptance Criteria** — independently checkable statements that define done. The auditor verifies each against evidence.
-- **Audit Level** — Use **$AMPLIFY_PLAN_AUDIT_LEVEL**. `1` for an Opus blind-subagent audit (the default), or `2` for an external-agent (Codex) audit that degrades to Level 1 when Codex is absent.
-- **Max Attempts** — the number of implement→audit attempts before the task is logged `failed` (non-halting).
-- **Human Gate** (optional) — set when the task requires human verification per **Appendix C: Identify Human Checkpoints** in `write-plan/SKILL.md`.
 
 **MUST NOT:**
 
-1. You **MUST NOT** split a task's implementer and auditor into two separate tasks in the plan.
+1. You **MUST NOT** output the execution diagram after the tast list.
 
-## Appendix B: Execution Diagram Format
+## Appendix A: Execution Diagram Format
 
 <EXECUTION_DIAGRAM_EXAMPLE>
 
@@ -153,5 +107,60 @@ You **MUST** present the task list with the following format:
 2. You **MUST NOT** illustrate with any of the following forms:
     - Unordered list
     - Pure text descriptions
+
+## Appendix B: Task List Format
+
+Each task in the plan contains both the implementation and audit information.
+
+You **MUST** present the task list with the following format:
+
+<TASK_LIST_EXAMPLE>
+
+```markdown
+1. <Task 1 Name>
+    - ID: <task_id_1>
+    - Acceptance Criteria:
+        1. <criteria_1>
+        2. <criteria_2>
+        ...
+    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+2. <Task 2 Name>
+    - ID: <task_id_2>
+    - Dependencies: <task_id_1>
+    - Acceptance Criteria:
+        1. <criteria_1>
+        2. <criteria_2>
+        ...
+    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+3. <Task 3 Name>
+    - ID: <task_id_2>
+    - Dependencies: <task_id_1>, <task_id_2>
+    - Acceptance Criteria:
+        1. <criteria_1>
+        2. <criteria_2>
+        ...
+    - Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+```
+
+</TASK_LIST_EXAMPLE>
+
+**Task List Item Filling Rules:**
+
+- **Name** — a short human-readable title.
+- **ID** — a unique identifier matching `^[A-Za-z0-9_-]+$` (no dots; the engine reserves `.` for subnode names).
+- **Dependencies** — the ids of the tasks this task depends on. A task's implementer starts only after every dependency's audit has passed.
+- **Acceptance Criteria** — independently checkable statements that define done. The auditor verifies each against evidence.
+- **Audit Level** — Use **$AMPLIFY_PLAN_AUDIT_LEVEL**. `1` for an Opus blind-subagent audit (the default), or `2` for an external-agent (Codex) audit that degrades to Level 1 when Codex is absent.
+- **Max Attempts** — the number of implement→audit attempts before the task is logged `failed` (non-halting).
+- **Human Gate** (optional) — set when the task requires human verification per **Appendix C: Identify Human Checkpoints** in `write-plan/SKILL.md`.
+
+**MUST:**
+
+1. You **MUST** use human-readable label (Name, ID, Dependencies, Acceptance Criteria, Audit Level, Max Attempts, Human Gate) in the task list.
+
+**MUST NOT:**
+
+1. You **MUST NOT** split a task's implementer and auditor into two separate tasks in the plan.
+2. You **MUST NOT** use machine-readable label (name, id, deps, acceptance_criteria, audit_level, max_attempts, human_gate) in the task list.
 
 </PLAN_TASK_GUIDELINES>
