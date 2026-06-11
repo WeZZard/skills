@@ -10,7 +10,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -43,19 +43,19 @@ function lines(s) {
   return s.split("\n").map((x) => x.trim()).filter(Boolean);
 }
 
-// ready/complete/fail emit "<subnode-id>\t<executor>" per line; this extracts
-// just the id column so existing id-only assertions stay readable.
+// ready/complete/resolve/fail emit "<subnode-id>\t<executor>" per line; this
+// extracts just the id column so id-only assertions stay readable.
 function ids(s) {
   return lines(s).map((x) => x.split("\t")[0]);
 }
 
 function ensureDir(dir) { mkdirSync(dir, { recursive: true }); }
 
+// A task no longer declares auditors -- they are resolved at runtime.
 function task(id, deps = [], over = {}) {
   return {
     id, name: `Task ${id}`, deps,
-    acceptance_criteria: ["does the thing"],
-    audit: { executor: "subagent(general-purpose)" }, max_attempts: 2,
+    acceptance_criteria: ["does the thing"], max_attempts: 2,
     ...over,
   };
 }
@@ -67,9 +67,13 @@ function init(stateDir, dir, graph, extra = []) {
   return run(stateDir, ["init", "--graph", p, ...extra]);
 }
 
+// A one-entry panel JSON for the resolve verb.
+function panel(entries) { return JSON.stringify(entries); }
+const ONE_AUDIT = panel([{ focus: "technical execution", executor: "subagent(general-purpose)" }]);
+
 const HEX16 = /^[0-9a-f]{16}$/;
 
-test("init: valid snake_case graph succeeds, prints GRAPH_ID, explodes to 2N subnodes", () => {
+test("init: valid graph succeeds, prints GRAPH_ID, explodes to impl+resolve per task", () => {
   const { dir, stateDir } = ws();
   const r = init(stateDir, dir, { version: 1, nodes: [task("A"), task("B", ["A"])] });
   assert.equal(r.status, 0, r.stderr);
@@ -80,7 +84,7 @@ test("init: valid snake_case graph succeeds, prints GRAPH_ID, explodes to 2N sub
   const state = JSON.parse(readFileSync(statePath, "utf8"));
   assert.deepEqual(
     Object.keys(state.subnodes).sort(),
-    ["A.audit", "A.impl", "B.audit", "B.impl"],
+    ["A.impl", "A.resolve", "B.impl", "B.resolve"],
   );
   assert.equal(Object.keys(state.tasks).length, 2);
 });
@@ -89,15 +93,15 @@ test("init: state is written under AMPLIFY_STATE_DIR, not elsewhere", () => {
   const { dir, stateDir } = ws();
   const r = init(stateDir, dir, { version: 1, nodes: [task("A")] });
   assert.equal(r.status, 0, r.stderr);
-  const files = readdirSync(stateDir);
+  const files = readdirSync(stateDir).filter((f) => f.endsWith(".json"));
   assert.equal(files.length, 1);
   assert.match(files[0], /^[0-9a-f]{16}\.json$/);
 });
 
 const invalidCases = {
-  "missing required field (acceptance_criteria)": { version: 1, nodes: [{ id: "A", name: "A", deps: [], audit: { executor: "subagent(general-purpose)" }, max_attempts: 1 }] },
-  "audit.executor with invalid grammar": { version: 1, nodes: [task("A", [], { audit: { executor: "subagent(bogus)" } })] },
-  "missing audit": { version: 1, nodes: [task("A", [], { audit: undefined })] },
+  "missing required field (acceptance_criteria)": { version: 1, nodes: [{ id: "A", name: "A", deps: [], max_attempts: 1 }] },
+  "impl.executor with invalid grammar": { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(bogus)" } })] },
+  "stale audit field rejected": { version: 1, nodes: [task("A", [], { audit: { executor: "subagent(general-purpose)" } })] },
   "duplicate id": { version: 1, nodes: [task("A"), task("A")] },
   "unknown dependency": { version: 1, nodes: [task("A", ["ghost"])] },
   "dependency cycle": { version: 1, nodes: [task("A", ["B"]), task("B", ["A"])] },
@@ -122,55 +126,84 @@ test("scheduling: ready returns only dependency-free .impl", () => {
   assert.deepEqual(ready, ["A.impl"]);
 });
 
-test("scheduling: complete .impl readies .audit; complete .audit readies the successor SET", () => {
+test("flow: complete .impl readies .resolve; resolve registers audits; audits done readies successor SET", () => {
   const { dir, stateDir } = ws();
   const id = init(stateDir, dir, { version: 1, nodes: [task("A"), task("B", ["A"]), task("C", ["A"])] }).stdout.trim();
 
   const afterImpl = ids(run(stateDir, ["complete", "--id", id, "--node", "A.impl"]).stdout);
-  assert.deepEqual(afterImpl, ["A.audit"]);
+  assert.deepEqual(afterImpl, ["A.resolve"]);
 
-  const afterAudit = ids(run(stateDir, ["complete", "--id", id, "--node", "A.audit"]).stdout);
-  assert.deepEqual(afterAudit.sort(), ["B.impl", "C.impl"]); // multi-element set
+  const afterResolve = ids(run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel",
+    panel([{ focus: "technical execution", executor: "subagent(general-purpose)" },
+            { focus: "semantic", executor: "subagent(general-purpose)" }])]).stdout);
+  assert.deepEqual(afterResolve.sort(), ["A.audit.0", "A.audit.1"]);
+
+  const afterFirstAudit = ids(run(stateDir, ["complete", "--id", id, "--node", "A.audit.0"]).stdout);
+  assert.deepEqual(afterFirstAudit, ["A.audit.1"]); // round still in progress
+
+  const afterRound = ids(run(stateDir, ["complete", "--id", id, "--node", "A.audit.1"]).stdout);
+  assert.deepEqual(afterRound.sort(), ["B.impl", "C.impl"]); // task A done -> successors
 });
 
-test("scheduling: ready/complete emit '<id>\\t<executor>' per line, carrying each subnode's executor", () => {
+test("flow: ready/complete/resolve emit '<id>\\t<executor>', carrying each subnode's executor", () => {
   const { dir, stateDir } = ws();
-  // A: default impl executor + a non-default audit executor; B depends on A.
   const id = init(stateDir, dir, {
     version: 1,
-    nodes: [
-      task("A", [], { audit: { executor: "subagent(amplify:codex-driver)" } }),
-      task("B", ["A"], { impl: { executor: "subagent(explore)" } }),
-    ],
+    nodes: [task("A"), task("B", ["A"], { impl: { executor: "subagent(explore)" } })],
   }).stdout.trim();
 
-  // ready: A.impl gets the default impl executor.
   const readyLines = lines(run(stateDir, ["ready", "--id", id]).stdout);
   assert.deepEqual(readyLines, ["A.impl\tsubagent(general-purpose)"]);
-  for (const line of readyLines) assert.match(line, /^[^\t]+\tsubagent\(.+\)$/);
 
-  // complete A.impl -> A.audit becomes ready with the node's audit executor.
   const afterImpl = lines(run(stateDir, ["complete", "--id", id, "--node", "A.impl"]).stdout);
-  assert.deepEqual(afterImpl, ["A.audit\tsubagent(amplify:codex-driver)"]);
+  assert.deepEqual(afterImpl, ["A.resolve\tsubagent(amplify:audit-resolver)"]);
 
-  // complete A.audit -> B.impl becomes ready with B's explicit impl executor.
-  const afterAudit = lines(run(stateDir, ["complete", "--id", id, "--node", "A.audit"]).stdout);
+  const afterResolve = lines(run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel",
+    panel([{ focus: "semantic", executor: "subagent(amplify:codex-driver)" }])]).stdout);
+  assert.deepEqual(afterResolve, ["A.audit.0\tsubagent(amplify:codex-driver)"]);
+
+  // single auditor passes -> task A done -> B.impl ready with B's explicit executor
+  const afterAudit = lines(run(stateDir, ["complete", "--id", id, "--node", "A.audit.0"]).stdout);
   assert.deepEqual(afterAudit, ["B.impl\tsubagent(explore)"]);
 });
 
-test("failure: fail under max_attempts reopens .impl; at max_attempts marks failed and stays non-halting", () => {
+test("resolve: rejects a bad panel executor and a non-resolve subnode", () => {
   const { dir, stateDir } = ws();
-  // A has max_attempts 2; B depends on A
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A")] }).stdout.trim();
+  run(stateDir, ["complete", "--id", id, "--node", "A.impl"]);
+  const bad = run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel",
+    panel([{ focus: "x", executor: "subagent(bogus)" }])]);
+  assert.notEqual(bad.status, 0);
+  const wrongNode = run(stateDir, ["resolve", "--id", id, "--node", "A.impl", "--panel", ONE_AUDIT]);
+  assert.notEqual(wrongNode.status, 0);
+});
+
+test("complete: rejects a .resolve subnode (must use the resolve verb)", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A")] }).stdout.trim();
+  run(stateDir, ["complete", "--id", id, "--node", "A.impl"]);
+  const r = run(stateDir, ["complete", "--id", id, "--node", "A.resolve"]);
+  assert.notEqual(r.status, 0);
+});
+
+test("failure: fail under max reopens impl (resets resolve, drops audits); at max marks failed, non-halting", () => {
+  const { dir, stateDir } = ws();
   const id = init(stateDir, dir, { version: 1, nodes: [task("A", [], { max_attempts: 2 }), task("B", ["A"])] }).stdout.trim();
 
+  // round 1
   run(stateDir, ["complete", "--id", id, "--node", "A.impl"]);
-  // attempt 1 fails -> reopen A.impl
-  const retry = ids(run(stateDir, ["fail", "--id", id, "--node", "A.audit", "--reason", "nope"]).stdout);
+  run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel", ONE_AUDIT]);
+  const retry = ids(run(stateDir, ["fail", "--id", id, "--node", "A.audit.0", "--reason", "nope"]).stdout);
   assert.ok(retry.includes("A.impl"), "A.impl should reopen for retry");
+  // audits dropped: A.audit.0 should be gone from state
+  const state1 = JSON.parse(readFileSync(join(stateDir, `${id}.json`), "utf8"));
+  assert.ok(!("A.audit.0" in state1.subnodes), "the round's audit subnode should be dropped on retry");
+  assert.equal(state1.subnodes["A.resolve"].status, "pending", "resolve should reset for re-resolution");
 
-  // attempt 2 fails -> exhausted -> A failed, B.impl becomes ready (non-halting)
+  // round 2 -> exhausted
   run(stateDir, ["complete", "--id", id, "--node", "A.impl"]);
-  const exhausted = ids(run(stateDir, ["fail", "--id", id, "--node", "A.audit", "--reason", "still nope"]).stdout);
+  run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel", ONE_AUDIT]);
+  const exhausted = ids(run(stateDir, ["fail", "--id", id, "--node", "A.audit.0", "--reason", "still nope"]).stdout);
   assert.ok(exhausted.includes("B.impl"), "successor must proceed after a logged failure");
 
   const report = run(stateDir, ["report", "--id", id]).stdout;
@@ -180,22 +213,21 @@ test("failure: fail under max_attempts reopens .impl; at max_attempts marks fail
 test("fail: rejects a non-audit subnode", () => {
   const { dir, stateDir } = ws();
   const id = init(stateDir, dir, { version: 1, nodes: [task("A")] }).stdout.trim();
-  const r = run(stateDir, ["fail", "--id", id, "--node", "A.impl"]);
-  assert.notEqual(r.status, 0);
+  assert.notEqual(run(stateDir, ["fail", "--id", id, "--node", "A.impl"]).status, 0);
+  run(stateDir, ["complete", "--id", id, "--node", "A.impl"]);
+  assert.notEqual(run(stateDir, ["fail", "--id", id, "--node", "A.resolve"]).status, 0);
 });
 
 test("identity: same graph + same salt => same GRAPH_ID (resume preserves state)", () => {
   const { dir, stateDir } = ws();
   const graph = { version: 1, nodes: [task("A"), task("B", ["A"])] };
   const id1 = init(stateDir, dir, graph, ["--salt", "p"]).stdout.trim();
-  // advance state
   run(stateDir, ["complete", "--id", id1, "--node", "A.impl"]);
-  // re-init identical graph+salt
   const id2 = init(stateDir, dir, graph, ["--salt", "p"]).stdout.trim();
   assert.equal(id1, id2);
-  // state preserved: A.impl still done, so ready should be A.audit (not A.impl)
+  // state preserved: A.impl done, so ready should be A.resolve (not A.impl)
   const ready = ids(run(stateDir, ["ready", "--id", id2]).stdout);
-  assert.deepEqual(ready, ["A.audit"]);
+  assert.deepEqual(ready, ["A.resolve"]);
 });
 
 test("identity: different content or salt => different GRAPH_ID", () => {
@@ -214,18 +246,166 @@ test("field parity: a graph built from the schema's required keys is accepted", 
   const required = schema.$defs.task.required;
   assert.deepEqual(
     [...required].sort(),
-    ["acceptance_criteria", "audit", "deps", "id", "max_attempts", "name"],
-    "schema required keys are the snake_case contract",
+    ["acceptance_criteria", "deps", "id", "max_attempts", "name"],
+    "schema required keys are the snake_case contract (no audit)",
   );
-  const node = {
-    id: "A", name: "A", deps: [],
-    acceptance_criteria: ["x"], audit: { executor: "subagent(general-purpose)" }, max_attempts: 1,
-  };
-  // every required key must be present in the node we build
+  const node = { id: "A", name: "A", deps: [], acceptance_criteria: ["x"], max_attempts: 1 };
   for (const k of required) assert.ok(k in node, `missing required key ${k}`);
   const { dir, stateDir } = ws();
   const r = init(stateDir, dir, { version: 1, nodes: [node] });
   assert.equal(r.status, 0, r.stderr);
+});
+
+// --- flock holder verbs (hold / release / holds) ---------------------------
+// These exercise the kernel flock(2) reached via the bundled `perl`. If perl is
+// unavailable the flock tests skip (the engine guards on it the same way).
+
+const PERL_OK = spawnSync("perl", ["-e", "1"], { encoding: "utf8" }).status === 0;
+
+function delay(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+// Every background holder we start, so a global hook can reap them even if a test
+// throws before its own cleanup (otherwise a live child keeps the runner alive).
+const HOLDERS = [];
+after(() => { for (const h of HOLDERS) killHold(h); });
+
+// Kill the holder's whole process group (node + its perl child) -> the kernel
+// frees the flock immediately, as a session killing its process tree would.
+function killHold(h) {
+  try { process.kill(-h.child.pid, "SIGKILL"); }
+  catch { try { h.child.kill("SIGKILL"); } catch {} }
+}
+
+// Start a background `hold` (detached, in its own group); resolve with its first
+// stdout line (HELD | BUSY | EXIT).
+function startHold(stateDir, resource, owner, extra = []) {
+  const child = spawn("node", [ENGINE, "hold", "--resource", resource, "--owner", owner, ...extra], {
+    env: { ...process.env, AMPLIFY_STATE_DIR: stateDir },
+    detached: true,
+  });
+  child.unref();
+  let out = "";
+  const first = new Promise((resolve) => {
+    const settle = () => { const line = out.split("\n").find(Boolean); if (line) resolve(line); };
+    child.stdout.on("data", (d) => { out += d.toString(); settle(); });
+    child.on("exit", () => resolve(out.split("\n").find(Boolean) || "EXIT"));
+  });
+  const h = { child, first };
+  HOLDERS.push(h);
+  return h;
+}
+
+// Start a background `wait-free`; resolve `released` when it prints RELEASED (or exits).
+function startWaitFree(stateDir, resources, extra = ["--interval", "1"]) {
+  const child = spawn("node", [ENGINE, "wait-free", "--resource", resources, ...extra], {
+    env: { ...process.env, AMPLIFY_STATE_DIR: stateDir },
+    detached: true,
+  });
+  child.unref();
+  let out = "";
+  const released = new Promise((resolve) => {
+    child.stdout.on("data", (d) => { out += d.toString(); if (/RELEASED/.test(out)) resolve("RELEASED"); });
+    child.on("exit", () => resolve(/RELEASED/.test(out) ? "RELEASED" : "EXIT"));
+  });
+  const h = { child, released };
+  HOLDERS.push(h);
+  return h;
+}
+
+test("flock: mutual exclusion + auto-release when the holder dies", { skip: !PERL_OK }, async () => {
+  const { stateDir } = ws(); ensureDir(stateDir);
+  const a = startHold(stateDir, "computer-use", "gidA:X.audit.0");
+  assert.equal(await a.first, "HELD");
+  assert.match(run(stateDir, ["holds", "--resource", "computer-use"]).stdout, /^HELD owner=gidA:X\.audit\.0/);
+  // a second holder is refused while A lives
+  const b = startHold(stateDir, "computer-use", "gidB:Y");
+  assert.match(await b.first, /^BUSY\b/);
+  // kill A (simulate session shutdown) -> the kernel frees the flock, no TTL wait
+  killHold(a);
+  await delay(400);
+  const c = startHold(stateDir, "computer-use", "gidC:Z");
+  assert.equal(await c.first, "HELD");
+  killHold(c);
+});
+
+test("flock: release by the owner frees the lock; a wrong owner is refused", { skip: !PERL_OK }, async () => {
+  const { stateDir } = ws(); ensureDir(stateDir);
+  const a = startHold(stateDir, "computer-use", "owner-1");
+  assert.equal(await a.first, "HELD");
+  assert.notEqual(run(stateDir, ["release", "--resource", "computer-use", "--owner", "someone-else"]).status, 0);
+  assert.equal(run(stateDir, ["release", "--resource", "computer-use", "--owner", "owner-1"]).status, 0);
+  await delay(300);
+  const c = startHold(stateDir, "computer-use", "owner-2");
+  assert.equal(await c.first, "HELD");
+  killHold(c);
+});
+
+test("flock: independent resources do not block each other", { skip: !PERL_OK }, async () => {
+  const { stateDir } = ws(); ensureDir(stateDir);
+  const a = startHold(stateDir, "computer-use", "A");
+  const b = startHold(stateDir, "chrome-devtools", "B");
+  assert.equal(await a.first, "HELD");
+  assert.equal(await b.first, "HELD");
+  killHold(a); killHold(b);
+});
+
+test("flock: a past-TTL holder is reclaimed (backstop)", { skip: !PERL_OK }, async () => {
+  const { stateDir } = ws(); ensureDir(stateDir);
+  const a = startHold(stateDir, "computer-use", "stale-holder");
+  assert.equal(await a.first, "HELD");
+  await delay(20);
+  // a new holder with a 1ms TTL treats the older lock as stale, kills it, acquires
+  const b = startHold(stateDir, "computer-use", "fresh-holder", ["--ttl", "1"]);
+  assert.equal(await b.first, "HELD");
+  killHold(a); killHold(b);
+});
+
+test("resource-of: maps exclusive executors, empty otherwise", () => {
+  const { stateDir } = ws(); ensureDir(stateDir);
+  assert.equal(run(stateDir, ["resource-of", "--executor", "subagent(amplify:computer-use)"]).stdout.trim(), "computer-use");
+  assert.equal(run(stateDir, ["resource-of", "--executor", "subagent(amplify:browser-use-chrome-devtools)"]).stdout.trim(), "chrome-devtools");
+  assert.equal(run(stateDir, ["resource-of", "--executor", "subagent(amplify:browser-use-playwright)"]).stdout.trim(), "");
+  assert.equal(run(stateDir, ["resource-of", "--executor", "subagent(general-purpose)"]).stdout.trim(), "");
+});
+
+test("wait-free: returns immediately when the resource is free", () => {
+  const { stateDir } = ws(); ensureDir(stateDir);
+  const r = run(stateDir, ["wait-free", "--resource", "computer-use", "--interval", "1"]);
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /^RELEASED computer-use/m);
+});
+
+test("wait-free: blocks while held, returns RELEASED when the holder dies", { skip: !PERL_OK }, async () => {
+  const { stateDir } = ws(); ensureDir(stateDir);
+  const a = startHold(stateDir, "computer-use", "sessX:T");   // simulate an external holder
+  assert.equal(await a.first, "HELD");
+  const wf = startWaitFree(stateDir, "computer-use");
+  // still waiting while held
+  assert.equal(await Promise.race([wf.released.then(() => "R"), delay(800).then(() => "W")]), "W");
+  killHold(a);                                                // external release
+  assert.equal(await wf.released, "RELEASED");
+});
+
+test("wait-free: comma-separated returns when ANY listed resource frees", { skip: !PERL_OK }, async () => {
+  const { stateDir } = ws(); ensureDir(stateDir);
+  const a = startHold(stateDir, "computer-use", "X");
+  const b = startHold(stateDir, "chrome-devtools", "Y");
+  assert.equal(await a.first, "HELD");
+  assert.equal(await b.first, "HELD");
+  const wf = startWaitFree(stateDir, "computer-use,chrome-devtools");
+  assert.equal(await Promise.race([wf.released.then(() => "R"), delay(800).then(() => "W")]), "W");
+  killHold(a);                                                // free one of the two
+  assert.equal(await wf.released, "RELEASED");
+  killHold(b);
+});
+
+test("hold: busy output names the current owner", { skip: !PERL_OK }, async () => {
+  const { stateDir } = ws(); ensureDir(stateDir);
+  const a = startHold(stateDir, "computer-use", "sessX:T.audit.0");
+  assert.equal(await a.first, "HELD");
+  const b = startHold(stateDir, "computer-use", "sessY:U");
+  assert.equal(await b.first, "BUSY owner=sessX:T.audit.0");
+  killHold(a);
 });
 
 test("unknown verb exits non-zero", () => {

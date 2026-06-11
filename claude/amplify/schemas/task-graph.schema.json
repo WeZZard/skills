@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/WeZZard/skills/claude/amplify/task-graph.schema.json",
   "title": "Amplify Folded Task Graph",
-  "description": "The folded (human-authored, machine-dumped) task graph that scripts/task.mjs ingests. Each node is one 'implement-and-audit' task; the engine explodes it into <id>.impl and <id>.audit subnodes. Each subnode's executor (the subagent that runs it) IS stored here via impl.executor / audit.executor; the implementer/auditor model and tools are NOT stored -- execute-plan chooses them at spawn time per the role design guidelines, and each custom executor supplies its own tools via its frontmatter.",
+  "description": "The folded (human-authored, machine-dumped) task graph that scripts/task.mjs ingests. Each node is one 'implement-and-audit' task; the engine explodes it into <id>.impl and <id>.resolve subnodes, then creates <id>.audit.<i> subnodes at runtime from the audit-resolver's panel. Tasks declare only the implementer side (optional impl.executor); the auditors are resolved at runtime by the amplify:audit-resolver agent, so there is no audit field. The implementer model/tools are NOT stored -- execute-plan chooses them at spawn time per implementer-design-guidelines.md, and each custom executor supplies its own tools via its frontmatter.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "nodes"],
@@ -22,10 +22,10 @@
     "task": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "deps", "acceptance_criteria", "audit", "max_attempts"],
+      "required": ["id", "name", "deps", "acceptance_criteria", "max_attempts"],
       "properties": {
         "id": {
-          "description": "Unique task id. Must not contain '.', which the engine reserves as the subnode separator (<id>.impl / <id>.audit).",
+          "description": "Unique task id. Must not contain '.', which the engine reserves as the subnode separator (e.g. <id>.impl, <id>.resolve, <id>.audit.<i>).",
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]+$",
           "minLength": 1
@@ -36,28 +36,21 @@
           "minLength": 1
         },
         "deps": {
-          "description": "Task ids this task depends on. A successor's implementer waits until every dependency's auditor has passed.",
+          "description": "Task ids this task depends on. A successor's implementer waits until every dependency task is done (its implementer passed and all its runtime-resolved auditors passed).",
           "type": "array",
           "uniqueItems": true,
           "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }
         },
         "acceptance_criteria": {
-          "description": "Independently checkable statements that define done. The auditor verifies each against evidence.",
+          "description": "Independently checkable statements that define done. Every runtime-resolved auditor verifies each against evidence.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
         },
         "impl": {
-          "description": "Implementer subnode config. Optional; a missing impl (or missing impl.executor) defaults to subagent(general-purpose).",
+          "description": "Implementer subnode config. Optional; a missing impl (or missing impl.executor) defaults to subagent(general-purpose). Auditors are NOT declared here -- they are resolved at runtime by the amplify:audit-resolver agent.",
           "type": "object",
           "additionalProperties": false,
-          "properties": { "executor": { "$ref": "#/$defs/executor" } }
-        },
-        "audit": {
-          "description": "Auditor subnode config. Replaces audit_level.",
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["executor"],
           "properties": { "executor": { "$ref": "#/$defs/executor" } }
         },
         "human_gate": {
@@ -74,7 +67,7 @@
     "executor": {
       "description": "Names the subagent that runs a subnode. Grammar: subagent(<name>). The subagent(...) wrapper reserves room for future executor kinds.",
       "type": "string",
-      "pattern": "^subagent\\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:chrome-devtools-driver|amplify:playwright-driver|amplify:computer-use)\\)$"
+      "pattern": "^subagent\\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:audit-resolver)\\)$"
     }
   }
 }

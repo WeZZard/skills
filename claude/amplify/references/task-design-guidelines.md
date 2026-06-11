@@ -1,8 +1,8 @@
-# Plan Task Guidelines
+# Task Design Guidelines
 
-<PLAN_TASK_GUIDELINES>
+<TASK_DESIGN_GUIDELINES>
 
-## Task Design
+## Task Design Principles
 
 **MUST:**
 
@@ -107,7 +107,7 @@
 
 ## Appendix B: Task List Format
 
-Each task in the plan contains both the implementation and audit information.
+Each task declares its implementation side; its auditors are resolved at runtime by the audit-resolver agent and are not declared in the plan.
 
 You **MUST** present the task list with the following format:
 
@@ -122,7 +122,7 @@ You **MUST** present the task list with the following format:
 2. <criteria_2>
 ...
 
-Executor (impl/audit): <impl_executor>/<audit_executor>, max attempts: <max_attempts>, human gate: <Yes|No>
+Executor: <impl_executor> (impl), max attempts: <max_attempts>, human gate: <Yes|No>
 
 **2. ID: <task_id_2>, Name: <Task 2 Name>:**
     
@@ -134,7 +134,7 @@ Executor (impl/audit): <impl_executor>/<audit_executor>, max attempts: <max_atte
 2. <criteria_2>
 ...
 
-Executor (impl/audit): <impl_executor>/<audit_executor>, max attempts: <max_attempts>, human gate: <Yes|No>
+Executor: <impl_executor> (impl), max attempts: <max_attempts>, human gate: <Yes|No>
 
 **3. ID: <task_id_2>, Name: <Task 3 Name>:**
 
@@ -146,7 +146,7 @@ Executor (impl/audit): <impl_executor>/<audit_executor>, max attempts: <max_atte
 2. <criteria_2>
 ...
 
-Executor (impl/audit): <impl_executor>/<audit_executor>, max attempts: <max_attempts>, human gate: <Yes|No>
+Executor: <impl_executor> (impl), max attempts: <max_attempts>, human gate: <Yes|No>
 ```
 
 </TASK_LIST_EXAMPLE>
@@ -155,19 +155,19 @@ Executor (impl/audit): <impl_executor>/<audit_executor>, max attempts: <max_atte
 
 - **Name** — a short human-readable title.
 - **ID** — a unique identifier matching `^[A-Za-z0-9_-]+$` (no dots; the engine reserves `.` for subnode names).
-- **Dependencies** — the ids of the tasks this task depends on. A task's implementer starts only after every dependency's audit has passed.
-- **Acceptance Criteria** — independently checkable statements that define done. The auditor verifies each against evidence.
-- **Executor (impl/audit)** — Choose `impl.executor` and `audit.executor` per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md`, writing each as `subagent(<name>)`. That document is the source of truth for which subagent to use and its availability and degradation behavior; do not restate those rules here.
+- **Dependencies** — the ids of the tasks this task depends on. A task's implementer starts only after every dependency **task** is done (its implementer passed and all of its runtime-resolved auditors passed).
+- **Acceptance Criteria** — independently checkable statements that define done. Every runtime-resolved auditor verifies each against evidence.
+- **Executor** — Choose `impl.executor` per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md`, writing it as `subagent(<name>)`. That document is the source of truth for which subagent to use and its availability and degradation behavior; do not restate those rules here. The auditors are not chosen here — the audit-resolver picks each auditor's executor at runtime.
 - **Max Attempts** — the number of implement→audit attempts before the task is logged `failed` (non-halting).
 - **Human Gate** (optional) — set when the task requires human verification per **Appendix C: Identify Human Checkpoints** in `write-plan/SKILL.md`.
 
 **MUST:**
 
-1. You **MUST** use human-readable label (Name, ID, Dependencies, Acceptance Criteria, Executor (impl/audit), Max Attempts, Human Gate) in the task list.
+1. You **MUST** use human-readable label (Name, ID, Dependencies, Acceptance Criteria, Executor, Max Attempts, Human Gate) in the task list.
 
 **MUST NOT:**
 
-1. You **MUST NOT** split a task's implementer and auditor into two separate tasks in the plan.
-2. You **MUST NOT** use machine-readable label (name, id, deps, acceptance_criteria, impl, audit, max_attempts, human_gate) in the task list.
+1. You **MUST NOT** split a task's implementer and its audit into two separate tasks in the plan.
+2. You **MUST NOT** use machine-readable label (name, id, deps, acceptance_criteria, impl, max_attempts, human_gate) in the task list.
 
-</PLAN_TASK_GUIDELINES>
+</TASK_DESIGN_GUIDELINES>

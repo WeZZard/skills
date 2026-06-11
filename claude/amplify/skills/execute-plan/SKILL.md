@@ -7,11 +7,11 @@ description: <EXTREMELY_IMPORTANT>You MUST use execute-plan immediately when you
 
 **Announce at start:** "I'm using the execute-plan skill to implement this plan."
 
-## The Process
+## Execution Process
 
 ### Step 1: Load The Plan File
 
-You **MUST** read the plan file and locate its task execution diagram: the ordered task list, where each task carries its **ID**, **Name**, **Dependencies**, **Acceptance Criteria**, **Max Attempts**, and optional **Human Gate** (see `${CLAUDE_PLUGIN_ROOT}/references/plan-task-guidelines.md`).
+You **MUST** read the plan file and locate its task execution diagram: the ordered task list, where each task carries its **ID**, **Name**, **Dependencies**, **Executor**, **Acceptance Criteria**, **Max Attempts**, and optional **Human Gate** (see `${CLAUDE_PLUGIN_ROOT}/references/task-design-guidelines.md`).
 
 ### Step 2: Decide Inline vs Engine Execution
 
@@ -33,14 +33,13 @@ Transcribe the plan's task list into a JSON file — a **faithful 1:1 transcript
          "id": "...", "name": "...", "deps": ["..."],
          "acceptance_criteria": ["...", "..."],
          "impl": { "executor": "subagent(<subagent-name>)" },
-         "audit": { "executor": "subagent(<subagent-name>)" },
          "human_gate": true|false, "max_attempts": [max_attempts]
       }
    ]
 }
 ```
 
-It **MUST** validate against `${CLAUDE_PLUGIN_ROOT}/schemas/task-graph.schema.json`. Write it to a temporary file.
+`impl` is optional (omit it to default the implementer to `subagent(general-purpose)`); there is **no** `audit` field — auditors are resolved at runtime by the audit-resolver. It **MUST** validate against `${CLAUDE_PLUGIN_ROOT}/schemas/task-graph.schema.json`. Write it to a temporary file.
 
 #### 3.2 Initialize the engine
 
@@ -48,39 +47,59 @@ It **MUST** validate against `${CLAUDE_PLUGIN_ROOT}/schemas/task-graph.schema.js
 node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" init --graph <tmp.json> --salt "<plan title>"
 ```
 
-The command prints a `GRAPH_ID` on stdout. Capture it; use it as `--id <GRAPH_ID>` for every subsequent call. The engine explodes each task `T` into `T.impl → T.audit` subnodes and stores state in an amplify-owned directory. If `init` reports validation errors, fix the dump (or stop and report if the plan itself is inconsistent).
+The command prints a `GRAPH_ID` on stdout. Capture it; use it as `--id <GRAPH_ID>` for every subsequent call. The engine explodes each task `T` into `T.impl → T.resolve` subnodes (the `T.audit.<i>` auditor subnodes are created at runtime by the `resolve` verb) and stores state in an amplify-owned directory. If `init` reports validation errors, fix the dump (or stop and report if the plan itself is inconsistent).
 
-### Step 4: Run the Scheduling Loop
+### Step 4: Run the Scheduling Loop (background, continuous)
 
-Repeat until `ready` prints nothing:
+Dispatch every subagent in the **background** and react to each completion. Keep going until **nothing is in flight** and `report` shows no `INCOMPLETE` task — *not* merely until `ready` is momentarily empty (an exclusive subnode may be deferred while its resource is busy).
 
-1. **Get ready subnodes:**
+1. **Get the ready set:**
 
    ```bash
    node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" ready --id <GRAPH_ID>
    ```
 
-2. **Spawn every ready subnode.** When more than one is ready you **MUST** spawn them in a **single message** so they advance in parallel. Each `ready`/`complete`/`fail` line is **tab-separated** — `<subnode-id>\t<executor>`, where `<executor>` is `subagent(<name>)` (see the **Runtime Contract** in the plan). The spawn strategy is the **same for every subnode**:
+   Each `ready`/`complete`/`resolve`/`fail` line is **tab-separated** — `<subnode-id>\t<executor>`. Parse the **role** from the id: `.impl` → implementer, `.resolve` → audit-resolver, `.audit.<i>` → auditor. The `<executor>` comes straight from the tool output; do **not** re-read the graph for it.
 
-   1. Split the line on the tab; parse the **role** from the id suffix — `.impl` → implementer, `.audit` → auditor.
-   2. Choose, detect, and degrade `<executor>` per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md`. The executor comes straight from the tool output; do **not** re-read the graph for it.
-   3. Build the prompt from the role's guideline:
-      - You **MUST** use `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md` for an implementer.
-      - You **MUST** use `${CLAUDE_PLUGIN_ROOT}/references/auditor-design-guidelines.md` for an auditor.
-   4. Spawn `subagent(<name>)` with the Agent tool (`subagent_type: <name>`), passing `model` plus that prompt.
-      - A built-in executor takes the prompt directly, with the tools its role allows (an auditor is read-only).
-      - A driver executor takes the prompt as its **delegated body**, following that driver's own Input contract.
+2. **Dispatch each ready subnode in the background.** For a subnode `S` with executor `E`:
 
-3. **Apply each result to the engine:**
+   1. **Exclusive-resource gate.** Ask the engine whether `E` is exclusive:
 
-   - Implementer returns `STATUS: COMPLETE` → `complete --id <GRAPH_ID> --node T.impl` (this readies `T.audit`).
-   - Implementer returns `STATUS: BLOCKED` → stop and raise the human (genuine blocker; see **Step 7**).
-   - Auditor returns `VERDICT: PASS` → `complete --id <GRAPH_ID> --node T.audit` (this readies the successor tasks' `.impl`).
-   - Auditor returns `VERDICT: FAIL` → `fail --id <GRAPH_ID> --node T.audit --reason "<short reason>"`. The engine either reopens `T.impl` for another attempt (re-spawn the implementer **with the auditor's FINDINGS**) or, once `max_attempts` is reached, marks the task `failed`, logs it, and lets successors proceed. A `failed` task does **not** halt the plan.
+      ```bash
+      node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" resource-of --executor "<E>"
+      ```
 
-   Each `complete`/`fail` prints the newly-ready subnode set — one `<id>\t<executor>` line per subnode — feed it into the next iteration.
+      If it prints a resource class `R` (e.g. `computer-use`, `chrome-devtools`), acquire the host-global lock by starting a **background holder** and reading its first line:
 
-4. **Human verification gates:** before completing a task whose `human_gate` is true, stop and raise a gate with the **AskUserQuestion** tool. Continue only after the user verifies.
+      ```bash
+      node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" hold --resource <R> --owner "<GRAPH_ID>:<S>"   # run_in_background: true
+      ```
+
+      It prints `HELD` (acquired — it then keeps holding the kernel `flock`) or `BUSY owner=<owner>` (held by this run **or another Claude Code session**). On `BUSY`, **defer** `S` and record its blocked resource `R` (an in-session holder's completion will re-dispatch it; an external holder is handled by the **idle-Monitor step below**). On `HELD`, proceed and remember `(R, "<GRAPH_ID>:<S>")` to release when `S` finishes. If `resource-of` prints nothing, `E` is non-exclusive — skip this gate.
+   2. **Build the prompt by role:** implementer → `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md`; audit-resolver → spawn `subagent(amplify:audit-resolver)` with **only** this task's spec, acceptance criteria, verification cases, and the diff (nothing from the implementer's reasoning) — it returns a `PANEL:` JSON list of `{focus, executor, audit_prompt}`; auditor → spawn the panel entry's `executor` with its `audit_prompt` **verbatim** (the complete blind-audit body; read no auditor guideline).
+   3. **Spawn it in the background** with the Agent tool (`subagent_type: <name>`, `run_in_background: true`), passing `model` plus the prompt. Dispatch all ready, non-deferred subnodes.
+
+3. **On each background completion, apply it and dispatch what it unblocks:**
+
+   - Implementer `STATUS: COMPLETE` → `complete --id <GRAPH_ID> --node T.impl` (readies `T.resolve`).
+   - Implementer `STATUS: BLOCKED` → stop and raise the human (genuine blocker; see **Step 6**).
+   - Audit-resolver `PANEL` → `resolve --id <GRAPH_ID> --node T.resolve --panel '<panel-json>'` (registers + readies `T.audit.<i>`).
+   - Auditor `VERDICT: PASS` → `complete --id <GRAPH_ID> --node T.audit.<i>`.
+   - Auditor `VERDICT: FAIL` → `fail --id <GRAPH_ID> --node T.audit.<i> --reason "<short reason>"`.
+
+   **Release the lock** of any completed exclusive subnode: `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" release --resource <R> --owner "<GRAPH_ID>:<S>"`. (A crash or shutdown needs no release — the holder dies with the session and the kernel frees the `flock`.) Then **dispatch the newly-ready subnodes** the `complete`/`resolve`/`fail` printed (back to step 2), and retry any previously **deferred** exclusive subnode.
+
+   The engine aggregates each round: a task is done only when **every** auditor passes; on any FAIL it reopens `T.impl` (re-spawn the implementer **with the failing auditors' FINDINGS**), resets `T.resolve`, and drops the auditors so the next round re-resolves from the new diff — or, once `max_attempts` is reached, logs the task `failed` (non-halting; successors proceed).
+
+4. **Human verification gates:** for a task whose `human_gate` is true, after its auditors all pass (the task is done) stop before dispatching its successors and raise a gate with the **AskUserQuestion** tool. Continue only after the user verifies.
+
+5. **Idle on a busy resource → arm a Monitor (don't end the turn idle).** When nothing is in flight, run `report --id <GRAPH_ID>`; if every task is PASS/FAILED, **stop**. Otherwise the only thing blocking progress is a deferred subnode whose exclusive resource is held — by this run or, with no completion event coming, **another Claude Code session/process**. Arm a **persistent Monitor** whose command waits for any blocked resource to free:
+
+   ```bash
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" wait-free --resource <comma-joined blocked classes>
+   ```
+
+   It heartbeats while held and prints `RELEASED <resource>` then exits as soon as one frees (`FREE` or a dead/`STALE` holder). On that completion, re-attempt `hold` for the deferred subnodes, dispatch the acquirers, and resume the loop (step 2). In-session contention rarely reaches here — the holder's completion event re-dispatches the deferred subnode first; the Monitor exists for **external** holders, which emit no completion event of their own.
 
 ### Step 5: Complete
 
@@ -103,13 +122,13 @@ Repeat until `ready` prints nothing:
 
 Audit exhaustion is **not** a stop condition — it is logged as a `failed` task and surfaced in the report. **Ask for clarification rather than guessing.**
 
-## Remember
+## Execution Principles
 
 **MUST:**
 
 - Each task is implement-and-audit; never skip the auditor.
-- Spawn all ready subnodes at once; one message when several are ready.
-- You **MUST** drive the engine with `ready` / `complete` / `fail`;
+- Dispatch every subagent in the **background** (`run_in_background: true`) and react to each completion; don't block on a batch.
+- You **MUST** drive the engine with `ready` / `complete` / `resolve` / `fail`, and gate exclusive executors with `resource-of` → `hold` → `release`; when idle on a busy resource, arm a `wait-free` Monitor and resume on `RELEASED`.
 - Re-spawn a failed implementer with the auditor's findings; stop only on genuine blockers.
 - Finish with the integration check and the audit-table report.
 

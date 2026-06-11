@@ -18,12 +18,13 @@ Built-in Claude subagent with the standard tool set.
 
 ### subagent(explore)
 
-Built-in Claude subagent, read-only by construction (no Edit/Write).
+Built-in Claude subagent, read-only by construction (no Edit/Write), with Read/Grep/Glob/Bash.
 
 **When to Use:**
 
-1. **Implementation stage:** not usable.
-2. **Auditing stage:** not usable.
+1. **Implementation stage:** not usable (cannot edit files).
+2. **Auditing stage:**
+    1. A read-only blind auditor — well-suited to **Technical Execution** (read the changed files and run the task's verification commands via Bash) where no semantic/external judgment is needed.
 
 ### subagent(plan)
 
@@ -59,24 +60,36 @@ You **MUST NOT** select `amplify:kimi-driver` unless `kimi` installed (`$AMPLIFY
 2. **Auditing stage:**
     1. Auditing with image understanding.
 
-## MCP-use Drivers
+## MCP-use Agents
 
-### subagent(amplify:chrome-devtools-driver)
+### subagent(amplify:browser-use-chrome-devtools)
 
-You **MUST NOT** select `amplify:chrome-devtools-driver` unless the chrome-devtools MCP is available in this session (`$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE` == `true`).
+You **MUST NOT** select `amplify:browser-use-chrome-devtools` unless the chrome-devtools MCP is available in this session (`$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE` == `true`).
 
 **When to Use:** the work is driving or observing a running web application (Chromium) rather than editing files.
 
-### subagent(amplify:playwright-driver)
+**Resource:** **Exclusive** — the engine serializes it to one at a time per host (prefer a concurrency-safe driver when you need parallelism).
 
-You **MUST NOT** select `amplify:playwright-driver` unless the Playwright MCP is available in this session (`$AMPLIFY_PLAYWRIGHT_AVAILABLE` == `true`).
+### subagent(amplify:browser-use-playwright)
+
+You **MUST NOT** select `amplify:browser-use-playwright` unless the Playwright MCP is available in this session (`$AMPLIFY_PLAYWRIGHT_AVAILABLE` == `true`).
 
 **When to Use:** the work is driving or observing a running web application across Chromium, Firefox, or WebKit rather than editing files.
+
+**Resource:** **Concurrency-safe** — runs isolated, so several can run in parallel.
 
 ### subagent(amplify:computer-use)
 
 You **MUST NOT** select `amplify:computer-use` unless computer-use capability is available in this session (`$AMPLIFY_COMPUTER_USE_AVAILABLE` == `true`)
 
 **When to Use:** the work is driving an on-screen GUI application.
+
+**Resource:** **Exclusive** — the engine serializes it to one at a time per host (prefer a concurrency-safe driver when you need parallelism).
+
+## Runtime Roles
+
+### subagent(amplify:audit-resolver)
+
+A fixed runtime role, **not** author-selectable in a plan. `execute-plan` spawns it for each `<id>.resolve` subnode after the implementer completes; it inspects the diff and returns the auditor panel (see `${CLAUDE_PLUGIN_ROOT}/agents/audit-resolver.md`). It is blind, read-only, and takes no exclusive resource.
 
 </EXECUTOR_SELECTION_GUIDELINES>

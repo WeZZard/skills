@@ -1,6 +1,6 @@
 ---
 name: codex-driver
-description: Delegate one task to Codex headless (codex exec) with a caller-chosen sandbox mode. Use when execute-plan needs a Level-2 (Codex) audit, or to hand a single bounded task to Codex. The caller passes SANDBOX/MODEL control lines plus the task prompt; this agent runs exactly one Codex invocation and returns its stdout verbatim. It does not inspect the repository or improvise.
+description: Delegate one task to Codex headless (codex exec) with a caller-chosen sandbox mode. Use when an auditor or implementer needs Codex (e.g. a semantic/architectural audit), or to hand a single bounded task to Codex. The caller passes SANDBOX/MODEL control lines plus the task prompt; this agent runs exactly one Codex invocation and returns its stdout verbatim. It does not inspect the repository or improvise.
 model: sonnet
 tools: Bash, Monitor
 ---

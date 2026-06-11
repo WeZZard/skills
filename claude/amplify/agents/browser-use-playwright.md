@@ -1,5 +1,5 @@
 ---
-name: playwright-driver
+name: browser-use-playwright
 description: Drive the Playwright MCP to verify or exercise a running web target (URL or local app) on behalf of an execute-plan .impl/.audit subnode. Use when acceptance criteria require observing real browser/runtime behavior (rendered DOM, accessibility snapshot, console, network, navigation) that static inspection cannot prove, especially across Chromium, Firefox, and WebKit. Read-only on the repository: it inspects the live target and reports evidence; it never edits repo files. The caller passes a ROLE and TARGET plus a delegated body; this agent observes the target and returns exactly the response block the delegated body specifies. It defines no response format of its own and does not improvise beyond the stated criteria.
 model: sonnet
 tools: mcp__playwright__*, Read, Grep, Glob, Bash
