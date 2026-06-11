@@ -19,12 +19,21 @@ You **MUST** set **$SESSION_PLAN_FILE** to the Claude Code session plan file men
 
 You **MUST** set **$AMPLIFY_COMPUTER_USE_AVAILABLE** to `true` if the comptuer-use MCP is available.
 
+**Browser-Use:**
+
+You **MUST** set **$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE** to `true` if the chrome-devtools MCP is available.
+
+You **MUST** set **$AMPLIFY_PLAYWRIGHT_AVAILABLE** to `true` if the Playwright MCP is available.
+
 **External Agents:**
 
 You **MUST** set **$AMPLIFY_CODEX_AVAILABLE** to `true` if the Codex CLI is checked available.
 
+You **MUST** set **$AMPLIFY_KIMI_AVAILABLE** to `true` if the Kimi CLI is checked available.
+
 <EXAMPLE_COMMANDS>
 macOS/Unix/Linux: `command -v codex`
+macOS/Unix/Linux: `command -v kimi`
 </EXAMPLE_COMMANDS>
 
 ---
@@ -39,16 +48,18 @@ Assume the user has zero context for the codebase and questionable taste. Docume
 
 ---
 
-## Determine the Audit Level
+## Approve External Agents
 
-Each task's audit is tiered: **Level 1** is an Opus blind-subagent audit (the default); **Level 2** delegates the audit to an external agent.
+An external-agent executor runs a third-party CLI on your task.
+You **MUST** detect which are installed and get the user's approval before using them in task execution.
 
-Before finalizing the **Tasks** section:
-
-2. If **$AMPLIFY_CODEX_AVAILABLE** is `true`, you **MUST** ask the user with the **AskUserQuestion** tool whether it should use Level-2 (Codex) audit complicated tasks, and record the chosen audit level on each task.
-3. If **$AMPLIFY_CODEX_AVAILABLE** is `false`, every task **MUST** default to audit level 1.
-
-Set **$AMPLIFY_PLAN_AUDIT_LEVEL** to the relevant audit level.
+1. Detect and set flags:
+    - `$AMPLIFY_CODEX_AVAILABLE` = `true` iff `command -v codex` succeeds.
+    - `$AMPLIFY_KIMI_AVAILABLE` = `true` iff `command -v kimi` succeeds.
+2. You **MUST** ask the user a multiple-choice question with the **AskUserQuestion** tool for approval.
+3. You **MUST** record the set of approved external agents:
+    - `$AMPLIFY_USE_CODEX_APPROVED` = `true` iff using codex is approved.
+    - `$AMPLIFY_USE_KIMI_APPROVED` = `true` iff using kimi is approved.
 
 ---
 

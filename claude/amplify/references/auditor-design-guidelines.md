@@ -19,24 +19,32 @@ You **MUST** use these guidelines when execute-plan spawns the `<id>.audit` subn
 1. You **MUST NOT** include the implementer's chain of thought in the auditor's prompt.
 2. You **MUST NOT** include the implementer's self-justification in the auditor's prompt.
 
-## Audit Levels
+## Executor Selection
 
-You **MUST** select the auditor based on the task's `audit_level` field. The level is decided at plan-design time and recorded as the task's `audit_level`.
+You **MUST** choose `audit.executor` per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md`. When the executor is a built-in subagent, grant its tools to fit the task:
 
-- **Level 1:** An Opus blind subagent. This is the default auditor. The auditor model **MUST** default to Opus.
-- **Level 2:** Delegate the audit to an external agent (Codex). You **MUST** detect Codex availability at runtime (for example, `command -v codex`). If Codex is absent, the audit **MUST** gracefully degrade to a Level 1 Opus blind subagent, and you **MUST** note that degradation in the findings and report.
+### Built-tin Agents Model-Tier Selection
 
-You **MUST** reserve Level 2 for high-risk tasks (security, financial, or near a human gate).
+You **MUST** choose the model tier from the task's actual complexity. You **MUST NOT** default to a single tier for every task.
+
+- **Haiku:** Use for trivial mechanical edits—a single tiny edit, a rename, a one-line config change.
+- **Sonnet:** Use for normal implementation—multi-file or multi-step changes with ordinary logic.
+- **Opus:** Use for reasoning-heavy tasks of bounded scope—intricate logic, cross-cutting design, or subtle correctness concerns.
+- **Fable:** Use for the most demanding tasks of large or long-horizon scope—multi-step agentic work, deep cross-system reasoning, or high-stakes correctness; the most capable tier, and the most costly.
 
 ## Tools
 
+The Agent tool can set only `model` at spawn, not `tools`/`mcpServers`. Therefore:
+
 **MUST:**
 
-1. You **MUST** grant the auditor read and verify tools: Read, Grep/Glob, and Bash only to run the task's verification commands.
+1. For a built-in executor (no custom agent file), you **MUST** spawn it read-only: Read, Grep, Glob, Bash (Bash for the task's verification commands only).
+2. For a driver executor (`subagent(amplify:<name>)`), you **MUST** rely on that driver file's frontmatter for tools/MCP and pass only `model` plus the prompt.
 
 **MUST NOT:**
 
-1. You **MUST NOT** grant the auditor tools that modify files. The auditor verifies, it does not fix.
+1. You **MUST NOT** grant any auditor tools that modify files. The auditor verifies, it does not fix.
+2. You **MUST NOT** attempt to set tools or mcpServers at spawn — they are ignored.
 
 ## Spawning Prompt Template
 
@@ -92,25 +100,6 @@ FINDINGS: <if FAIL: concrete defects + specific fix directives for the next impl
 
 </AUDITOR_SPAWNINING_PROMPT_TEMPLATE>
 
-### Level 1 — native blind Opus subagent (default)
-
-Spawn with the Agent tool:
-
-- `model:` `opus`
-- `tools:` `Read, Grep, Glob, Bash` (Bash for the verification commands only; no file-modifying tools)
-- prompt: the shared blind-audit prompt body above.
-
-### Level 2 — Codex via `amplify:codex-driver`
-
-1. Run `command -v codex`. If it fails, **degrade to Level 1** and note the degradation in `FINDINGS`.
-2. Otherwise spawn the `amplify:codex-driver` agent (Agent tool, `subagent_type: "amplify:codex-driver"`) with the prompt below. The `SANDBOX: read-only` directive runs Codex headless with no timeout and lets it read and inspect but **not** modify files:
-
-   ```text
-   SANDBOX: read-only
-   ---
-   <the shared blind-audit prompt body for task <id>>
-   ```
-
-The driver returns Codex's stdout verbatim; it **MUST** contain the `VERDICT:` block above, which the orchestrator keys on.
+This blind-audit prompt body is the auditor's prompt. `execute-plan` spawns the chosen `audit.executor` with it under the single spawn strategy in its scheduling loop; this file does not restate how to spawn.
 
 </AUDITOR_DESIGN_GUIDELINES>

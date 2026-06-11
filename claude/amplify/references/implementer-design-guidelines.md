@@ -5,21 +5,32 @@
 When execute-plan reaches a ready `<id>.impl` subnode, it spawns an IMPLEMENTER subagent.
 You **MUST** design that subagent—model, tools, and prompt—adaptively from the task's actual content, and you **MUST** require the implementer to return the response contract below.
 
-## Model-Tier Selection
+## Executor Selection
+
+You **MUST** choose `impl.executor` per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md`. When the executor is a built-in subagent, grant its tools to fit the task:
+
+### Built-tin Agents Model-Tier Selection
 
 You **MUST** choose the model tier from the task's actual complexity. You **MUST NOT** default to a single tier for every task.
 
 - **Haiku:** Use for trivial mechanical edits—a single tiny edit, a rename, a one-line config change.
 - **Sonnet:** Use for normal implementation—multi-file or multi-step changes with ordinary logic.
-- **Opus:** Use for reasoning-heavy tasks—intricate logic, cross-cutting design, or subtle correctness concerns.
+- **Opus:** Use for reasoning-heavy tasks of bounded scope—intricate logic, cross-cutting design, or subtle correctness concerns.
+- **Fable:** Use for the most demanding tasks of large or long-horizon scope—multi-step agentic work, deep cross-system reasoning, or high-stakes correctness; the most capable tier, and the most costly.
 
-## Tool Granting
+## Tools
 
-- You **MUST** grant only the tools the task needs.
-- You **MUST** grant Edit/Write only when the task changes files.
-- You **MUST** grant Bash only when the task must run commands.
-- You **MUST** grant web tools only when the task requires research.
-- You **MUST NOT** over-grant tools beyond what the task requires.
+The Agent tool can set only `model` at spawn, not `tools`/`mcpServers`. Therefore:
+
+**MUST:**
+
+1. For a built-in executor (no custom agent file), you **MUST** spawn it read-only: Read, Grep, Glob, Bash (Bash for the task's verification commands only).
+2. For a driver executor (`subagent(amplify:<name>)`), you **MUST** rely on that driver file's frontmatter for tools/MCP and pass only `model` plus the prompt.
+
+**MUST NOT:**
+
+1. You **MUST NOT** grant any auditor tools that modify files. The auditor verifies, it does not fix.
+2. You **MUST NOT** attempt to set tools or mcpServers at spawn — they are ignored.
 
 ## Context Injection
 
@@ -40,14 +51,7 @@ When an implementer is re-spawned because the auditor returned a failure, its pr
 
 ## Spawning Prompt Template
 
-You **MUST** spawn the implementer with the Agent tool using the configuration and prompt below. Replace every `<...>` placeholder. Omit the `PRIOR AUDIT FINDINGS` block on the first attempt; include it (verbatim from the auditor) on a re-spawn.
-
-**Config:**
-
-- `model:` `<haiku | sonnet | opus>` — per **Model-Tier Selection**.
-- `tools:` `<only those the task needs>` — per **Tool Granting**.
-
-**Prompt:**
+This is the implementer's prompt; `execute-plan` spawns the chosen `impl.executor` with it under the single spawn strategy in its scheduling loop (the model follows **Model-Tier Selection**). Replace every `<...>` placeholder. Omit the `PRIOR AUDIT FINDINGS` block on the first attempt; include it (verbatim from the auditor) on a re-spawn.
 
 <IMPLEMENTER_SPAWNINING_PROMPT_TEMPLATE>
 

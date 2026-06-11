@@ -12,26 +12,21 @@
     - Represent a logical step in the plan.
     - Has identifiable inputs and outputs
     - Is neither too granular nor too broad
-
-## Dependencies Design
-
-**MUST:**
-
-1. You **MUST** identify which task requires human verification.
-2. You **MUST** prioritize human verification tasks to the execution start or the execution end.
-3. You **MUST** identify assumptions in the plan and develop the task dependencies based on the dependencies of the assumptions.
-4. You **MUST** order tasks to match the **testing strategy**.
+3. You **MUST** identify which tasks require human verification.
+4. You **MUST** attach a human gate only to a task that is a **source** (no dependencies — its gate is raised at the start of execution) or a **sink** (no other task depends on it — its gate is raised at the end). A start gate verifies a precondition; an end gate verifies a final result.
+5. You **MUST** identify assumptions in the plan and develop the task dependencies based on the dependencies of the assumptions.
+6. You **MUST** order tasks to match the **testing strategy**.
 
 <TESTING_STRATEGY_EXAMPLES>
 
 1. Reproducer before fix for bugs
 2. Integration/E2E after their prerequisites unless the plan documents a different dependency
-3. Always put the human verification tasks at the end of the execution.
 
 </TESTING_STRATEGY_EXAMPLES>
 
 **MUST NOT:**
 
+- You **MUST NOT** attach a human gate to an **interior** task (one with both dependencies and dependents).
 - You **MUST NOT** create tasks that are just "validate" or "check" - those are part of execution
 
 ## Communication
@@ -119,36 +114,39 @@ You **MUST** present the task list with the following format:
 <TASK_LIST_EXAMPLE>
 
 ```markdown
-**1. <Task 1 Name>, ID: <task_id_1>:**
+**1. ID: <task_id_1>, Name: <Task 1 Name>:**
 
-Acceptance Criteria:
+**Acceptance Criteria:**
+
 1. <criteria_1>
 2. <criteria_2>
 ...
 
-Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+Executor (impl/audit): <impl_executor>/<audit_executor>, max attempts: <max_attempts>, human gate: <Yes|No>
 
-**2. <Task 2 Name>, ID: <task_id_2>:**
+**2. ID: <task_id_2>, Name: <Task 2 Name>:**
     
-Dependencies: <task_id_1>
+**Dependencies:** <task_id_1>
 
-Acceptance Criteria:
+**Acceptance Criteria:**
+
 1. <criteria_1>
 2. <criteria_2>
 ...
 
-Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+Executor (impl/audit): <impl_executor>/<audit_executor>, max attempts: <max_attempts>, human gate: <Yes|No>
 
-**3. <Task 3 Name>, ID: <task_id_2>:**
+**3. ID: <task_id_2>, Name: <Task 3 Name>:**
 
-Dependencies: <task_id_1>, <task_id_2>
+**Dependencies:** <task_id_1>, <task_id_2>
 
-Acceptance Criteria:
+**Acceptance Criteria:**
+
 1. <criteria_1>
 2. <criteria_2>
 ...
 
-Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
+Executor (impl/audit): <impl_executor>/<audit_executor>, max attempts: <max_attempts>, human gate: <Yes|No>
 ```
 
 </TASK_LIST_EXAMPLE>
@@ -159,17 +157,17 @@ Audit Level: <audit_level>, max attempts: <max_attempts>, human gate: <Yes|No>
 - **ID** — a unique identifier matching `^[A-Za-z0-9_-]+$` (no dots; the engine reserves `.` for subnode names).
 - **Dependencies** — the ids of the tasks this task depends on. A task's implementer starts only after every dependency's audit has passed.
 - **Acceptance Criteria** — independently checkable statements that define done. The auditor verifies each against evidence.
-- **Audit Level** — Use **$AMPLIFY_PLAN_AUDIT_LEVEL**. `1` for an Opus blind-subagent audit (the default), or `2` for an external-agent (Codex) audit that degrades to Level 1 when Codex is absent.
+- **Executor (impl/audit)** — Choose `impl.executor` and `audit.executor` per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md`, writing each as `subagent(<name>)`. That document is the source of truth for which subagent to use and its availability and degradation behavior; do not restate those rules here.
 - **Max Attempts** — the number of implement→audit attempts before the task is logged `failed` (non-halting).
 - **Human Gate** (optional) — set when the task requires human verification per **Appendix C: Identify Human Checkpoints** in `write-plan/SKILL.md`.
 
 **MUST:**
 
-1. You **MUST** use human-readable label (Name, ID, Dependencies, Acceptance Criteria, Audit Level, Max Attempts, Human Gate) in the task list.
+1. You **MUST** use human-readable label (Name, ID, Dependencies, Acceptance Criteria, Executor (impl/audit), Max Attempts, Human Gate) in the task list.
 
 **MUST NOT:**
 
 1. You **MUST NOT** split a task's implementer and auditor into two separate tasks in the plan.
-2. You **MUST NOT** use machine-readable label (name, id, deps, acceptance_criteria, audit_level, max_attempts, human_gate) in the task list.
+2. You **MUST NOT** use machine-readable label (name, id, deps, acceptance_criteria, impl, audit, max_attempts, human_gate) in the task list.
 
 </PLAN_TASK_GUIDELINES>
