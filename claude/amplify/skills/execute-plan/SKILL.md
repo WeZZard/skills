@@ -77,7 +77,7 @@ Dispatch every subagent in the **background** and react to each completion. Keep
 
       It prints `HELD` (acquired — it then keeps holding the kernel `flock`) or `BUSY owner=<owner>` (held by this run **or another Claude Code session**). On `BUSY`, **defer** `S` and record its blocked resource `R` (an in-session holder's completion will re-dispatch it; an external holder is handled by the **idle-Monitor step below**). On `HELD`, proceed and remember `(R, "<GRAPH_ID>:<S>")` to release when `S` finishes. If `resource-of` prints nothing, `E` is non-exclusive — skip this gate.
    2. **Build the prompt by role:** implementer → `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md`; audit-resolver → spawn `subagent(amplify:audit-resolver)` with **only** this task's spec, acceptance criteria, verification cases, and the diff (nothing from the implementer's reasoning) — it returns a `PANEL:` JSON list of `{focus, executor, audit_prompt}`; auditor → spawn the panel entry's `executor` with its `audit_prompt` **verbatim** (the complete blind-audit body; read no auditor guideline).
-   3. **Spawn it in the background** with the Agent tool (`subagent_type: <name>`, `run_in_background: true`), passing `model` plus the prompt. Dispatch all ready, non-deferred subnodes.
+   3. **Spawn it in the background** with the Agent tool (`subagent_type: <name>`, `run_in_background: true`), passing `model` plus the prompt. You **MUST** spawn in the background. You **MUST NOT** spawn in the foreground. Dispatch all ready, non-deferred subnodes.
 
 3. **On each background completion, apply it and dispatch what it unblocks:**
 
