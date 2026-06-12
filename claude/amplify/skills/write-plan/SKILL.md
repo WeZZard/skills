@@ -52,15 +52,20 @@ Assume the user has zero context for the codebase and questionable taste. Docume
 
 An external-agent executor runs a third-party CLI on your task.
 
-You **MUST** only request approval for external agents when any of the following situation happens:
+**MUST:**
+
+You **MUST** request approval for external agents when any of the following situation happens:
 1. `$AMPLIFY_CODEX_AVAILABLE` is `false` but `$AMPLIFY_USE_CODEX_APPROVED` is `true`.
 2. `$AMPLIFY_KIMI_AVAILABLE` is `false` but `$AMPLIFY_USE_KIMI_APPROVED` is `true`.
 3. `$AMPLIFY_CODEX_AVAILABLE` or `$AMPLIFY_KIMI_AVAILABLE` is not set.
 
-You **MUST NOT** request approval for external agents when all of the following situations happen:
-1. `$AMPLIFY_CODEX_AVAILABLE` or `$AMPLIFY_KIMI_AVAILABLE` is set.
-2. `$AMPLIFY_CODEX_AVAILABLE` and `$AMPLIFY_USE_CODEX_APPROVED` are set to the same value.
-3. `$AMPLIFY_KIMI_AVAILABLE` and `$AMPLIFY_USE_KIMI_APPROVED` are set to the same value.
+**MUST NOT:**
+
+1. You **MUST NOT** request approval for external agents when all of the following situations happen:
+    1. `$AMPLIFY_CODEX_AVAILABLE` or `$AMPLIFY_KIMI_AVAILABLE` is set.
+    2. `$AMPLIFY_CODEX_AVAILABLE` and `$AMPLIFY_USE_CODEX_APPROVED` are set to the same value.
+    3. `$AMPLIFY_KIMI_AVAILABLE` and `$AMPLIFY_USE_KIMI_APPROVED` are set to the same value.
+2. You **MUST NOT** skip requesting approval for reasons other than the previous one.
 
 **Process:**
 

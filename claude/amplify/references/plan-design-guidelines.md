@@ -11,12 +11,24 @@
 3. You **MUST** pick the components in **Supplementary Contents** to complete the design description in the relevant aspects according to **The Pyramid Principle**.
 4. You **MUST** pick only necessary components to describe the plan design.
 5. You **MUST** treat each component as one mutually exclusive design concern and pick a set of components that is collectively exhaustive over the design concerns this plan touches, so the selection is **MECE** (Mutually Exclusive, Collectively Exhaustive).
+6. You **MUST** invent components to describe contents in the plan but cannot described by the existing components in this guidelines. The component lists in this guideline is an open list.
+7. You **MUST** align the communication style of any invented components with that of the existing components in these guidelines.
 
 **MUST NOT:**
 
 1. You **MUST NOT** create dedicated sections in the session plan file like **Primary Contents** and **Supplementary Contents**.
 2. You **MUST NOT** pick more components when the picked components can clearly describe the plan design.
 3. You **MUST NOT** describe the same design concern under more than one component.
+
+## Component Invention Guidelines
+
+<COMPONENT_INVENTION_GUIDELINES>
+
+1. You **MUST** use before/after comparisons to help the user to understand a change whenever possible.
+2. You **MUST** find the most commonly used expression style in the industry to express an idea whenever possible.
+3. You **MUST** visualize the contents when visual contents can help accelerating human understanding.
+
+</COMPONENT_INVENTION_GUIDELINES>
 
 ## Primary Contents
 
