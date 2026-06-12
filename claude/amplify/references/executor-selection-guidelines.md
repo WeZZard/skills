@@ -92,6 +92,6 @@ You **MUST NOT** select `amplify:computer-use` unless computer-use capability is
 
 A fixed runtime role, **not** author-selectable in a plan. `execute-plan` spawns it for each `<id>.resolve` subnode after the implementer completes; it inspects the diff and returns the auditor panel (see `${CLAUDE_PLUGIN_ROOT}/agents/audit-resolver.md`). It is blind, read-only, and takes no exclusive resource.
 
-When the **audit-resolver** selects a gated executor (any driver or external agent), it reads availability from the **AVAILABLE EXECUTORS** list injected into its prompt — **not** from the `$AMPLIFY_*` session flags, which it cannot see. The flag-based guards above govern the planning and implementer contexts.
+When the **audit-resolver** selects a gated executor (any driver or external agent), it learns availability by running `capabilities --id <GRAPH_ID>` itself (using the injected GRAPH_ID) — **not** from the `$AMPLIFY_*` session flags, which it cannot see. The flag-based guards above govern the planning and implementer contexts.
 
 </EXECUTOR_SELECTION_GUIDELINES>
