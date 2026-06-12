@@ -97,6 +97,7 @@ Japanese: 日本語の作文技術 by 本多勝一, 文章読本 by 谷崎潤一
 **MUST NOT:**
 
 You **MUST NOT** miss points in the **$SESSION_PLAN_FILE** to be written.
+You **MUST NOT** include HTML comment blocks (<!-- HTML comments -->) inside the plan file unless it is an intent HTML comment.
 
 ---
 

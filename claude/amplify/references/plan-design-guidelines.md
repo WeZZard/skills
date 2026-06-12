@@ -267,9 +267,9 @@ You **MUST** present how to verify the plan in the following format.
 
 **Test cases:**
 
-1.1. [<test_case_category>] <test case specification written in GWT, AAA or natural language>
+1. [<test_case_category>] <test case specification written in GWT, AAA or natural language>
 
-1.2. [<test_case_category>] <test case specification written in GWT, AAA or natural language>
+2. [<test_case_category>] <test case specification written in GWT, AAA or natural language>
 
 ### 2. [Name of The Entity 2 to Verify]
 
@@ -277,9 +277,9 @@ You **MUST** present how to verify the plan in the following format.
 
 **Test cases:**
 
-2.1. [<test_case_category>] <test case specification written in GWT, AAA or natural language>
+1. [<test_case_category>] <test case specification written in GWT, AAA or natural language>
 
-2.2. [<test_case_category>] <test case specification written in GWT, AAA or natural language>
+2. [<test_case_category>] <test case specification written in GWT, AAA or natural language>
 
 ### Coverage Map
 
@@ -292,7 +292,7 @@ You **MUST** present how to verify the plan in the following format.
 1. You **MUST** map entities to verify to scopes: **Unit**, **Integration**, **System**, **End-to-end(E2E)**, or **Regression** (bug reproducer).
 2. You **MUST** design the verifications for each entity as a specification, including:
     - **Specifies** (one line: what behavior or requirement this verification locks in);
-    - Short **Given / When / Then** (GWT) or **Arrange / Act / Assert** (AAA) where useful (especially integration/end-to-end(E2E));
+    - Short **Given** / **When** / **Then** (GWT) or **Arrange** / **Act** / **Assert** (AAA) where useful (especially integration/end-to-end(E2E));
 3. You **MUST** design a set of **Reproducers** (expected failure before fix, pass after) for bug-fix plans.
 4. You **MUST** always list **Happy Paths** cases.
 5. You **MUST** list **Edge / negative** cases when not obvious from names.
