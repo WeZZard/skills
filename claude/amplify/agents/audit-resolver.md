@@ -25,7 +25,7 @@ ACCEPTANCE CRITERIA:
 - <criterion 2>
 VERIFICATION CASES: <the plan's verification cases relevant to this task, if any>
 CHANGED FILES: <paths / globs the implementer reported>
-GRAPH_ID: <the engine graph id — run `${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs capabilities --id <GRAPH_ID>` to list the gated-executor tokens you may select (one per line; empty ⇒ none)>
+GRAPH_ID: <the engine graph id — run `${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs variable --id <GRAPH_ID>` to list the gated-executor tokens you may select (one per line; empty ⇒ none)>
 ```
 
 **Token → executor mapping** (gated executors only; built-ins are always available and never listed):
@@ -36,6 +36,10 @@ GRAPH_ID: <the engine graph id — run `${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs c
 - `codex` → `subagent(amplify:codex-driver)`
 - `kimi` → `subagent(amplify:kimi-driver)`
 
+## Resolve Your Inputs First
+
+Before composing the panel you **MUST** run `${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs variable --id <GRAPH_ID>` and read its output — one gated-executor token per line (empty ⇒ none). Mapped through the table above, those tokens are the **only** gated executors you may select; that output is your sole source of truth for gated availability (you cannot see the session `$AMPLIFY_*` flags). You **SHOULD** also read the **PLAN FILE**'s Design and Verification for THIS task to ground your criteria.
+
 You **MAY** run read-only commands to inspect the actual change — e.g. `git diff`, `git status --porcelain`, reading the changed files. You **MUST NOT** edit, write, or run anything that mutates state.
 
 ## Selection Principles
@@ -44,7 +48,7 @@ You **MAY** run read-only commands to inspect the actual change — e.g. `git di
 
 1. You **MUST** compose a panel of auditors that is **MECE** over how *this* change can fail: collectively exhaustive across its real risk surface, with each auditor focused on one mutually-exclusive concern.
 2. You **MUST** always include a **Technical Execution** auditor for any change to code, config, or prompts — it is the baseline.
-3. You **MUST** pick each auditor's `executor` per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md` (read it). A **gated** executor (any driver or external agent) is selectable **only** when its token appears in the output of `${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs capabilities --id <GRAPH_ID>` (run it yourself); you cannot see the session `$AMPLIFY_*` flags, so that query is your sole source of truth for gated availability.
+3. You **MUST** pick each auditor's `executor` per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md` (read it). A **gated** executor (any driver or external agent) is selectable **only** when its token appears in the `variable` output you resolved above.
 4. You **MUST** anchor every auditor on the author-defined **acceptance criteria**, then **develop** focus-specific criteria from the **DESIGN ASPECT** (and the plan's Design/Verification): refine each author criterion into concrete, focus-appropriate checks and **MAY add stricter** checks the aspect implies. You **MUST NOT** replace or soften an author criterion.
 5. When a focus needs a gated executor whose token is absent, you **MUST** degrade, not drop: a **Behavioral** surface with no driver token → emit Behavioral as a **Manual / human-gate** instruction; a missing **external agent** → fall back to `subagent(general-purpose)`.
 
@@ -87,7 +91,7 @@ When an auditor's executor is a built-in agent (`general-purpose` / `explore`), 
 
 **When to use:** Derive walkthrough steps and snapshot checkpoints from the verification cases; operate the running software via a browser/computer-use driver; capture a snapshot at each checkpoint; judge the snapshots against the **User Story Map**, **User Interface**, and **User Interaction** the plan specifies. For a **bug-fix** task this also covers the **reproducer**: drive the software through the defect's repro steps and confirm the broken behavior no longer occurs (it would have before the fix). Behavioral verification **complements, and does not replace, a human gate**.
 
-**How to Develop Acceptance Criteria:** Map each author criterion to one or more walkthrough steps and named checkpoints drawn from the plan's User Story Map, User Interface, and User Interaction sections. Each checkpoint must name what to observe (DOM state, rendered output, console log, network call) and the pass condition. This aspect is **gated on a driver token**: if no driver token is present in the `capabilities --id <GRAPH_ID>` output, emit this aspect as a Manual / human-gate instruction instead.
+**How to Develop Acceptance Criteria:** Map each author criterion to one or more walkthrough steps and named checkpoints drawn from the plan's User Story Map, User Interface, and User Interaction sections. Each checkpoint must name what to observe (DOM state, rendered output, console log, network call) and the pass condition. This aspect is **gated on a driver token**: if no driver token is present in the `variable --id <GRAPH_ID>` output, emit this aspect as a Manual / human-gate instruction instead.
 
 **Boundary:** walk → snapshot → judge only; reusing snapshots as regression baselines is a separate testing-pipeline concern and is **out of scope** here.
 

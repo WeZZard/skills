@@ -415,33 +415,33 @@ test("unknown verb exits non-zero", () => {
   assert.notEqual(r.status, 0);
 });
 
-test("capabilities: graph WITH capabilities persists them and verb prints one token per line", () => {
+test("variable: graph WITH variable persists them and verb prints one token per line", () => {
   const { dir, stateDir } = ws();
-  const graph = { version: 1, nodes: [task("A")], capabilities: ["chrome-devtools", "codex"] };
+  const graph = { version: 1, nodes: [task("A")], variable: ["chrome-devtools", "codex"] };
   const r = init(stateDir, dir, graph);
   assert.equal(r.status, 0, r.stderr);
   const id = r.stdout.trim();
-  const caps = run(stateDir, ["capabilities", "--id", id]);
+  const caps = run(stateDir, ["variable", "--id", id]);
   assert.equal(caps.status, 0, caps.stderr);
   assert.deepEqual(lines(caps.stdout), ["chrome-devtools", "codex"]);
 });
 
-test("capabilities: graph WITHOUT capabilities field prints nothing and exits 0", () => {
+test("variable: graph WITHOUT variable field prints nothing and exits 0", () => {
   const { dir, stateDir } = ws();
   const graph = { version: 1, nodes: [task("A")] };
   const r = init(stateDir, dir, graph);
   assert.equal(r.status, 0, r.stderr);
   const id = r.stdout.trim();
-  const caps = run(stateDir, ["capabilities", "--id", id]);
+  const caps = run(stateDir, ["variable", "--id", id]);
   assert.equal(caps.status, 0, caps.stderr);
   assert.equal(caps.stdout, "");
 });
 
-test("capabilities: init rejects an unknown capability token", () => {
+test("variable: init rejects an unknown variable token", () => {
   const { dir, stateDir } = ws();
-  const graph = { version: 1, nodes: [task("A")], capabilities: ["webgl"] };
+  const graph = { version: 1, nodes: [task("A")], variable: ["webgl"] };
   const r = init(stateDir, dir, graph);
-  assert.notEqual(r.status, 0, "expected non-zero exit for unknown capability token");
+  assert.notEqual(r.status, 0, "expected non-zero exit for unknown variable token");
   assert.match(r.stderr, /task: /);
   assert.match(r.stderr, /webgl/);
 });
