@@ -28,6 +28,7 @@
 //   holds    --resource <name>                           -> HELD <owner> | STALE | FREE
 //   wait-free --resource <name[,name…]> [--interval <s>] -> block until any frees (prints RELEASED)
 //   resource-of --executor <subagent(...)>               -> prints the exclusive resource class, if any
+//   capabilities --id <GRAPH_ID>                        -> prints each stored capability token (one per line)
 //   report   --id <GRAPH_ID>                            -> final task table
 //   status   --id <GRAPH_ID>                            -> full subnode state table
 //
@@ -140,6 +141,7 @@ function computeGraphId(graph, salt) {
 const ID_RE = /^[A-Za-z0-9_-]+$/;
 const EXECUTOR_RE = /^subagent\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:audit-resolver)\)$/;
 const ALLOWED_TASK_KEYS = new Set(["id", "name", "deps", "acceptance_criteria", "impl", "max_attempts", "human_gate"]);
+const ALLOWED_CAPABILITY_TOKENS = new Set(["chrome-devtools", "playwright", "computer-use", "codex", "kimi"]);
 
 function validateGraph(graph) {
   const errors = [];
@@ -150,6 +152,17 @@ function validateGraph(graph) {
   if (!Array.isArray(graph.nodes) || graph.nodes.length < 1) {
     errors.push('"nodes" must be a non-empty array');
     return errors;
+  }
+  if ("capabilities" in graph) {
+    if (!Array.isArray(graph.capabilities)) {
+      errors.push('"capabilities" must be an array');
+    } else {
+      for (const [i, token] of graph.capabilities.entries()) {
+        if (!ALLOWED_CAPABILITY_TOKENS.has(token)) {
+          errors.push(`capabilities[${i}] "${token}" is not a valid capability token; allowed: ${[...ALLOWED_CAPABILITY_TOKENS].join(", ")}`);
+        }
+      }
+    }
   }
   const ids = new Set();
   for (const [i, node] of graph.nodes.entries()) {
@@ -364,7 +377,7 @@ function cmdInit(opts) {
     return;
   }
   const { tasks, subnodes } = explode(graph);
-  const state = { graphId, salt: salt || null, tasks, subnodes };
+  const state = { graphId, salt: salt || null, capabilities: graph.capabilities || [], tasks, subnodes };
   saveState(state);
   const taskCount = Object.keys(tasks).length;
   const subCount = Object.keys(subnodes).length;
@@ -547,6 +560,14 @@ function cmdResourceOf(opts) {
   if (r) process.stdout.write(`${r}\n`);
 }
 
+function cmdCapabilities(opts) {
+  if (!opts.id || opts.id === true) die("capabilities requires --id <GRAPH_ID>");
+  const state = loadState(opts.id);
+  for (const token of (state.capabilities || [])) {
+    process.stdout.write(`${token}\n`);
+  }
+}
+
 // Block until any of the given resources frees, polling `holds` on an escalating
 // cadence (no deadline) and emitting heartbeats meanwhile — the Monitor command
 // execute-plan arms when it would otherwise idle on a busy (possibly external) lock.
@@ -637,10 +658,11 @@ function main() {
     case "holds": return cmdHolds(opts);
     case "wait-free": return cmdWaitFree(opts);
     case "resource-of": return cmdResourceOf(opts);
+    case "capabilities": return cmdCapabilities(opts);
     case "report": return cmdReport(opts);
     case "status": return cmdStatus(opts);
     default:
-      die(`unknown verb "${verb || ""}". Use: init | ready | complete | resolve | fail | hold | release | holds | wait-free | resource-of | report | status`);
+      die(`unknown verb "${verb || ""}". Use: init | ready | complete | resolve | fail | hold | release | holds | wait-free | resource-of | capabilities | report | status`);
   }
 }
 

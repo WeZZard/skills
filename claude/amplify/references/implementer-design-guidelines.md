@@ -40,6 +40,7 @@ The implementer prompt **MUST** include:
 - The artifacts and outputs of the upstream (dependency) tasks this task builds on.
 - The relevant existing code and patterns to reuse.
 - Clear scope boundaries: what is in scope versus what is explicitly out of scope.
+- The session **plan file path** (`PLAN FILE:`) and the task's **design aspect** (`DESIGN ASPECT:`). The implementer **MAY** read the plan's Design and Verification sections to ground THIS task, but **MUST** keep to its declared scope (FILES IN SCOPE / OUT OF SCOPE) and **MUST NOT** implement against other tasks.
 
 ## Fix Attempts
 
@@ -74,6 +75,8 @@ You are the IMPLEMENTER for task <id> in an execute-plan run.
 Implement it, then self-check.
 
 GOAL: <task name / one-line goal>
+PLAN FILE: <absolute path to the session plan file — you MAY read its Design/Verification for THIS task, stay in scope>
+DESIGN ASPECT: <the task's (Aspect: …) design component>
 
 FILES IN SCOPE: <exact paths to create/modify/delete>
 OUT OF SCOPE: <what you must not touch>

@@ -16,6 +16,14 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/task" }
+    },
+    "capabilities": {
+      "description": "Optional executor-availability tokens required by this plan. Each token names a capability class whose agent type must be available and approved before execute-plan may dispatch subnodes that depend on it. Omitting this field (or leaving it empty) is valid for plans that use only general-purpose subnodes.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": ["chrome-devtools", "playwright", "computer-use", "codex", "kimi"]
+      }
     }
   },
   "$defs": {
