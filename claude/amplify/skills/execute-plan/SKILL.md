@@ -15,7 +15,7 @@ You **MUST** read the plan file and locate its task execution diagram: the order
 
 ### Step 2: Decide Inline vs Engine Execution
 
-**Execute inline** (in the main agent, no engine) **ONLY** when the plan is trivial: a single task, or a few small independent tasks with no parallel coordination and no external-agent executor. In that case implement the work, self-audit against each acceptance criterion, then go to **Step 6**.
+**Execute inline** (in the main agent, no engine) **ONLY** when the plan is trivial: a single task, or a few small independent tasks with no parallel coordination and no external-agent executor. In that case implement the work, self-audit against each acceptance criterion, then go to **Step 6**. During inline implementation, if a tool call fails repeatedly, re-check the plan/task scope and fix the specific cause rather than guessing new parameters or paths.
 
 **Otherwise use the engine** (Steps 4–6). You **MUST** use the engine whenever the plan has dependencies, parallelism, external-agent executors, or non-trivial tasks.
 

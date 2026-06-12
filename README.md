@@ -31,7 +31,6 @@ If you host on GitHub later:
 /amplify:brainstorming
 /amplify:write-plan
 /amplify:execute-plan
-/amplify:recover-from-errors
 ```
 
 ## Available Plugins
@@ -45,7 +44,6 @@ Development workflow skills for planning and execution.
 | `brainstorming`       | Explore user intent, requirements and design before implementation |
 | `write-plan`          | Create and update plan files with structured templates             |
 | `execute-plan`        | Execute a plan file step by step                                   |
-| `recover-from-errors` | Recover from errors during execution                               |
 | `same-page`           | Explain previous message with adaptive layout, evidence, confidence, and ASCII art |
 
 ## Repo layout

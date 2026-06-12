@@ -141,43 +141,6 @@ name = "Handle Feedback"
 description = "Apply changes based on verification feedback and continue."
 details = "After receiving verification feedback, the skill applies any necessary changes and continues execution. This iterative process continues until all tasks are completed."
 
-[skills.recover-from-errors]
-display_name = "Recover From Errors"
-tagline = "Stay on track when tools fail by re-aligning with your plan instead of guessing."
-short_summary = "Prevents goal drift by checking the plan after repeated tool failures."
-full_summary = "This skill helps you recover from errors without losing sight of your original goal. When tool calls fail repeatedly, it guides you to verify alignment with your plan and fix specific issues rather than guessing. This keeps your work focused and prevents unnecessary context noise."
-
-[[skills.recover-from-errors.highlights]]
-title = "Prevents Goal Drift"
-description = "Stops you from drifting away from your original objective when tools fail. Instead of guessing new parameters or alternative tools, you re-align with your plan to maintain focus."
-
-[[skills.recover-from-errors.highlights]]
-title = "Plan Verification"
-description = "Immediately checks your session's plan file to understand the context of the current operation. This ensures you're working on the right tasks and not introducing unrelated actions."
-
-[[skills.recover-from-errors.highlights]]
-title = "Smart Recovery Logic"
-description = "Provides clear decision logic: if the failing action is part of the plan, fix the specific issue; if not, stop and return to the plan. This prevents wasted effort on irrelevant tasks."
-
-[[skills.recover-from-errors.highlights]]
-title = "Error Analysis Focus"
-description = "Encourages analyzing why specific failures occurred rather than making random changes. This leads to more targeted solutions and cleaner execution."
-
-[[skills.recover-from-errors.workflow]]
-name = "Check Plan"
-description = "Look up the session's plan file to understand the current operation context."
-details = "Immediately reference the plan document to verify what you should be working on. This establishes the proper context before attempting recovery."
-
-[[skills.recover-from-errors.workflow]]
-name = "Verify Alignment"
-description = "Determine if the failing tool call is actually required by the current plan step."
-details = "Ask yourself if the action you attempted is explicitly needed for the current task. This helps identify whether you've drifted from the plan."
-
-[[skills.recover-from-errors.workflow]]
-name = "Re-align to Plan"
-description = "Take appropriate action based on whether the failing tool is part of the plan."
-details = "If the tool is part of the plan, analyze and fix the specific issue. If not, stop calling the tool and return to the plan's specified tasks to prevent further drift."
-
 [skills.be-thorough]
 display_name = "Be Thorough"
 tagline = "Investigate, verify, and test before you conclude."

@@ -49,6 +49,19 @@ When an implementer is re-spawned because the auditor returned a failure, its pr
 - **MUST** focus on resolving exactly those defects.
 - **MUST NOT** regress prior passing criteria.
 
+## On Repeated Tool Errors
+
+**MUST:**
+
+1. When a tool call fails repeatedly (e.g., wrong arguments, missing files, permission issues), the implementer **MUST** re-read the task scope (FILES IN SCOPE / acceptance criteria) and confirm the failing call is actually required by the current step.
+2. If the failing call IS in scope, the implementer **MUST** analyze the specific cause of failure and fix exactly that cause.
+3. If the failing call IS NOT in scope, the implementer **MUST** stop making that call and return to the plan.
+
+**MUST NOT:**
+
+1. The implementer **MUST NOT** guess new parameters, alternate tool names, or alternative file paths when a tool call fails — doing so introduces noise and drifts away from the task.
+2. If the specific cause cannot be fixed and the call is required, the implementer **MUST** return `STATUS: BLOCKED` with a clear description of the blocker. Do **NOT** use `BLOCKED` to signal that the audit might fail.
+
 ## Spawning Prompt Template
 
 This is the implementer's prompt; `execute-plan` spawns the chosen `impl.executor` with it under the single spawn strategy in its scheduling loop (the model follows **Model-Tier Selection**). Replace every `<...>` placeholder. Omit the `PRIOR AUDIT FINDINGS` block on the first attempt; include it (verbatim from the auditor) on a re-spawn.

@@ -601,7 +601,7 @@ function cmdReport(opts) {
     };
   });
   process.stdout.write("## Audit Table\n\n");
-  process.stdout.write("| Task | Name | Verdict | Attempts | Last reason |\n");
+  process.stdout.write("| Task | Name | Verdict | Retries | Last reason |\n");
   process.stdout.write("|------|------|---------|----------|-------------|\n");
   for (const r of rows) {
     process.stdout.write(`| ${r.task} | ${r.name} | ${r.verdict} | ${r.attempts} | ${r.reason} |\n`);

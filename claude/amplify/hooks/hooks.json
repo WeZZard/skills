@@ -36,18 +36,6 @@
         ]
       }
     ],
-    "PostToolUseFailure": [
-      {
-        "matcher": ".*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-tool-error.sh",
-            "timeout": 5
-          }
-        ]
-      }
-    ],
     "UserPromptSubmit": [
       {
         "hooks": [
