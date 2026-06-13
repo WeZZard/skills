@@ -28,10 +28,21 @@ Transcribe the plan's task list into a JSON file — a **faithful 1:1 transcript
 ```json
 {
    "version": 1,
+   "plan_file": "<absolute path to the session plan file>",
+   "variables": {
+      "$AMPLIFY_COMPUTER_USE_AVAILABLE": true|false,
+      "$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE": true|false,
+      "$AMPLIFY_PLAYWRIGHT_AVAILABLE": true|false,
+      "$AMPLIFY_CODEX_AVAILABLE": true|false,
+      "$AMPLIFY_KIMI_AVAILABLE": true|false,
+      "$AMPLIFY_USE_CODEX_APPROVED": true|false|null,
+      "$AMPLIFY_USE_KIMI_APPROVED": true|false|null
+   },
    "nodes": [
       {
          "id": "...", "name": "...", "deps": ["..."],
          "acceptance_criteria": ["...", "..."],
+         "design_aspect": "<the task's (Aspect: …) design component>",
          "impl": { "executor": "subagent(<subagent-name>)" },
          "human_gate": true|false, "max_attempts": [max_attempts]
       }
@@ -39,9 +50,20 @@ Transcribe the plan's task list into a JSON file — a **faithful 1:1 transcript
 }
 ```
 
-`impl` is optional (omit it to default the implementer to `subagent(general-purpose)`); there is **no** `audit` field — auditors are resolved at runtime by the audit-resolver. It **MUST** validate against `${CLAUDE_PLUGIN_ROOT}/schemas/task-graph.schema.json`. Write it to a temporary file.
-
-Detect the selectable gated executors and add a top-level `variable` array to the JSON: include each live driver MCP (`chrome-devtools` / `playwright` / `computer-use`) — a driver is available iff its `mcp__<name>__*` tools are present in the session — and each external agent (`codex` / `kimi`) that is available **and** approved (the same state write-plan establishes via `$AMPLIFY_CODEX_AVAILABLE` / `$AMPLIFY_USE_CODEX_APPROVED` and the kimi equivalents). Tokens are the five strings from the interface contract; the field is optional and may be omitted when no gated executor is available.
+1. You **MUST** set `nodes[].impl.executor` only when the task needs a non-default implementer; otherwise omit `nodes[].impl` — a missing `impl` (or `impl.executor`) defaults the implementer to `subagent(general-purpose)`.
+2. You **MUST** set `nodes[].human_gate` to `false` is the task **IS NTO** a human gate or **HAVEN'T MENTIONED ITSELF** as a human gate.
+3. You **MUST** set each `nodes[].design_aspect` to the task's `(Aspect: …)` design component (e.g. Architecture, Data Structure, User Interaction).
+4. You **MUST** set `plan_file` to the absolute path of the session plan file.
+5. You **MUST** fill `variables` with the latest values of the following in-session variable as key-value pairs:
+   - `$AMPLIFY_COMPUTER_USE_AVAILABLE`
+   - `$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE`
+   - `$AMPLIFY_PLAYWRIGHT_AVAILABLE`
+   - `$AMPLIFY_CODEX_AVAILABLE`
+   - `$AMPLIFY_KIMI_AVAILABLE`
+   - `$AMPLIFY_USE_CODEX_APPROVED`
+   - `$AMPLIFY_USE_KIMI_APPROVED`
+6. You **MUST** write the JSON object to a temporary file.
+7. You **MUST** validate the generated JSON file against `${CLAUDE_PLUGIN_ROOT}/schemas/task-graph.schema.json`.
 
 #### 3.2 Initialize the engine
 
@@ -78,8 +100,34 @@ Dispatch every subagent in the **background** and react to each completion. Keep
       ```
 
       It prints `HELD` (acquired — it then keeps holding the kernel `flock`) or `BUSY owner=<owner>` (held by this run **or another Claude Code session**). On `BUSY`, **defer** `S` and record its blocked resource `R` (an in-session holder's completion will re-dispatch it; an external holder is handled by the **idle-Monitor step below**). On `HELD`, proceed and remember `(R, "<GRAPH_ID>:<S>")` to release when `S` finishes. If `resource-of` prints nothing, `E` is non-exclusive — skip this gate.
-   2. **Build the prompt by role:** implementer → `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md` (inject `PLAN FILE:` — the session plan path from Step 1 — and `DESIGN ASPECT:` — the task's `(Aspect: …)` component); audit-resolver → spawn `subagent(amplify:audit-resolver)` with this task's spec, acceptance criteria, verification cases, and the diff (nothing from the implementer's reasoning), plus `PLAN FILE:` (the session plan path), `DESIGN ASPECT:` (the task's `(Aspect: …)`), and `GRAPH_ID:` `<GRAPH_ID>` (the resolver queries `variable --id <GRAPH_ID>` itself for the gated executors it may select) — it returns a `PANEL:` JSON list of `{focus, executor, audit_prompt}`; auditor → spawn the panel entry's `executor` with its `audit_prompt` **verbatim** (the complete blind-audit body; read no auditor guideline).
-   3. **Spawn it in the background** with the Agent tool (`subagent_type: <name>`, `run_in_background: true`), passing `model` plus the prompt. You **MUST** spawn in the background. You **MUST NOT** spawn in the foreground. Dispatch all ready, non-deferred subnodes.
+   2. **Build the spawning prompt by role:**
+      - implemeter: You **MUST** build `implementer`'s spawning prompt by following the guidelines: `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md`
+      - audit-resolver: You **MUST** build `subagent(amplify:audit-resolver)`'s spawning prompt with the following template:
+         <AUDIT_RESOLVER_SPAWNING_PROMPT_TEMPLATE>
+         ```markdown
+         ## Input
+
+         GRAPH_ID: <GRAPH_ID>
+         TASK: <id>
+         CHANGED FILES: <paths / globs the implementer reported>
+         ```
+         </AUDIT_RESOLVER_SPAWNING_PROMPT_TEMPLATE>
+      - auditor: You **MUST** spawn all the <subagent_type> with its <audit_prompt> **verbatim** in the audit-resolver's response:
+         <AUDIT_RESOLVER_RESPONSE_EXAMPLE>
+
+         ```markdown
+         PANEL:
+         [
+            { "focus": "<short focus name>", "executor": "subagent(<subagent_type>)", "audit_prompt": "<audit_prompt>" },
+            ...
+         ]
+         ```
+
+         </AUDIT_RESOLVER_RESPONSE_EXAMPLE>
+   3. **Spawn it in the background** with the Agent tool (`subagent_type: <name>`, `run_in_background: true`), passing `model` plus the spawning prompt.
+      1. You **MUST** spawn in the background.
+      2. You **MUST** dispatch all ready, non-deferred subnodes.
+      3. You **MUST NOT** spawn in the foreground.
 
 3. **On each background completion, apply it and dispatch what it unblocks:**
 

@@ -28,7 +28,8 @@
 //   holds    --resource <name>                           -> HELD <owner> | STALE | FREE
 //   wait-free --resource <name[,name…]> [--interval <s>] -> block until any frees (prints RELEASED)
 //   resource-of --executor <subagent(...)>               -> prints the exclusive resource class, if any
-//   variable --id <GRAPH_ID>                        -> prints each stored variable token (one per line)
+//   variables --id <GRAPH_ID>                        -> prints each injected variable as "<name>\t<value>"
+//   resolve-context --id <GRAPH_ID> --node <task-id> -> dumps the audit-resolver's context for one task
 //   report   --id <GRAPH_ID>                            -> final task table
 //   status   --id <GRAPH_ID>                            -> full subnode state table
 //
@@ -140,8 +141,7 @@ function computeGraphId(graph, salt) {
 
 const ID_RE = /^[A-Za-z0-9_-]+$/;
 const EXECUTOR_RE = /^subagent\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:audit-resolver)\)$/;
-const ALLOWED_TASK_KEYS = new Set(["id", "name", "deps", "acceptance_criteria", "impl", "max_attempts", "human_gate"]);
-const ALLOWED_VARIABLE_TOKENS = new Set(["chrome-devtools", "playwright", "computer-use", "codex", "kimi"]);
+const ALLOWED_TASK_KEYS = new Set(["id", "name", "deps", "acceptance_criteria", "design_aspect", "impl", "max_attempts", "human_gate"]);
 
 function validateGraph(graph) {
   const errors = [];
@@ -153,16 +153,13 @@ function validateGraph(graph) {
     errors.push('"nodes" must be a non-empty array');
     return errors;
   }
-  if ("variable" in graph) {
-    if (!Array.isArray(graph.variable)) {
-      errors.push('"variable" must be an array');
-    } else {
-      for (const [i, token] of graph.variable.entries()) {
-        if (!ALLOWED_VARIABLE_TOKENS.has(token)) {
-          errors.push(`variable[${i}] "${token}" is not a valid variable token; allowed: ${[...ALLOWED_VARIABLE_TOKENS].join(", ")}`);
-        }
-      }
-    }
+  if (!("variables" in graph)) {
+    errors.push('"variables" is required (a dictionary of variable name -> value; use {} when there are none)');
+  } else if (typeof graph.variables !== "object" || graph.variables === null || Array.isArray(graph.variables)) {
+    errors.push('"variables" must be a JSON object (a dictionary of variable name -> value)');
+  }
+  if (typeof graph.plan_file !== "string" || !graph.plan_file) {
+    errors.push('"plan_file" is required (the absolute path to the session plan file)');
   }
   const ids = new Set();
   for (const [i, node] of graph.nodes.entries()) {
@@ -182,6 +179,9 @@ function validateGraph(graph) {
     if (!Array.isArray(node.deps)) errors.push(`${where}.deps must be an array`);
     if (!Array.isArray(node.acceptance_criteria) || node.acceptance_criteria.length < 1) {
       errors.push(`${where}.acceptance_criteria must be a non-empty array`);
+    }
+    if (typeof node.design_aspect !== "string" || !node.design_aspect) {
+      errors.push(`${where}.design_aspect must be a non-empty string`);
     }
     if ("impl" in node) {
       if (!node.impl || typeof node.impl !== "object" || Array.isArray(node.impl)) {
@@ -262,6 +262,7 @@ function explode(graph) {
       name: node.name,
       deps: node.deps || [],
       acceptance_criteria: node.acceptance_criteria,
+      design_aspect: node.design_aspect,
       human_gate: node.human_gate === true,
       max_attempts: node.max_attempts,
       status: "pending", // pending -> impl-done -> auditing -> done | failed
@@ -377,7 +378,7 @@ function cmdInit(opts) {
     return;
   }
   const { tasks, subnodes } = explode(graph);
-  const state = { graphId, salt: salt || null, variable: graph.variable || [], tasks, subnodes };
+  const state = { graphId, salt: salt || null, plan_file: graph.plan_file, variables: graph.variables || {}, tasks, subnodes };
   saveState(state);
   const taskCount = Object.keys(tasks).length;
   const subCount = Object.keys(subnodes).length;
@@ -560,12 +561,34 @@ function cmdResourceOf(opts) {
   if (r) process.stdout.write(`${r}\n`);
 }
 
-function cmdVariable(opts) {
-  if (!opts.id || opts.id === true) die("variable requires --id <GRAPH_ID>");
+function cmdVariables(opts) {
+  if (!opts.id || opts.id === true) die("variables requires --id <GRAPH_ID>");
   const state = loadState(opts.id);
-  for (const token of (state.variable || [])) {
-    process.stdout.write(`${token}\n`);
+  for (const [name, value] of Object.entries(state.variables || {})) {
+    process.stdout.write(`${name}\t${Array.isArray(value) ? value.join(", ") : value}\n`);
   }
+}
+
+// Dump the audit-resolver's context for one task: its goal (name), design aspect,
+// plan file, acceptance criteria, and the run's variables — so execute-plan need
+// not inline them into the resolver's spawn prompt.
+function cmdResolveContext(opts) {
+  if (!opts.id || opts.id === true) die("resolve-context requires --id <GRAPH_ID>");
+  if (!opts.node || opts.node === true) die("resolve-context requires --node <task-id>");
+  const state = loadState(opts.id);
+  const t = state.tasks[opts.node];
+  if (!t) die(`unknown task "${opts.node}"`);
+  const out = [
+    `TASK NAME: ${t.name}`,
+    `DESIGN ASPECT: ${t.design_aspect ?? ""}`,
+    `PLAN FILE: ${state.plan_file ?? ""}`,
+    "ACCEPTANCE CRITERIA:",
+    ...(t.acceptance_criteria || []).map((c) => `- ${c}`),
+    "VARIABLES:",
+    ...Object.entries(state.variables || {}).map(([name, value]) =>
+      `${name}\t${Array.isArray(value) ? value.join(", ") : value}`),
+  ];
+  process.stdout.write(out.join("\n") + "\n");
 }
 
 // Block until any of the given resources frees, polling `holds` on an escalating
@@ -658,11 +681,12 @@ function main() {
     case "holds": return cmdHolds(opts);
     case "wait-free": return cmdWaitFree(opts);
     case "resource-of": return cmdResourceOf(opts);
-    case "variable": return cmdVariable(opts);
+    case "variables": return cmdVariables(opts);
+    case "resolve-context": return cmdResolveContext(opts);
     case "report": return cmdReport(opts);
     case "status": return cmdStatus(opts);
     default:
-      die(`unknown verb "${verb || ""}". Use: init | ready | complete | resolve | fail | hold | release | holds | wait-free | resource-of | variable | report | status`);
+      die(`unknown verb "${verb || ""}". Use: init | ready | complete | resolve | fail | hold | release | holds | wait-free | resource-of | variables | resolve-context | report | status`);
   }
 }
 

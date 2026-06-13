@@ -5,11 +5,16 @@
   "description": "The folded (human-authored, machine-dumped) task graph that scripts/task.mjs ingests. Each node is one 'implement-and-audit' task; the engine explodes it into <id>.impl and <id>.resolve subnodes, then creates <id>.audit.<i> subnodes at runtime from the audit-resolver's panel. Tasks declare only the implementer side (optional impl.executor); the auditors are resolved at runtime by the amplify:audit-resolver agent, so there is no audit field. The implementer model/tools are NOT stored -- execute-plan chooses them at spawn time per implementer-design-guidelines.md, and each custom executor supplies its own tools via its frontmatter.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "nodes"],
+  "required": ["version", "nodes", "variables", "plan_file"],
   "properties": {
     "version": {
       "description": "Schema version. Only 1 is supported.",
       "const": 1
+    },
+    "plan_file": {
+      "description": "Required absolute path to the session plan file. The audit-resolver fetches it (via the resolve-context subcommand) and reads it for this task's design/verification context.",
+      "type": "string",
+      "minLength": 1
     },
     "nodes": {
       "description": "The folded tasks. Task ids must be unique; every dep must reference an existing task id; the dependency graph must be acyclic.",
@@ -17,20 +22,16 @@
       "minItems": 1,
       "items": { "$ref": "#/$defs/task" }
     },
-    "variable": {
-      "description": "Optional executor-availability tokens required by this plan. Each token names a variable class whose agent type must be available and approved before execute-plan may dispatch subnodes that depend on it. Omitting this field (or leaving it empty) is valid for plans that use only general-purpose subnodes.",
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "enum": ["chrome-devtools", "playwright", "computer-use", "codex", "kimi"]
-      }
+    "variables": {
+      "description": "Required dictionary of variable name -> value injected into the audit-resolver's spawn prompt — the capability/approval flags write-plan detects (e.g. $AMPLIFY_CODEX_AVAILABLE), which executor-selection-guidelines.md gates on. Use {} when there are no variables to inject.",
+      "type": "object"
     }
   },
   "$defs": {
     "task": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "deps", "acceptance_criteria", "max_attempts"],
+      "required": ["id", "name", "deps", "acceptance_criteria", "design_aspect", "max_attempts"],
       "properties": {
         "id": {
           "description": "Unique task id. Must not contain '.', which the engine reserves as the subnode separator (e.g. <id>.impl, <id>.resolve, <id>.audit.<i>).",
@@ -54,6 +55,11 @@
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
+        },
+        "design_aspect": {
+          "description": "Required. The design component this task realizes (the task's `(Aspect: …)` — e.g. Architecture, Data Structure, User Interaction). The audit-resolver develops focus-specific criteria from it.",
+          "type": "string",
+          "minLength": 1
         },
         "impl": {
           "description": "Implementer subnode config. Optional; a missing impl (or missing impl.executor) defaults to subagent(general-purpose). Auditors are NOT declared here -- they are resolved at runtime by the amplify:audit-resolver agent.",

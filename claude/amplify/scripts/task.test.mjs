@@ -55,15 +55,20 @@ function ensureDir(dir) { mkdirSync(dir, { recursive: true }); }
 function task(id, deps = [], over = {}) {
   return {
     id, name: `Task ${id}`, deps,
-    acceptance_criteria: ["does the thing"], max_attempts: 2,
+    acceptance_criteria: ["does the thing"], design_aspect: "Architecture", max_attempts: 2,
     ...over,
   };
 }
 
 function init(stateDir, dir, graph, extra = []) {
   ensureDir(dir); ensureDir(stateDir);
+  // `variables` and `plan_file` are required top-level fields; default them for
+  // fixtures that don't exercise them.
+  const g = { ...graph };
+  if (!("variables" in g)) g.variables = {};
+  if (!("plan_file" in g)) g.plan_file = "/tmp/plan.md";
   const p = join(dir, `graph-${counter++}.json`);
-  writeFileSync(p, JSON.stringify(graph));
+  writeFileSync(p, JSON.stringify(g));
   return run(stateDir, ["init", "--graph", p, ...extra]);
 }
 
@@ -246,10 +251,10 @@ test("field parity: a graph built from the schema's required keys is accepted", 
   const required = schema.$defs.task.required;
   assert.deepEqual(
     [...required].sort(),
-    ["acceptance_criteria", "deps", "id", "max_attempts", "name"],
+    ["acceptance_criteria", "deps", "design_aspect", "id", "max_attempts", "name"],
     "schema required keys are the snake_case contract (no audit)",
   );
-  const node = { id: "A", name: "A", deps: [], acceptance_criteria: ["x"], max_attempts: 1 };
+  const node = { id: "A", name: "A", deps: [], acceptance_criteria: ["x"], design_aspect: "Architecture", max_attempts: 1 };
   for (const k of required) assert.ok(k in node, `missing required key ${k}`);
   const { dir, stateDir } = ws();
   const r = init(stateDir, dir, { version: 1, nodes: [node] });
@@ -415,33 +420,81 @@ test("unknown verb exits non-zero", () => {
   assert.notEqual(r.status, 0);
 });
 
-test("variable: graph WITH variable persists them and verb prints one token per line", () => {
+test("variables: graph WITH a variable dictionary persists it and verb prints name<TAB>value", () => {
   const { dir, stateDir } = ws();
-  const graph = { version: 1, nodes: [task("A")], variable: ["chrome-devtools", "codex"] };
+  const graph = { version: 1, nodes: [task("A")], variables: { "$AMPLIFY_CODEX_AVAILABLE": true, "$AMPLIFY_USE_CODEX_APPROVED": false } };
   const r = init(stateDir, dir, graph);
   assert.equal(r.status, 0, r.stderr);
   const id = r.stdout.trim();
-  const caps = run(stateDir, ["variable", "--id", id]);
+  const caps = run(stateDir, ["variables", "--id", id]);
   assert.equal(caps.status, 0, caps.stderr);
-  assert.deepEqual(lines(caps.stdout), ["chrome-devtools", "codex"]);
+  assert.deepEqual(lines(caps.stdout), ["$AMPLIFY_CODEX_AVAILABLE\ttrue", "$AMPLIFY_USE_CODEX_APPROVED\tfalse"]);
 });
 
-test("variable: graph WITHOUT variable field prints nothing and exits 0", () => {
+test("variables: graph WITHOUT variable field prints nothing and exits 0", () => {
   const { dir, stateDir } = ws();
   const graph = { version: 1, nodes: [task("A")] };
   const r = init(stateDir, dir, graph);
   assert.equal(r.status, 0, r.stderr);
   const id = r.stdout.trim();
-  const caps = run(stateDir, ["variable", "--id", id]);
+  const caps = run(stateDir, ["variables", "--id", id]);
   assert.equal(caps.status, 0, caps.stderr);
   assert.equal(caps.stdout, "");
 });
 
-test("variable: init rejects an unknown variable token", () => {
+test("variables: init rejects a non-object variable (e.g. an array)", () => {
   const { dir, stateDir } = ws();
-  const graph = { version: 1, nodes: [task("A")], variable: ["webgl"] };
+  const graph = { version: 1, nodes: [task("A")], variables: ["x"] };
   const r = init(stateDir, dir, graph);
-  assert.notEqual(r.status, 0, "expected non-zero exit for unknown variable token");
+  assert.notEqual(r.status, 0, "expected non-zero exit when variable is not a dictionary");
   assert.match(r.stderr, /task: /);
-  assert.match(r.stderr, /webgl/);
+  assert.match(r.stderr, /dictionary/);
+});
+
+test("resolve-context: dumps task name, design aspect, plan file, acceptance criteria, variables", () => {
+  const { dir, stateDir } = ws();
+  const graph = {
+    version: 1,
+    plan_file: "/tmp/the-plan.md",
+    variables: { "$AMPLIFY_CODEX_AVAILABLE": true },
+    nodes: [task("A", [], { acceptance_criteria: ["c1", "c2"], design_aspect: "Data Structure" })],
+  };
+  const id = init(stateDir, dir, graph).stdout.trim();
+  const r = run(stateDir, ["resolve-context", "--id", id, "--node", "A"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(lines(r.stdout), [
+    "TASK NAME: Task A",
+    "DESIGN ASPECT: Data Structure",
+    "PLAN FILE: /tmp/the-plan.md",
+    "ACCEPTANCE CRITERIA:",
+    "- c1",
+    "- c2",
+    "VARIABLES:",
+    "$AMPLIFY_CODEX_AVAILABLE\ttrue",
+  ]);
+});
+
+test("resolve-context: errors on unknown --node", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A")] }).stdout.trim();
+  const r = run(stateDir, ["resolve-context", "--id", id, "--node", "ghost"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /ghost/);
+});
+
+test("init rejects a graph missing plan_file", () => {
+  const { dir, stateDir } = ws();
+  ensureDir(dir); ensureDir(stateDir);
+  const p = join(dir, "no-plan.json");
+  writeFileSync(p, JSON.stringify({ version: 1, variables: {}, nodes: [task("A")] }));
+  const r = run(stateDir, ["init", "--graph", p]);
+  assert.notEqual(r.status, 0, "expected non-zero exit for missing plan_file");
+  assert.match(r.stderr, /plan_file/);
+});
+
+test("init rejects a node missing design_aspect", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [{ id: "A", name: "A", deps: [], acceptance_criteria: ["x"], max_attempts: 1 }] });
+  assert.notEqual(r.status, 0, "expected non-zero exit for missing design_aspect");
+  assert.match(r.stderr, /design_aspect/);
 });
