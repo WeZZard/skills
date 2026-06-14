@@ -17,24 +17,23 @@ You **MUST** set **$SESSION_PLAN_FILE** to the Claude Code session plan file men
 
 **Computer-Use:**
 
-You **MUST** set **$AMPLIFY_COMPUTER_USE_AVAILABLE** to `true` if the comptuer-use MCP is available.
+1. You **MUST** set **$AMPLIFY_COMPUTER_USE_AVAILABLE** to `true` if the comptuer-use MCP is available, else set `false`.
 
 **Browser-Use:**
 
-You **MUST** set **$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE** to `true` if the chrome-devtools MCP is available.
-
-You **MUST** set **$AMPLIFY_PLAYWRIGHT_AVAILABLE** to `true` if the Playwright MCP is available.
+1. You **MUST** set **$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE** to `true` if the chrome-devtools MCP is available, else set `false`.
+2. You **MUST** set **$AMPLIFY_PLAYWRIGHT_AVAILABLE** to `true` if the Playwright MCP is available, else set `false`.
 
 **External Agents:**
 
-You **MUST** set **$AMPLIFY_CODEX_AVAILABLE** to `true` if the Codex CLI is checked available.
-
-You **MUST** set **$AMPLIFY_KIMI_AVAILABLE** to `true` if the Kimi CLI is checked available.
-
-<EXAMPLE_COMMANDS>
-macOS/Unix/Linux: `command -v codex`
-macOS/Unix/Linux: `command -v kimi`
-</EXAMPLE_COMMANDS>
+1. You **MUST** set **$AMPLIFY_CODEX_AVAILABLE** to `true` if the Codex CLI is checked available, else set `false`.
+2. You **MUST** set **$AMPLIFY_KIMI_AVAILABLE** to `true` if the Kimi CLI is checked available, else set `false`.
+    <EXAMPLE_COMMANDS>
+    macOS/Unix/Linux: `command -v codex`
+    macOS/Unix/Linux: `command -v kimi`
+    </EXAMPLE_COMMANDS>
+3. You **MUST** set `$AMPLIFY_USE_CODEX_APPROVED` to `false` when `$AMPLIFY_CODEX_AVAILABLE` is `false` and `$AMPLIFY_USE_CODEX_APPROVED` happened to be `true`. You **MUST** prompt user about this change (Codex is no longer available in this session since the executable cannot be found.) in the assistant message.
+4. You **MUST** set `$AMPLIFY_USE_KIMI_APPROVED` to `false` when `$AMPLIFY_KIMI_AVAILABLE` is `false` and `$AMPLIFY_USE_KIMI_APPROVED` happened to be `true`. You **MUST** prompt user about this change (Kimi is no longer available in this session since the executable cannot be found.) in the assistant message.
 
 ---
 
@@ -54,26 +53,17 @@ An external-agent executor runs a third-party CLI on your task.
 
 **MUST:**
 
-You **MUST** request approval for external agents when any of the following situation happens:
-1. `$AMPLIFY_CODEX_AVAILABLE` is `false` but `$AMPLIFY_USE_CODEX_APPROVED` is `true`.
-2. `$AMPLIFY_KIMI_AVAILABLE` is `false` but `$AMPLIFY_USE_KIMI_APPROVED` is `true`.
-3. `$AMPLIFY_CODEX_AVAILABLE` or `$AMPLIFY_KIMI_AVAILABLE` is not set.
+1. You **MUST** request approval for external agents when `$AMPLIFY_USE_CODEX_APPROVED` or `$AMPLIFY_USE_KIMI_APPROVED` is not set.
 
 **MUST NOT:**
 
-1. You **MUST NOT** request approval for external agents when all of the following situations happen:
-    1. `$AMPLIFY_CODEX_AVAILABLE` or `$AMPLIFY_KIMI_AVAILABLE` is set.
-    2. `$AMPLIFY_CODEX_AVAILABLE` and `$AMPLIFY_USE_CODEX_APPROVED` are set to the same value.
-    3. `$AMPLIFY_KIMI_AVAILABLE` and `$AMPLIFY_USE_KIMI_APPROVED` are set to the same value.
+1. You **MUST NOT** request approval for external agents when `$AMPLIFY_USE_CODEX_APPROVED` or `$AMPLIFY_USE_KIMI_APPROVED` is set.
 2. You **MUST NOT** skip requesting approval for reasons other than the previous one.
 
 **Process:**
 
-1. Detect and set flags:
-    - `$AMPLIFY_CODEX_AVAILABLE` = `true` iff `command -v codex` succeeds.
-    - `$AMPLIFY_KIMI_AVAILABLE` = `true` iff `command -v kimi` succeeds.
-2. You **MUST** ask the user a multiple-choice question with the **AskUserQuestion** tool for approval.
-3. You **MUST** record the set of approved external agents:
+1. You **MUST** ask the user a multiple-choice question with the **AskUserQuestion** tool for approval.
+2. You **MUST** record the set of approved external agents:
     - `$AMPLIFY_USE_CODEX_APPROVED` = `true` iff using codex is approved.
     - `$AMPLIFY_USE_KIMI_APPROVED` = `true` iff using kimi is approved.
 
