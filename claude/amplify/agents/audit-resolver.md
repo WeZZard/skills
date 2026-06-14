@@ -64,7 +64,7 @@ You **MAY** run other read-only commands to inspect the actual change — e.g. `
 
 ### Built-in Agents Model-Tier Selection
 
-When an auditor's executor is a built-in agent (`general-purpose` / `explore`), you **MUST** choose its model tier from how hard the *audit* is — the judgment the verification demands, not the size of the change. You **MUST NOT** default to a single tier for every auditor. (A driver executor runs on its own model; this does not apply to it.)
+When an auditor's executor is a built-in agent (`general-purpose` / `explore`), you **MUST** choose its model tier from how hard the *audit* is — the judgment the verification demands, not the size of the change. You **MUST NOT** default to a single tier for every auditor. You **MUST NOT** apply this model selection to pre-defined subagents.
 
 - **Haiku:** Trivial mechanical checks—confirm a file or line exists, a rename happened, a one-line config is present; pure presence/absence verification.
 - **Sonnet:** Ordinary auditing—verify multi-file or multi-step changes against straightforward acceptance criteria; run the task's tests and read their results.
@@ -93,7 +93,7 @@ When an auditor's executor is a built-in agent (`general-purpose` / `explore`), 
 
 ### Behavioral Verification
 
-**When to use:** Derive walkthrough steps and snapshot checkpoints from the verification cases; operate the running software via a browser/computer-use driver; capture a snapshot at each checkpoint; judge the snapshots against the **User Story Map**, **User Interface**, and **User Interaction** the plan specifies. For a **bug-fix** task this also covers the **reproducer**: drive the software through the defect's repro steps and confirm the broken behavior no longer occurs (it would have before the fix). Behavioral verification **complements, and does not replace, a human gate**.
+**When to use:** Derive walkthrough steps and snapshot checkpoints from the verification cases; operate the running software via an `amplify:browser-use-*` or `amplify:computer-use` subagent; capture a snapshot at each checkpoint; judge the snapshots against the **User Story Map**, **User Interface**, and **User Interaction** the plan specifies. For a **bug-fix** task this also covers the **reproducer**: drive the software through the defect's repro steps and confirm the broken behavior no longer occurs (it would have before the fix). Behavioral verification **complements, and does not replace, a human gate**.
 
 **How to Develop Acceptance Criteria:** Map each author criterion to one or more walkthrough steps and named checkpoints drawn from the plan's User Story Map, User Interface, and User Interaction sections. Each checkpoint must name what to observe (DOM state, rendered output, console log, network call) and the pass condition.
 

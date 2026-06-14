@@ -310,12 +310,12 @@ You **MUST** present how to verify the plan in the following format.
 5. You **MUST** list **Edge / negative** cases when not obvious from names.
 6. You **MUST** scale the verification depth with plan risk.
 7. You **MUST** add a **Coverage map** (requirement, user story, or risk → test file or case id) for large scopes when the test coverage infrastructure is ready in the project.
-8. You **MUST** mark a case **Driver-enabled** when a `browser-use`/`computer-use` driver can verify it by operating the running software and capturing snapshots at checkpoints. These are semi-automated steps that **complement, not replace,** **Manual** cases and human gates: they reclaim part of the manual effort, but the final human check still stands. The runtime audit-resolver derives **Behavioral Verification** auditors from these cases.
+8. You **MUST** mark a case **Browser-use-enabled** when an `amplify:browser-use-*` subagent can verify it by operating the running web target in a browser and capturing snapshots at checkpoints, and **Computer-use-enabled** when the `amplify:computer-use` subagent can verify it by operating the GUI/desktop on screen and capturing snapshots at checkpoints. These are semi-automated steps that **complement, not replace,** **Manual** cases and human gates: they reclaim part of the manual effort, but the final human check still stands. The runtime audit-resolver derives **Behavioral Verification** auditors from both kinds of case.
 
 **MUST NOT:**
 1. You **MUST NOT** require full GWT for trivial refactors.
 2. You **MUST NOT** require **Reproducers** for non bug-fix plans.
-3. You **MUST NOT** treat a **Driver-enabled** case as a substitute for a required human gate.
+3. You **MUST NOT** treat a **Browser-use-enabled** or **Computer-use-enabled** case as a substitute for a required human gate.
 
 **Verification Scopes:*
 
@@ -334,8 +334,9 @@ You **MUST** present how to verify the plan in the following format.
 - **Happy Path:** A case exercising a user story's main path with valid input — the primary route through the user story map — proving the promised benefit is delivered.
 - **Edge:** A case at a boundary the design defines: the limits of an algorithm or a business constraint (empty, minimum, maximum, off-by-one, concurrent, or otherwise extreme), where correct behavior is easy to lose.
 - **Negative:** A case with input the business rules or product-level constraints disallow, confirming the system rejects it and fails in the defined way (error, validation message, or no state change).
-- **Driver-enabled:** A case a `browser-use`/`computer-use` driver performs by operating the running software the way a user would and capturing snapshots at defined checkpoints, then judging them against the User Story Map / User Interface / User Interaction. Semi-automated: it reclaims part of what would otherwise be **Manual** effort, but **complements, not replaces,** a required human gate. The runtime audit-resolver turns these cases into **Behavioral Verification** auditors. Reusing the snapshots as regression baselines is a separate testing-pipeline concern, out of scope here.
-- **Manual:** A case a human must verify because no driver can reach it (computer-use/browser-use unavailable or the path is unreachable) — typically the subjective or experiential aspects of the user story map — per the human-checkpoint criteria in `write-plan/SKILL.md`. Prefer a **Driver-enabled** case when a driver can perform it.
+- **Browser-use-enabled:** A case an `amplify:browser-use-*` subagent performs by operating the running web target in a browser the way a user would and capturing snapshots at defined checkpoints, then judging them against the User Story Map / User Interface / User Interaction. Semi-automated: it reclaims part of what would otherwise be **Manual** effort, but **complements, not replaces,** a required human gate. The runtime audit-resolver turns these cases into **Behavioral Verification** auditors. Reusing the snapshots as regression baselines is a separate testing-pipeline concern, out of scope here.
+- **Computer-use-enabled:** A case the `amplify:computer-use` subagent performs by operating the GUI/desktop on screen the way a user would and capturing snapshots at defined checkpoints, then judging them against the User Story Map / User Interface / User Interaction. Semi-automated: it reclaims part of what would otherwise be **Manual** effort, but **complements, not replaces,** a required human gate. The runtime audit-resolver turns these cases into **Behavioral Verification** auditors. Reusing the snapshots as regression baselines is a separate testing-pipeline concern, out of scope here.
+- **Manual:** A case a human must verify because no subagent can reach it (`amplify:computer-use`/`amplify:browser-use-*` unavailable or the path is unreachable) — typically the subjective or experiential aspects of the user story map — per the human-checkpoint criteria in `write-plan/SKILL.md`. Prefer a **Browser-use-enabled** or **Computer-use-enabled** case when a subagent can perform it.
 </TEST_CASE_CATEGORIES>
 
 -->

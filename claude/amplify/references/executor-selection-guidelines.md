@@ -68,7 +68,7 @@ You **MUST NOT** select `amplify:browser-use-chrome-devtools` unless the chrome-
 
 **When to Use:** the work is driving or observing a running web application (Chromium) rather than editing files.
 
-**Resource:** **Exclusive** — the engine serializes it to one at a time per host (prefer a concurrency-safe driver when you need parallelism).
+**Resource:** **Exclusive** — the engine serializes it to one at a time per host (prefer a concurrency-safe subagent when you need parallelism).
 
 ### subagent(amplify:browser-use-playwright)
 
@@ -84,7 +84,7 @@ You **MUST NOT** select `amplify:computer-use` unless computer-use capability is
 
 **When to Use:** the work is driving an on-screen GUI application.
 
-**Resource:** **Exclusive** — the engine serializes it to one at a time per host (prefer a concurrency-safe driver when you need parallelism).
+**Resource:** **Exclusive** — the engine serializes it to one at a time per host (prefer a concurrency-safe subagent when you need parallelism).
 
 ## Runtime Roles
 

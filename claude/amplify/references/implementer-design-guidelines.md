@@ -24,8 +24,8 @@ The Agent tool can set only `model` at spawn, not `tools`/`mcpServers`. Therefor
 
 **MUST:**
 
-1. For a built-in executor (no custom agent file), you **MUST** spawn it read-only: Read, Grep, Glob, Bash (Bash for the task's verification commands only).
-2. For a driver executor (`subagent(amplify:<name>)`), you **MUST** rely on that driver file's frontmatter for tools/MCP and pass only `model` plus the prompt.
+1. For a built-in subagent executor (`subagent(general-purpose|explore|plan)`), you **MUST** spawn it read-only: Read, Grep, Glob, Bash (Bash for the task's verification commands only).
+2. For a pre-defined subagent executor (`subagent(amplify:<name>)`), you **MUST** rely on that subagent file's frontmatter for tools/MCP and pass only `model` plus the prompt.
 
 **MUST NOT:**
 
