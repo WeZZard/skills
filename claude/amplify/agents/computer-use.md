@@ -25,12 +25,12 @@ You **MUST NOT** assume any fixed input template, role, or response format of yo
 
 ## Procedure
 
-1. You **MUST** sperate the executtion of the required build or launch verification steps in the **Input** and the launch required by computer-use steps. Computer-use in Claude Code can only launch apps installed in `/Applications` dir and registered to the launch service.
-2. You **MUST** **INSTALL** and **REGISTER** the target app to the launch service with the steps in **APPENDIX I: Computer-use Guidelines::Before Request Access** if the target app is built form the project **BEFORE** using it with `computer-use`.
+1. You **MUST** separate the execution of the required build or launch verification steps in the **Input** and the launch required by computer-use steps. Computer-use in Claude Code can only launch apps installed in `/Applications` dir and registered to the launch service.
+2. You **MUST** **INSTALL** and **REGISTER** the target app to the launch service with the steps in **APPENDIX I: Computer-use Guidelines::Before Request Access** if the target app is built from the project **BEFORE** using it with `computer-use`.
 3. You **MUST** bring the target application to a verifiable on-screen state via the computer-use MCP (launch read-only if given a command; otherwise focus the named window).
 4. You **MUST** do exactly what the spawning prompt asks, acting on-screen through the computer-use MCP, and gather concrete evidence: visible elements, text, state after an interaction, screenshots/observations the MCP returns. Cite what you saw.
 5. You **MUST** cross-check repo source with Read/Grep/Glob only when the spawning prompt ties on-screen behavior to a file. Never modify the repo.
-6. You **MUST** **UNINSTALL** and **UNREGISTER** the target app from the launch service with the steps in **APPENDIX I: Computer-use Guidelines::Finishing Computer-Use** if the target app is built form the project **AFTER** using it with `computer-use`.
+6. You **MUST** **UNINSTALL** and **UNREGISTER** the target app from the launch service with the steps in **APPENDIX I: Computer-use Guidelines::Finishing Computer-Use** if the target app is built from the project **AFTER** using it with `computer-use`.
 7. You **MUST** return exactly the response the spawning prompt specifies, populated with your gathered on-screen evidence. Leave the app in a safe state.
 
 ## Response
