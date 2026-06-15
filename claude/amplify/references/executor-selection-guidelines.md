@@ -49,6 +49,18 @@ You **MUST NOT** select `amplify:codex-driver` unless `codex` installed (`$AMPLI
 2. **Auditing stage:**
     1. Auditing code edits not limited to compiling tool results but contain semantics understanding.
 
+**How to Use:**
+
+1. You **MUST** prepend the special control-line template. You **MUST** compose its spawning prompt in this exact shape, with the `ROLE` line prepended above the `---` separator and the task or audit prompt below it:
+
+    ```text
+    ROLE: audit | impl
+    ---
+    <the task or audit prompt for Codex>
+    ```
+
+2. **Choose `ROLE`.** Set it from the stage: `audit` for an auditing-stage selection, `impl` for an implementation-stage selection; the driver maps the role to Codex's sandbox internally (see `${CLAUDE_PLUGIN_ROOT}/agents/codex-driver.md`). If omitted or invalid, the driver falls back to `audit` (read-only). There is no model line — Codex runs its own single model.
+
 ## subagent(amplify:kimi-driver)
 
 You **MUST NOT** select `amplify:kimi-driver` unless `kimi` installed (`$AMPLIFY_KIMI_AVAILABLE` == `true`) and user approval (`$AMPLIFY_USE_KIMI_APPROVED` == `true`).
@@ -59,6 +71,18 @@ You **MUST NOT** select `amplify:kimi-driver` unless `kimi` installed (`$AMPLIFY
     1. Building things with image understanding.
 2. **Auditing stage:**
     1. Auditing with image understanding.
+
+**How to Use:**
+
+1. You **MUST** prepend the special control-line template. You **MUST** compose its spawning prompt in this exact shape, with the `ROLE` line prepended above the `---` separator and the task or audit prompt below it:
+
+    ```text
+    ROLE: audit | impl
+    ---
+    <the task or audit prompt for Kimi>
+    ```
+
+2. **Choose `ROLE`.** Set it from the stage: `audit` for an auditing-stage selection, `impl` for an implementation-stage selection; the driver maps the role to Kimi's permissions internally (see `${CLAUDE_PLUGIN_ROOT}/agents/kimi-driver.md`). If omitted or invalid, the driver falls back to `audit` (read-only). There is no model line — Kimi runs its own single model.
 
 ## MCP-use Agents
 

@@ -1,6 +1,6 @@
 ---
 name: kimi-driver
-description: Delegate one task to Kimi Code headless (`kimi -p`) for an impl or audit subnode. Kimi has NO OS sandbox (unlike codex); the caller passes a ROLE (audit ⇒ read-only enforced by a deny-writes permission config; impl ⇒ `-p`'s default auto policy already allows writes) and optional MODEL plus the delegated body; this agent runs exactly one kimi invocation and returns its stdout verbatim. It defines no response format and does not inspect the repository or improvise.
+description: Delegate one task to Kimi Code headless (`kimi -p`) for an impl or audit subnode. The caller passes a ROLE (audit ⇒ read-only enforced by a deny-writes permission config; impl ⇒ `-p`'s default auto policy already allows writes) plus the delegated body; this agent runs exactly one kimi invocation and returns its stdout verbatim. It defines no response format and does not inspect the repository, choose a model, or improvise.
 model: sonnet
 tools: Bash, Monitor
 ---
@@ -15,19 +15,17 @@ Your prompt begins with control lines, then a `---` separator, then the task pro
 
 ```text
 ROLE: audit | impl
-MODEL: <optional kimi model alias>
 ---
 <the task prompt for Kimi>
 ```
 
 - `ROLE` is required. If it is missing or not one of the two values, use `audit` (the safe, read-only default).
-- `MODEL` is optional. If absent, omit `-m`.
 - Everything after the first line that is exactly `---` is the Kimi task prompt.
-- **Kimi has no SANDBOX line.** Unlike codex (which exposes an OS sandbox via `-s`), kimi-code has no OS sandbox. `ROLE` selects the permission posture instead: `impl` allows writes; `audit` is read-only, enforced by a deny-writes permission config (see Procedure).
+- There is no model control line: Kimi runs its own default model, and you **MUST NOT** add `-m`.
 
 ## Procedure
 
-1. Parse `ROLE` and optional `MODEL` from the control lines.
+1. Parse `ROLE` from the control line.
 2. Write the task prompt (the text after `---`) to a temporary file, e.g. `prompt="$(mktemp)"`, and choose an output file, e.g. `out="$(mktemp)"`.
 3. For `ROLE: audit` only, build a read-only permission home so the invocation cannot modify files. Kimi loads its config from `$KIMI_CODE_HOME/config.toml`; relocate it to a temp dir and write deny rules for the file-modifying built-in tools:
 
@@ -54,7 +52,7 @@ MODEL: <optional kimi model alias>
 
    ```bash
    [ "$ROLE" = audit ] && export KIMI_CODE_HOME="$kimihome"
-   kimi -p "$(cat <prompt-file>)" --output-format text [-m <MODEL>] > "$out" 2>&1 &
+   kimi -p "$(cat <prompt-file>)" --output-format text > "$out" 2>&1 &
    kpid=$!
    start=$(date +%s); next=60; lastlines=0; stall=0
    while kill -0 "$kpid" 2>/dev/null; do
@@ -73,7 +71,7 @@ MODEL: <optional kimi model alias>
    echo "[done] rc=$? out=$out lines=$(wc -l < "$out") elapsed=$(( $(date +%s)-start ))s"
    ```
 
-   - Substitute the `<prompt-file>` path; include `-m <MODEL>` only if `MODEL` was provided. Add no other flags.
+   - Substitute the `<prompt-file>` path. Add no other flags; in particular, do not add `-m`.
    - `-p` runs the prompt non-interactively and streams the Assistant output to stdout; `--output-format text` selects plain text. In `-p` mode no human approval is requested — regular tool calls run under the `auto` permission policy (writes allowed), while static deny rules remain in effect. **Do not** add `--auto` (redundant under `-p`) or `--yolo` (it skips confirmation for almost all tool calls — broader than needed).
    - `ROLE: impl` (writes allowed): `kimi -p` alone suffices; the default `auto` policy auto-approves edits and commands.
    - `ROLE: audit` (read-only): keep `kimi -p`, and the `KIMI_CODE_HOME` export points Kimi at the deny-writes `config.toml` from step 3. Read-only holds because the static deny rules remain in effect under `-p`.
