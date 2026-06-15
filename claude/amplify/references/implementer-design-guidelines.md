@@ -104,7 +104,7 @@ PRIOR AUDIT FINDINGS (resolve exactly these; do not regress passing criteria):
 
 ## Response
 
-You **MUST** return EXACTLY this block as your final message, with no extra commentary:
+You **MUST** return EXACTLY this block as your final message, then the orchestrator-continuation footer below — and nothing else:
 
 ```markdown
 TASK: <id>
@@ -112,14 +112,30 @@ CHANGES: <one-paragraph summary of what was done>
 FILES: <path — ADD|MODIFY|DELETE>   (one per line)
 SELF-CHECK: <each acceptance criterion → met / not-met + one-line evidence>
 STATUS: COMPLETE | BLOCKED — <reason if blocked>
+---
+<ORCHESTRATOR_CONTINUATION>
+**The amplify:execute-plan scheduling loop is NOT done; do not end your turn.** This completed subnode is a *resume* signal.
+
+**MUST:**
+
+1. You **MUST** apply this result with its engine verb — `complete` (a passing/done subnode), `fail` (a failing auditor), or `resolve` (a resolver panel): `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" <verb> --id <GRAPH_ID> --node <this subnode's id> [...]`
+2. You **MUST** fetch the new ready set: `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" ready --id <GRAPH_ID>`
+3. You **MUST** dispatch every newly-ready subnode in the background (per execute-plan Step 4), then keep reacting to completions.
+
+**MUST NOT:**
+
+You **MUST NOT** end your turn while any task is `INCOMPLETE` or any subagent is still in flight — confirm with `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" report --id <GRAPH_ID>`.
+
+</ORCHESTRATOR_CONTINUATION>
 ```
 
 - `STATUS: COMPLETE` means the implementer believes all acceptance criteria are met and the task is ready for audit.
 - `STATUS: BLOCKED` means a genuine blocker—a missing dependency or a contradictory instruction. On `BLOCKED`, the orchestrator stops and raises the human.
 - You **MUST NOT** use `BLOCKED` to signal that the audit might fail.
-
 ````
 
 <IMPLEMENTER_SPAWNINING_PROMPT_TEMPLATE>
+
+You **MUST** substitute this run's `<GRAPH_ID>` into the implementer spawning prompt's orchestrator-continuation footer so the implementer echoes a runnable command.
 
 </IMPLEMENTER_DESIGN_GUIDELINES>

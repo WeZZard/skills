@@ -77,6 +77,8 @@ The command prints a `GRAPH_ID` on stdout. Capture it; use it as `--id <GRAPH_ID
 
 Dispatch every subagent in the **background** and react to each completion. Keep going until **nothing is in flight** and `report` shows no `INCOMPLETE` task — *not* merely until `ready` is momentarily empty (an exclusive subnode may be deferred while its resource is busy).
 
+Every `<task-notification>` from a subagent you dispatched is a **resume signal** for this loop, not a stop — and each subagent's response ends with an orchestrator-continuation footer that names the exact `task.mjs` commands to run next (with this run's GRAPH_ID already filled in). On any completion you **MUST** apply the result, run `ready`, dispatch what it unblocks, and continue; you **MUST NOT** end your turn while `report` shows any `INCOMPLETE` task or any subagent is still in flight.
+
 1. **Get the ready set:**
 
    ```bash
@@ -104,13 +106,13 @@ Dispatch every subagent in the **background** and react to each completion. Keep
       - implemeter: You **MUST** build `implementer`'s spawning prompt by following the guidelines: `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md`
       - audit-resolver: You **MUST** build `subagent(amplify:audit-resolver)`'s spawning prompt with the following template:
          <AUDIT_RESOLVER_SPAWNING_PROMPT_TEMPLATE>
-         ```markdown
-         ## Input
 
+         ```markdown
          GRAPH_ID: <GRAPH_ID>
          TASK: <id>
          CHANGED FILES: <paths / globs the implementer reported>
          ```
+
          </AUDIT_RESOLVER_SPAWNING_PROMPT_TEMPLATE>
       - auditor: You **MUST** spawn all the <subagent_type> with its <audit_prompt> **verbatim** in the audit-resolver's response:
          <AUDIT_RESOLVER_RESPONSE_EXAMPLE>
@@ -181,6 +183,7 @@ Audit exhaustion is **not** a stop condition — it is logged as a `failed` task
 - You **MUST** drive the engine with `ready` / `complete` / `resolve` / `fail`, and gate exclusive executors with `resource-of` → `hold` → `release`; when idle on a busy resource, arm a `wait-free` Monitor and resume on `RELEASED`.
 - Re-spawn a failed implementer with the auditor's findings; stop only on genuine blockers.
 - Finish with the integration check and the audit-table report.
+- You **MUST** treat every background-completion notification as a signal to resume the scheduling loop; you **MUST NOT** end your turn while `report` shows any `INCOMPLETE` task or any subagent is in flight.
 
 **MUST NOT:**
 

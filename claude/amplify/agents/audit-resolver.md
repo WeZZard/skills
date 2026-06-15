@@ -138,7 +138,7 @@ ARTIFACTS TO INSPECT: <changed files / globs>
 
 ## Response
 
-You **MUST** return **EXACTLY** this block as your final message, with no extra commentary:
+You **MUST** return **EXACTLY** this block as your final message, then the orchestrator-continuation footer below — and nothing else:
 
 ```markdown
 TASK: <id>
@@ -146,27 +146,61 @@ FOCUS: <focus>
 CRITERIA: <each acceptance criterion → PASS|FAIL + evidence>
 VERDICT: PASS | FAIL
 FINDINGS: <if FAIL: concrete defects + specific fix directives for the next implementer attempt>
+---
+<ORCHESTRATOR_CONTINUATION>
+**The amplify:execute-plan scheduling loop is NOT done; do not end your turn.** This completed subnode is a *resume* signal.
+
+**MUST:**
+
+1. You **MUST** apply this result with its engine verb — `complete` (a passing/done subnode), `fail` (a failing auditor), or `resolve` (a resolver panel): `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" <verb> --id <GRAPH_ID> --node <this subnode's id> [...]`
+2. You **MUST** fetch the new ready set: `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" ready --id <GRAPH_ID>`
+3. You **MUST** dispatch every newly-ready subnode in the background (per execute-plan Step 4), then keep reacting to completions.
+
+**MUST NOT:**
+
+You **MUST NOT** end your turn while any task is `INCOMPLETE` or any subagent is still in flight — confirm with `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" report --id <GRAPH_ID>`.
+
+</ORCHESTRATOR_CONTINUATION>
 ```
 
 - Emit `VERDICT: PASS` only when every acceptance criterion in this focus's scope passes with evidence.
 - Emit `VERDICT: FAIL` for any unmet criterion, with actionable FINDINGS.
 - The `VERDICT:` token is the single source of truth the orchestrator keys on.
+- The orchestrator continuation foot **MUST** respond in **verbatim**
 ````
 
 </AUDIT_PROMPT_TEMPLATE>
 
+You **MUST** substitute this run's `<GRAPH_ID>` into the audit prompt's orchestrator-continuation footer so the subagent echoes a runnable command.
+
 ## Output
 
-Return **EXACTLY** this block as your final message, with no extra commentary:
+Return **EXACTLY** this block as your final message, then the orchestrator-continuation footer below — and nothing else:
 
-```text
+```markdown
 PANEL:
 [
   { "focus": "<short focus name>", "executor": "subagent(<name>)", "audit_prompt": "<the full blind-audit body above, filled in>" },
   ...
 ]
+---
+<ORCHESTRATOR_CONTINUATION>
+**The amplify:execute-plan scheduling loop is NOT done; do not end your turn.** This completed subnode is a *resume* signal.
+
+**MUST:**
+
+1. You **MUST** apply this result with its engine verb — `complete` (a passing/done subnode), `fail` (a failing auditor), or `resolve` (a resolver panel): `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" <verb> --id <GRAPH_ID> --node <this subnode's id> [...]`
+2. You **MUST** fetch the new ready set: `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" ready --id <GRAPH_ID>`
+3. You **MUST** dispatch every newly-ready subnode in the background (per execute-plan Step 4), then keep reacting to completions.
+
+**MUST NOT:**
+
+You **MUST NOT** end your turn while any task is `INCOMPLETE` or any subagent is still in flight — confirm with `node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" report --id <GRAPH_ID>`.
+
+</ORCHESTRATOR_CONTINUATION>
 ```
 
 - `PANEL` **MUST** be valid JSON: a non-empty array of `{ focus, executor, audit_prompt }` objects.
 - `executor` **MUST** be a `subagent(<name>)` value selected per executor-selection-guidelines.md.
 - `audit_prompt` **MUST** be the complete, ready-to-run blind-audit body — the auditor runs it verbatim with no further guideline.
+- The orchestrator continuation foot **MUST** respond in **verbatim** (substitute this run's real GRAPH_ID for `<GRAPH_ID>`)
