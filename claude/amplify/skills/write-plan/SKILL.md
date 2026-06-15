@@ -17,7 +17,12 @@ You **MUST** set **$SESSION_PLAN_FILE** to the Claude Code session plan file men
 
 **Computer-Use:**
 
-1. You **MUST** set **$AMPLIFY_COMPUTER_USE_AVAILABLE** to `true` if the comptuer-use MCP is available, else set `false`.
+1. You **MUST** set **$AMPLIFY_COMPUTER_USE_AVAILABLE** to `true` if all of the following conditions were met:
+    1. The host machine is running macOS.
+    2. The comptuer-use MCP is available
+    3. Claude Code version is above v2.1.85+
+    4. Claude Code is running in an INTERACTIVE session — never headless/CI.
+2. You **MUST** set **$AMPLIFY_COMPUTER_USE_AVAILABLE** to `false` if any of the previous conditions were not met.
 
 **Browser-Use:**
 
