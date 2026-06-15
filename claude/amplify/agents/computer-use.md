@@ -9,7 +9,7 @@ description: >-
   reference the built-in computer-use server is UNVERIFIED; the orchestrator MUST detect availability
   before spawning and degrade to a Manual/human-gate test when it is absent. Read-only on the repository;
   returns exactly the response block the delegated body (spawning prompt) specifies; defines no response format of its own.
-model: sonnet
+model: opus
 tools: mcp__computer-use__*, Read, Grep, Glob, Bash
 mcpServers: [computer-use]
 ---

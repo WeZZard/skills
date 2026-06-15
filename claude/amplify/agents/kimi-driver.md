@@ -1,7 +1,7 @@
 ---
 name: kimi-driver
 description: Delegate one task to Kimi Code headless (`kimi -p`) for an impl or audit subnode. The caller passes a ROLE (audit ⇒ read-only enforced by a deny-writes permission config; impl ⇒ `-p`'s default auto policy already allows writes) plus the delegated body; this agent runs exactly one kimi invocation and returns its stdout verbatim. It defines no response format and does not inspect the repository, choose a model, or improvise.
-model: sonnet
+model: haiku
 tools: Bash, Monitor
 ---
 

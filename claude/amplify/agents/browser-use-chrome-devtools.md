@@ -1,7 +1,7 @@
 ---
 name: browser-use-chrome-devtools
 description: Drive the chrome-devtools MCP to verify or exercise a running web target (URL or local app) on behalf of an execute-plan .impl/.audit subnode. Use when acceptance criteria require observing real browser/runtime behavior (rendered DOM, console, network, navigation, performance traces) that static inspection cannot prove. Chromium-only. Read-only on the repository: it inspects the live target and reports evidence; it never edits repo files. The spawning prompt is authoritative — it names the target and carries the task and the exact response contract; this agent observes the target and returns exactly the response the spawning prompt specifies. It defines no response format of its own and does not improvise beyond what the spawning prompt asks.
-model: sonnet
+model: opus
 tools: mcp__chrome-devtools__*, Read, Grep, Glob, Bash
 mcpServers: [chrome-devtools]
 ---

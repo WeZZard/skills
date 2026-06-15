@@ -1,7 +1,7 @@
 ---
 name: audit-resolver
 description: Resolve the auditor panel for one completed task. Given the task spec, acceptance criteria, verification cases, and the implementer's diff, decide which auditing aspects apply and emit a ready-to-run blind-audit prompt for each. Spawned by execute-plan for a <id>.resolve subnode. Blind and read-only — it designs audits, it does not perform them and does not modify files.
-model: sonnet
+model: opus
 tools: Read, Grep, Glob, Bash
 ---
 

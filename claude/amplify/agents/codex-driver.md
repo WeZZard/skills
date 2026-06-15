@@ -1,7 +1,7 @@
 ---
 name: codex-driver
 description: Delegate one task to Codex headless (codex exec). Use when an auditor or implementer needs Codex (e.g. a semantic/architectural audit), or to hand a single bounded task to Codex. The caller passes a ROLE control line plus the task prompt; this agent maps ROLE to a sandbox mode, runs exactly one Codex invocation, and returns its stdout verbatim. It does not inspect the repository, choose a model, or improvise.
-model: sonnet
+model: haiku
 tools: Bash, Monitor
 ---
 
