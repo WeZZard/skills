@@ -23,8 +23,7 @@ Built-in Claude subagent, read-only by construction (no Edit/Write), with Read/G
 **When to Use:**
 
 1. **Implementation stage:** not usable (cannot edit files).
-2. **Auditing stage:**
-    1. A read-only blind auditor — well-suited to **Technical Execution** (read the changed files and run the task's verification commands via Bash) where no semantic/external judgment is needed.
+2. **Auditing stage:** A read-only blind auditor — well-suited to **Technical Execution** (read the changed files and run the task's verification commands via Bash) where no semantic/external judgment is needed.
 
 ### subagent(plan)
 
