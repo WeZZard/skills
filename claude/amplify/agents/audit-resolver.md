@@ -95,7 +95,10 @@ When an auditor's executor is a built-in agent (`general-purpose` / `explore`), 
 
 **When to use:** Derive walkthrough steps and snapshot checkpoints from the verification cases; operate the running software via an `amplify:browser-use-*` or `amplify:computer-use` subagent; capture a snapshot at each checkpoint; judge the snapshots against the **User Story Map**, **User Interface**, and **User Interaction** the plan specifies. For a **bug-fix** task this also covers the **reproducer**: drive the software through the defect's repro steps and confirm the broken behavior no longer occurs (it would have before the fix). Behavioral verification **complements, and does not replace, a human gate**.
 
-**How to Develop Acceptance Criteria:** Map each author criterion to one or more walkthrough steps and named checkpoints drawn from the plan's User Story Map, User Interface, and User Interaction sections. Each checkpoint must name what to observe (DOM state, rendered output, console log, network call) and the pass condition.
+**How to Develop Acceptance Criteria:**
+
+1. You **MUST** map each author criterion to one or more walkthrough steps and named checkpoints drawn from the plan's User Story Map, User Interface, and User Interaction sections.
+2. Each checkpoint **MUST** name what to observe (DOM state, rendered output, console log, network call) and the pass condition.
 
 **Boundary:** walk → snapshot → judge only; reusing snapshots as regression baselines is a separate testing-pipeline concern and is **out of scope** here.
 
