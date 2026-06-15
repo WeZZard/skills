@@ -140,7 +140,7 @@ function computeGraphId(graph, salt) {
 // ---------------------------------------------------------------------------
 
 const ID_RE = /^[A-Za-z0-9_-]+$/;
-const EXECUTOR_RE = /^subagent\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:audit-resolver)\)$/;
+const EXECUTOR_RE = /^subagent\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:computer-use-cua|amplify:audit-resolver)\)$/;
 const ALLOWED_TASK_KEYS = new Set(["id", "name", "deps", "acceptance_criteria", "design_aspect", "impl", "max_attempts", "human_gate"]);
 
 function validateGraph(graph) {

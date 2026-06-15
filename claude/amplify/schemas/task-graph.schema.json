@@ -81,7 +81,7 @@
     "executor": {
       "description": "Names the subagent that runs a subnode. Grammar: subagent(<name>). The subagent(...) wrapper reserves room for future executor kinds.",
       "type": "string",
-      "pattern": "^subagent\\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:audit-resolver)\\)$"
+      "pattern": "^subagent\\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:computer-use-cua|amplify:audit-resolver)\\)$"
     }
   }
 }

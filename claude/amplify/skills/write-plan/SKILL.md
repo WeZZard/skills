@@ -24,6 +24,14 @@ You **MUST** set **$SESSION_PLAN_FILE** to the Claude Code session plan file men
     4. Claude Code is running in an INTERACTIVE session — never headless/CI.
 2. You **MUST** set **$AMPLIFY_COMPUTER_USE_AVAILABLE** to `false` if any of the previous conditions were not met.
 
+**Computer-Use-CUA:**
+
+1. You **MUST** set **$AMPLIFY_CUA_AVAILABLE** to `true` if all of the following conditions were met:
+    1. The `cua-driver` CLI is installed (`command -v cua-driver` succeeds on macOS/Linux; `where cua-driver` on Windows).
+    2. The `cua-driver` MCP server is registered and reachable as `cua-driver`.
+    3. A logged-in GUI desktop session is reachable where the `cua-driver` daemon runs — a local desktop login (macOS Aqua/WindowServer; Windows interactive session, not Session 0; Linux user session) or a cua-sandbox/Lume VM.
+2. You **MUST** set **$AMPLIFY_CUA_AVAILABLE** to `false` if any of the previous conditions were not met.
+
 **Browser-Use:**
 
 1. You **MUST** set **$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE** to `true` if the chrome-devtools MCP is available, else set `false`.

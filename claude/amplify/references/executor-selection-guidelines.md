@@ -103,11 +103,19 @@ You **MUST NOT** select `amplify:browser-use-playwright` unless the Playwright M
 
 ### subagent(amplify:computer-use)
 
-You **MUST NOT** select `amplify:computer-use` unless computer-use capability is available in this session (`$AMPLIFY_COMPUTER_USE_AVAILABLE` == `true`)
+You **MUST NOT** select `amplify:computer-use` unless computer-use capability is available in this session (`$AMPLIFY_COMPUTER_USE_AVAILABLE` == `true`).
 
-**When to Use:** the work is driving an on-screen GUI application.
+**When to Use:** the work is driving an on-screen GUI application, and `$AMPLIFY_CUA_AVAILABLE` is not `true`. When `$AMPLIFY_CUA_AVAILABLE` is `true`, prefer `amplify:computer-use-cua` over this agent for GUI/desktop work.
 
 **Resource:** **Exclusive** — the engine serializes it to one at a time per host (prefer a concurrency-safe subagent when you need parallelism).
+
+### subagent(amplify:computer-use-cua)
+
+You **MUST NOT** select `amplify:computer-use-cua` unless cua-driver is available in this session (`$AMPLIFY_CUA_AVAILABLE` == `true`).
+
+**When to Use:** the work is driving or observing an on-screen GUI/desktop application via the cua-driver MCP — cross-platform (macOS/Windows/Linux), with accessibility-tree targeting. When `$AMPLIFY_CUA_AVAILABLE` is `true`, prefer this agent over `amplify:computer-use` for GUI/desktop work; select `amplify:computer-use` only when cua is unavailable.
+
+**Resource:** **Concurrency-safe** — cua-driver honors a No-Foreground Contract (it never changes the user's frontmost app) and can spawn isolated per-session app instances, so several can run in parallel.
 
 ## Runtime Roles
 

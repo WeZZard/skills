@@ -93,7 +93,7 @@ When an auditor's executor is a built-in agent (`general-purpose` / `explore`), 
 
 ### Behavioral Verification
 
-**When to use:** Derive walkthrough steps and snapshot checkpoints from the verification cases; operate the running software via an `amplify:browser-use-*` or `amplify:computer-use` subagent; capture a snapshot at each checkpoint; judge the snapshots against the **User Story Map**, **User Interface**, and **User Interaction** the plan specifies. For a **bug-fix** task this also covers the **reproducer**: drive the software through the defect's repro steps and confirm the broken behavior no longer occurs (it would have before the fix). Behavioral verification **complements, and does not replace, a human gate**.
+**When to use:** Derive walkthrough steps and snapshot checkpoints from the verification cases; operate the running software via an `amplify:browser-use-*`, `amplify:computer-use`, or `amplify:computer-use-cua` subagent; capture a snapshot at each checkpoint; judge the snapshots against the **User Story Map**, **User Interface**, and **User Interaction** the plan specifies. For a **bug-fix** task this also covers the **reproducer**: drive the software through the defect's repro steps and confirm the broken behavior no longer occurs (it would have before the fix). Behavioral verification **complements, and does not replace, a human gate**.
 
 **How to Develop Acceptance Criteria:**
 
