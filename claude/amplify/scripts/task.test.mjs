@@ -11,7 +11,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, readdirSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -129,6 +129,200 @@ test("scheduling: ready returns only dependency-free .impl", () => {
   const id = init(stateDir, dir, { version: 1, nodes: [task("A"), task("B", ["A"]), task("C", ["A"])] }).stdout.trim();
   const ready = ids(run(stateDir, ["ready", "--id", id]).stdout);
   assert.deepEqual(ready, ["A.impl"]);
+});
+
+test("dispatch: pending -> running; ready then omits it; complete settles the running subnode", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A"), task("B")] }).stdout.trim();
+  // both impls are ready
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id]).stdout).sort(), ["A.impl", "B.impl"]);
+
+  const d = run(stateDir, ["dispatch", "--id", id, "--node", "A.impl"]);
+  assert.equal(d.status, 0, d.stderr);
+  const state = JSON.parse(readFileSync(join(stateDir, `${id}.json`), "utf8"));
+  assert.equal(state.subnodes["A.impl"].status, "running", "dispatch moves pending -> running");
+
+  // ready no longer offers the running subnode
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id]).stdout), ["B.impl"]);
+
+  // complete settles the running subnode (no need for it to be pending)
+  const after = ids(run(stateDir, ["complete", "--id", id, "--node", "A.impl"]).stdout);
+  assert.ok(after.includes("A.resolve"), "completing a running .impl readies .resolve");
+});
+
+test("dispatch: errors on a non-pending subnode", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A")] }).stdout.trim();
+  run(stateDir, ["dispatch", "--id", id, "--node", "A.impl"]); // -> running
+  const again = run(stateDir, ["dispatch", "--id", id, "--node", "A.impl"]);
+  assert.notEqual(again.status, 0, "re-dispatching a running subnode must error");
+  assert.match(again.stderr, /pending/);
+  // a not-yet-ready subnode (still pending but used to confirm running rejection) :
+  run(stateDir, ["complete", "--id", id, "--node", "A.impl"]); // A.impl now done
+  const onDone = run(stateDir, ["dispatch", "--id", id, "--node", "A.impl"]);
+  assert.notEqual(onDone.status, 0, "dispatching a done subnode must error");
+});
+
+test("dispatch: a running audit subnode settles via fail", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A", [], { max_attempts: 1 })] }).stdout.trim();
+  run(stateDir, ["complete", "--id", id, "--node", "A.impl"]);
+  run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel", ONE_AUDIT]);
+  run(stateDir, ["dispatch", "--id", id, "--node", "A.audit.0"]); // -> running
+  const r = run(stateDir, ["fail", "--id", id, "--node", "A.audit.0", "--reason", "nope"]);
+  assert.equal(r.status, 0, r.stderr);
+  const report = run(stateDir, ["report", "--id", id]).stdout;
+  assert.match(report, /\|\s*A\s*\|.*\|\s*FAILED\s*\|/, "running audit settles to failed at max_attempts");
+});
+
+test("init: stamps cwd into the state object", () => {
+  const { dir, stateDir } = ws();
+  ensureDir(dir); ensureDir(stateDir);
+  const g = { version: 1, variables: {}, plan_file: "/tmp/plan.md", nodes: [task("A")] };
+  const p = join(dir, "g.json");
+  writeFileSync(p, JSON.stringify(g));
+  const res = spawnSync("node", [ENGINE, "init", "--graph", p], {
+    encoding: "utf8", cwd: dir,
+    env: { ...process.env, AMPLIFY_STATE_DIR: stateDir },
+  });
+  assert.equal(res.status, 0, res.stderr);
+  const id = res.stdout.trim();
+  const state = JSON.parse(readFileSync(join(stateDir, `${id}.json`), "utf8"));
+  // process.cwd() returns the realpath; on macOS /var is a symlink to /private/var.
+  assert.equal(state.cwd, realpathSync(dir), "init records process.cwd() as state.cwd");
+});
+
+test("active: lists graphs with an INCOMPLETE task and correct ready/running counts; cwd-scoped", () => {
+  const { dir, stateDir } = ws();
+  ensureDir(dir); ensureDir(stateDir);
+  const g = { version: 1, variables: {}, plan_file: "/tmp/plan.md", nodes: [task("A"), task("B")] };
+  const p = join(dir, "g.json");
+  writeFileSync(p, JSON.stringify(g));
+  // init under a known cwd so we can scope by it (use realpath: macOS /var symlink)
+  const res = spawnSync("node", [ENGINE, "init", "--graph", p], {
+    encoding: "utf8", cwd: dir,
+    env: { ...process.env, AMPLIFY_STATE_DIR: stateDir },
+  });
+  const id = res.stdout.trim();
+  const cwd = realpathSync(dir);
+
+  // fresh: two ready impls, none running, both tasks INCOMPLETE
+  const j1 = JSON.parse(run(stateDir, ["active", "--cwd", cwd, "--json"]).stdout);
+  assert.deepEqual(j1, [{ graphId: id, incomplete: 2, ready: 2, running: 0 }]);
+
+  // dispatch one -> ready drops to 1, running rises to 1
+  run(stateDir, ["dispatch", "--id", id, "--node", "A.impl"]);
+  const j2 = JSON.parse(run(stateDir, ["active", "--cwd", cwd, "--json"]).stdout);
+  assert.deepEqual(j2, [{ graphId: id, incomplete: 2, ready: 1, running: 1 }]);
+
+  // text form: one line per active graph
+  const text = run(stateDir, ["active", "--cwd", cwd]).stdout.trim();
+  assert.equal(text, `${id} incomplete=2 ready=1 running=1`);
+
+  // a non-matching cwd filter yields the empty array / nothing
+  assert.deepEqual(JSON.parse(run(stateDir, ["active", "--cwd", "/no/such/dir", "--json"]).stdout), []);
+  assert.equal(run(stateDir, ["active", "--cwd", "/no/such/dir"]).stdout, "");
+});
+
+test("active: a fully-settled graph is not listed", () => {
+  const { dir, stateDir } = ws();
+  ensureDir(dir); ensureDir(stateDir);
+  const g = { version: 1, variables: {}, plan_file: "/tmp/plan.md", nodes: [task("A", [], { max_attempts: 1 })] };
+  const p = join(dir, "g.json");
+  writeFileSync(p, JSON.stringify(g));
+  const res = spawnSync("node", [ENGINE, "init", "--graph", p], {
+    encoding: "utf8", cwd: dir,
+    env: { ...process.env, AMPLIFY_STATE_DIR: stateDir },
+  });
+  const id = res.stdout.trim();
+  // drive the single task to done
+  run(stateDir, ["complete", "--id", id, "--node", "A.impl"]);
+  run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel", ONE_AUDIT]);
+  run(stateDir, ["complete", "--id", id, "--node", "A.audit.0"]);
+  // task A is done -> no INCOMPLETE task -> not active
+  assert.deepEqual(JSON.parse(run(stateDir, ["active", "--json"]).stdout), []);
+});
+
+test("active: skips malformed state files and graphs without a cwd under a --cwd filter", () => {
+  const { dir, stateDir } = ws();
+  ensureDir(stateDir);
+  // a malformed json file in the state dir must be skipped, not crash
+  writeFileSync(join(stateDir, "garbage.json"), "{ not valid json");
+  // a graph state without a cwd field
+  writeFileSync(join(stateDir, "0000000000000000.json"), JSON.stringify({
+    graphId: "0000000000000000",
+    tasks: { A: { name: "A", status: "pending", deps: [] } },
+    subnodes: { "A.impl": { task: "A", role: "impl", status: "pending", executor: "subagent(general-purpose)" } },
+  }));
+  // no filter -> the cwd-less graph is included
+  const noFilter = JSON.parse(run(stateDir, ["active", "--json"]).stdout);
+  assert.deepEqual(noFilter, [{ graphId: "0000000000000000", incomplete: 1, ready: 1, running: 0 }]);
+  // with a --cwd filter -> the cwd-less graph is excluded
+  assert.deepEqual(JSON.parse(run(stateDir, ["active", "--cwd", dir, "--json"]).stdout), []);
+});
+
+// Like run(), but pins (or clears, when session === null) CLAUDE_CODE_SESSION_ID
+// so the session stamp saveState writes is deterministic in a test.
+function runAs(stateDir, session, args, cwd) {
+  const env = { ...process.env, AMPLIFY_STATE_DIR: stateDir };
+  if (session === null) delete env.CLAUDE_CODE_SESSION_ID;
+  else env.CLAUDE_CODE_SESSION_ID = session;
+  const res = spawnSync("node", [ENGINE, ...args], {
+    encoding: "utf8", env, ...(cwd ? { cwd } : {}),
+  });
+  return { status: res.status, stdout: res.stdout || "", stderr: res.stderr || "" };
+}
+
+function initAs(stateDir, dir, session, graph) {
+  ensureDir(dir); ensureDir(stateDir);
+  const g = { variables: {}, plan_file: "/tmp/plan.md", ...graph };
+  const p = join(dir, `graph-${counter++}.json`);
+  writeFileSync(p, JSON.stringify(g));
+  return runAs(stateDir, session, ["init", "--graph", p], dir);
+}
+
+test("session: saveState stamps CLAUDE_CODE_SESSION_ID and refreshes it on later verbs", () => {
+  const { dir, stateDir } = ws();
+  const r = initAs(stateDir, dir, "sess-1", { version: 1, nodes: [task("A")] });
+  assert.equal(r.status, 0, r.stderr);
+  const id = r.stdout.trim();
+  const statePath = join(stateDir, `${id}.json`);
+  assert.equal(JSON.parse(readFileSync(statePath, "utf8")).session, "sess-1");
+  // a later mutating verb run under a DIFFERENT session (as after a compaction
+  // changes the live id) refreshes the stamp, so the hook keeps matching.
+  runAs(stateDir, "sess-2", ["dispatch", "--id", id, "--node", "A.impl"]);
+  assert.equal(JSON.parse(readFileSync(statePath, "utf8")).session, "sess-2");
+});
+
+test("active --session: two graphs sharing one cwd are scoped to their owning session", () => {
+  const { dir, stateDir } = ws();
+  const a = initAs(stateDir, dir, "sess-A", { version: 1, nodes: [task("A")] });
+  const b = initAs(stateDir, dir, "sess-B", { version: 1, nodes: [task("X")] });
+  const idA = a.stdout.trim(), idB = b.stdout.trim();
+  assert.notEqual(idA, idB);
+  const cwd = realpathSync(dir);
+  // both live in the same project dir; --session is what tells the windows apart
+  const onlyA = JSON.parse(run(stateDir, ["active", "--cwd", cwd, "--session", "sess-A", "--json"]).stdout);
+  assert.deepEqual(onlyA.map((g) => g.graphId), [idA]);
+  const onlyB = JSON.parse(run(stateDir, ["active", "--cwd", cwd, "--session", "sess-B", "--json"]).stdout);
+  assert.deepEqual(onlyB.map((g) => g.graphId), [idB]);
+  // no session matches the third one -> nothing (the safe, no-block default)
+  assert.deepEqual(JSON.parse(run(stateDir, ["active", "--cwd", cwd, "--session", "sess-C", "--json"]).stdout), []);
+});
+
+test("active --session: a graph with no stored session is excluded under a --session filter", () => {
+  const { dir, stateDir } = ws();
+  const r = initAs(stateDir, dir, null, { version: 1, nodes: [task("A")] });
+  const id = r.stdout.trim();
+  const state = JSON.parse(readFileSync(join(stateDir, `${id}.json`), "utf8"));
+  assert.equal(state.session, undefined, "no session is stamped when the env var is absent");
+  // excluded under a --session filter ...
+  assert.deepEqual(JSON.parse(run(stateDir, ["active", "--session", "sess-X", "--json"]).stdout), []);
+  // ... but still listed with no filter (back-compat)
+  assert.deepEqual(
+    JSON.parse(run(stateDir, ["active", "--json"]).stdout).map((g) => g.graphId),
+    [id],
+  );
 });
 
 test("flow: complete .impl readies .resolve; resolve registers audits; audits done readies successor SET", () => {

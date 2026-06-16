@@ -77,7 +77,7 @@ The command prints a `GRAPH_ID` on stdout. Capture it; use it as `--id <GRAPH_ID
 
 Dispatch every subagent in the **background** and react to each completion. Keep going until **nothing is in flight** and `report` shows no `INCOMPLETE` task — *not* merely until `ready` is momentarily empty (an exclusive subnode may be deferred while its resource is busy).
 
-Every `<task-notification>` from a subagent you dispatched is a **resume signal** for this loop, not a stop — and each subagent's response ends with an orchestrator-continuation footer that names the exact `task.mjs` commands to run next (with this run's GRAPH_ID already filled in). On any completion you **MUST** apply the result, run `ready`, dispatch what it unblocks, and continue; you **MUST NOT** end your turn while `report` shows any `INCOMPLETE` task or any subagent is still in flight.
+Every `<task-notification>` from a subagent you dispatched is a **resume signal** for this loop, not a stop — the `SubagentStop` and `Stop` hooks now enforce loop continuation deterministically. On any completion you **MUST** apply the result, run `ready`, dispatch what it unblocks, and continue; you **MUST NOT** end your turn while `report` shows any `INCOMPLETE` task or any subagent is still in flight.
 
 1. **Get the ready set:**
 
@@ -126,10 +126,16 @@ Every `<task-notification>` from a subagent you dispatched is a **resume signal*
          ```
 
          </AUDIT_RESOLVER_RESPONSE_EXAMPLE>
-   3. **Spawn it in the background** with the Agent tool (`subagent_type: <name>`, `run_in_background: true`), passing `model` plus the spawning prompt.
+   3. **Spawn it in the background** with the Agent tool (`subagent_type: <name>`, `run_in_background: true`), passing `model` plus the spawning prompt. Immediately after spawning, mark the subnode as dispatched:
+
+      ```bash
+      node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" dispatch --id <GRAPH_ID> --node <SUBNODE>
+      ```
+
       1. You **MUST** spawn in the background.
-      2. You **MUST** dispatch all ready, non-deferred subnodes.
-      3. You **MUST NOT** spawn in the foreground.
+      2. You **MUST** call `dispatch` immediately after spawning each subnode.
+      3. You **MUST** dispatch all ready, non-deferred subnodes.
+      4. You **MUST NOT** spawn in the foreground.
 
 3. **On each background completion, apply it and dispatch what it unblocks:**
 

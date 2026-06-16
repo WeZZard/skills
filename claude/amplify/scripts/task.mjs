@@ -18,6 +18,9 @@
 // Verbs:
 //   init     --graph <file> [--salt <text>]            -> prints GRAPH_ID
 //   ready    --id <GRAPH_ID>                            -> prints ready subnodes
+//   dispatch --id <GRAPH_ID> --node <subnode-id>        -> marks a pending subnode running
+//   active   [--cwd <dir>] [--session <id>] [--json]    -> lists still-active graphs (global);
+//                                                          --cwd/--session scope to a project/chat window
 //   complete --id <GRAPH_ID> --node <subnode-id>        -> prints newly-ready subnodes
 //   resolve  --id <GRAPH_ID> --node <T>.resolve --panel <json>
 //                                                       -> registers auditors, prints ready
@@ -37,7 +40,7 @@
 // No external dependencies (Node built-ins only).
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -110,6 +113,15 @@ function loadState(graphId) {
 }
 
 function saveState(state) {
+  // Stamp the live Claude Code session id on every persist so the loop-resume
+  // hook can scope `active` to THIS chat window — preventing cross-talk between
+  // multiple windows that share one project dir (cwd alone cannot tell them
+  // apart). Only the orchestrator runs the mutating verbs that reach here, so
+  // the stamp is the session that owns the run; refreshing it on every verb lets
+  // it self-heal after a compaction changes the session id. Absent env (tests,
+  // CI, non-Claude-Code callers) leaves any existing stamp untouched.
+  const sid = process.env.CLAUDE_CODE_SESSION_ID;
+  if (sid) state.session = sid;
   const dir = stateDir();
   mkdirSync(dir, { recursive: true });
   writeFileSync(statePath(state.graphId), JSON.stringify(state, null, 2));
@@ -378,7 +390,7 @@ function cmdInit(opts) {
     return;
   }
   const { tasks, subnodes } = explode(graph);
-  const state = { graphId, salt: salt || null, plan_file: graph.plan_file, variables: graph.variables || {}, tasks, subnodes };
+  const state = { graphId, salt: salt || null, cwd: process.cwd(), plan_file: graph.plan_file, variables: graph.variables || {}, tasks, subnodes };
   saveState(state);
   const taskCount = Object.keys(tasks).length;
   const subCount = Object.keys(subnodes).length;
@@ -389,6 +401,19 @@ function cmdInit(opts) {
 function cmdReady(opts) {
   const state = loadState(opts.id);
   emitReady(state);
+}
+
+// dispatch: the only pending -> running transition. Marks a ready subnode as
+// in-flight so `ready` (which only offers `pending`) won't re-offer it. The
+// settling verbs (complete/resolve/fail) move running -> done/failed.
+function cmdDispatch(opts) {
+  const state = loadState(opts.id);
+  const sub = requireSubnode(state, opts.node);
+  if (sub.status !== "pending") {
+    die(`dispatch expects a pending subnode, "${opts.node}" is "${sub.status}"`);
+  }
+  sub.status = "running";
+  saveState(state);
 }
 
 function cmdComplete(opts) {
@@ -664,6 +689,53 @@ function cmdStatus(opts) {
   }
 }
 
+// Global: scan stateDir for graph state files and report the ones still active
+// (>=1 INCOMPLETE task, using the SAME verdict as `report`), with per-graph
+// ready/running counts, optionally filtered to the cwd stamped at init. Lets a
+// hook detect an active execute-plan run (and a true stall: running == 0).
+function cmdActive(opts) {
+  const dir = stateDir();
+  const filterCwd = typeof opts.cwd === "string" ? opts.cwd : null;
+  const filterSession = typeof opts.session === "string" ? opts.session : null;
+  let files = [];
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith(".json"));
+  } catch {
+    files = []; // no stateDir yet -> nothing active
+  }
+  const out = [];
+  for (const file of files) {
+    let state;
+    try {
+      state = JSON.parse(readFileSync(join(dir, file), "utf8"));
+    } catch {
+      continue; // skip malformed/unreadable state files
+    }
+    if (!state || typeof state !== "object" || !state.tasks || !state.subnodes) continue;
+    // A graph without a stored cwd cannot match a --cwd filter (treat as non-matching).
+    if (filterCwd !== null && state.cwd !== filterCwd) continue;
+    // Same for --session: scope to the chat window that owns the run. A graph
+    // with no stored session (legacy/non-Claude-Code) cannot match a session
+    // filter, so it is excluded — the hook never blocks on it (safe by default).
+    if (filterSession !== null && state.session !== filterSession) continue;
+    const incomplete = Object.keys(state.tasks)
+      .filter((taskId) => taskVerdict(state, taskId) === "INCOMPLETE").length;
+    if (incomplete < 1) continue; // not active
+    const ready = readySet(state).length;
+    const running = Object.values(state.subnodes)
+      .filter((s) => s.status === "running").length;
+    out.push({ graphId: state.graphId, incomplete, ready, running });
+  }
+  out.sort((a, b) => (a.graphId < b.graphId ? -1 : a.graphId > b.graphId ? 1 : 0));
+  if (opts.json) {
+    process.stdout.write(JSON.stringify(out) + "\n");
+    return;
+  }
+  for (const g of out) {
+    process.stdout.write(`${g.graphId} incomplete=${g.incomplete} ready=${g.ready} running=${g.running}\n`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // entry
 // ---------------------------------------------------------------------------
@@ -673,6 +745,8 @@ function main() {
   switch (verb) {
     case "init": return cmdInit(opts);
     case "ready": return cmdReady(opts);
+    case "dispatch": return cmdDispatch(opts);
+    case "active": return cmdActive(opts);
     case "complete": return cmdComplete(opts);
     case "resolve": return cmdResolve(opts);
     case "fail": return cmdFail(opts);
@@ -686,7 +760,7 @@ function main() {
     case "report": return cmdReport(opts);
     case "status": return cmdStatus(opts);
     default:
-      die(`unknown verb "${verb || ""}". Use: init | ready | complete | resolve | fail | hold | release | holds | wait-free | resource-of | variables | resolve-context | report | status`);
+      die(`unknown verb "${verb || ""}". Use: init | ready | dispatch | active | complete | resolve | fail | hold | release | holds | wait-free | resource-of | variables | resolve-context | report | status`);
   }
 }
 
