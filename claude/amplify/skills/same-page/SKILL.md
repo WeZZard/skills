@@ -7,93 +7,64 @@ description: <EXTREMELY_IMPORTANT>You MUST use same-page when the user asks you 
 
 ## Overview
 
-Re-explain your previous message so the user fully understands your reasoning. Every run must still deliver **evidence with confidence** and **at least one ASCII visualization** — but the **shape of the explanation** (sections, order, density, diagram style) is **designed for that specific message**, not copied from a single template.
+Re-explain your previous message in plain language so the user fully understands it.
+Lead with a one-sentence answer, explain it through a concrete example the reader can
+picture, show one ASCII diagram, and end with a compact summary table. Keep the
+evidence-and-confidence discipline throughout, but express it **compactly and inline**
+inside the explanation — not as heavy per-claim blocks.
 
-**Announce at start:** "Let me make sure we're on the same page."
+**Announce at start:** the equivalent, in the user's language, of "Let me make sure we're on the same page."
 
-## The Process
+## The Standard Shape
 
-### Step 1: Identify What to Explain
+Use this shape every time. Trim it proportionally for a short prior message — a one-line
+point may need only the one-sentence version plus a small diagram — but do not invent a
+different structure.
 
-1. Look at your most recent substantive message (skip tool-call-only turns).
-2. Extract the **key claims** — decisions made, facts stated, recommendations given.
-3. If the message is long, group claims into themes (2-5 is typical; fewer if the thread is narrow).
+1. **Announce line** (above).
+2. **## The one-sentence version** — the single plainest sentence that captures the answer. No jargon.
+3. **## The plain story** (name the heading to fit the topic) — explain the reasoning in
+   plain, literal language, walking through a concrete example or scenario the reader can
+   picture. Prefer ordinary words over technical terms; when a technical term is
+   unavoidable, define it in the same sentence. State things directly. Carry the evidence
+   inline here (see **Evidence and Confidence**).
+4. **One ASCII diagram** — exactly one compact picture that reflects the real names and
+   flow from the thread or codebase, with a one-line caption stating what to take away.
+5. **## Bottom line** — a compact summary table (the cases, the options, the before/after —
+   whatever the message is about), then a one-line confidence note and any open question.
 
-### Step 2: Design the Explanation Format
+## Evidence and Confidence
 
-Before writing the body, decide **how** to present the explanation. Pick a layout that matches the prior message’s shape and the user’s likely mental model.
+Every material claim must be supportable, expressed compactly inside the story rather than
+as a separate block:
 
-**Consider:**
-
-| Signal in the prior message | Favor this shape |
-| ---------------------------- | ---------------- |
-| Single decision or one main thesis | One narrative arc → evidence blocks in reading order → one central diagram |
-| Several independent claims | Per-claim mini-sections, or a compact evidence table with a row per claim |
-| Comparison or trade-offs | Lead with a comparison table (ASCII) or side-by-side blocks, then supporting evidence |
-| Process, pipeline, or causality | Sequence or flow diagram first, then cite evidence per stage |
-| Heavy uncertainty or mixed confidence | Open with a confidence overview (e.g. bullet summary of High/Medium/Low counts), then drill down |
-| Debugging / root-cause narrative | Timeline or chain diagram, evidence ordered as discovery happened |
-
-**You MUST briefly state your format choice** (one or two sentences): what structure you picked and why it fits this message. Place it right after the announce line or as a short `## How I'll explain this` section.
-
-**Rules:**
-
-- Do not default to a rigid "### Claim / Evidence / Confidence" block for every run unless that block is the best fit.
-- You may combine patterns (e.g. a small table plus one flow diagram).
-- Keep total length proportional to complexity: a short prior message may need a short same-page reply.
-
-### Step 3: Evidence and Confidence
-
-Whatever layout you chose, each material claim must still be **supportable**. Express evidence and confidence in a way that fits your format:
-
-- **Minimum per claim:** identifiable claim, concrete evidence (file, line, URL, command output, doc quote), and a **High | Medium | Low** confidence with a one-line **basis** (why that level).
-- **Presentation options** (mix as needed):
-  - Repeated blocks (when claims are few and heavy).
-  - A markdown table: Claim | Evidence | Confidence | Basis.
-  - Inline badges after a sentence: `(High — verified in src/foo.ts)`.
-  - A "confidence map" section listing only Low/Medium items first, then details.
-
-**Confidence definitions (unchanged):**
-
-- **High** — Directly verified against source code, documentation, or runtime output.
-- **Medium** — Inferred from strong patterns, conventions, or partial evidence. Likely correct but not conclusively verified.
-- **Low** — Based on general knowledge, analogy, or assumptions. Could be wrong.
-
-**Rules:**
-
-- You MUST cite specific artifacts for substantive claims. No hand-waving.
+- Cite a concrete artifact for each substantive claim: `file:line`, command output, URL, or a doc quote.
+- Tag confidence inline where it matters: `(High — verified at loop-resume.mjs:96)`.
+- **High** — directly verified against source code, documentation, or runtime output.
+- **Medium** — inferred from strong patterns or partial evidence; likely but not proven.
+- **Low** — general knowledge, analogy, or assumption; could be wrong.
 - If you cannot find evidence for something you said before, say so and retract or downgrade it.
 - Re-read source files and re-run commands as needed. Do not rely on memory of earlier tool calls.
 
-### Step 4: Visual Explanation (ASCII)
+## The ASCII Diagram
 
-Include **at least one** ASCII art diagram (or a small set of related mini-diagrams if the format you designed needs it). **Choose the visual style dynamically:**
-
-| Prior message suggests | Visual style |
-| ---------------------- | ------------ |
-| Control or data flow | Flow / sequence (boxes and arrows) |
-| Nesting, ownership, taxonomy | Tree or indented hierarchy |
-| Layers, stacks, phases | Layer / stack blocks |
-| Options, criteria, scores | Comparison table or matrix |
-| State or transitions | State-style or before/after sketch |
-| Relationships without strict order | Simple labeled graph (nodes + edges) |
-
-**Rules:**
-
-- The diagram MUST reflect the actual discussion and names from the codebase or thread — not a generic stock picture.
-- Prefer one strong diagram over many weak ones unless parallelism truly requires multiples.
-- Keep each diagram compact (aim under ~20 lines, under ~72 columns) for terminal readability.
-- Add a one-line caption: what the reader should take away.
-
-### Step 5: Close
-
-End in a way that matches your format: a short synthesis, a checklist of caveats, or a "what to verify next" — whichever fits. Call out low-confidence areas and open questions explicitly.
+- Include **exactly one** (a small set only when true parallelism requires it).
+- It MUST use the real names and flow from the discussion — not a generic stock picture.
+- Keep it compact: aim under ~20 lines and ~72 columns for terminal readability.
+- Pick the form that fits the content:
+  - flow / sequence (boxes and arrows) for control or data flow;
+  - tree or indented hierarchy for nesting or ownership;
+  - layer / stack blocks for layers, stacks, or phases;
+  - before/after sketch for a state change;
+  - labeled graph (nodes + edges) for loose relationships.
 
 ## Key Principles
 
-- **Format follows content** — Design the explanation shape after you understand the prior message; do not force one template.
-- **Evidence over assertion** — Layout is flexible; evidentiary discipline is not.
-- **Honesty over completeness** — Prefer explicit Low confidence over implied certainty.
-- **Visual over verbal where it helps** — Use ASCII where a picture clarifies structure; skip decoration.
-- **Concise over exhaustive** — Match depth to stakes; avoid padding.
-- **Re-verify, don't recall** — Re-read files and re-run checks rather than trusting memory of earlier tool output.
+- **Plain language first** — ordinary words, short sentences, a concrete example; define any unavoidable jargon in place.
+- **Literal, not figurative** — state things directly; avoid metaphors and analogies when a literal explanation works.
+- **One-sentence answer up front** — the reader should get the gist from the very first line.
+- **Evidence over assertion** — compact inline citations and confidence, but never hand-waving.
+- **Honesty over completeness** — prefer an explicit Low confidence over implied certainty.
+- **One strong picture** — a single diagram that clarifies structure; skip decoration.
+- **Proportional length** — trim the shape for a short message; do not pad.
+- **Re-verify, don't recall** — re-read files and re-run checks rather than trusting memory of earlier tool output.
