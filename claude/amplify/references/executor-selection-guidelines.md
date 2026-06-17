@@ -105,7 +105,7 @@ You **MUST NOT** select `amplify:browser-use-playwright` unless the Playwright M
 
 You **MUST NOT** select `amplify:computer-use` unless computer-use capability is available in this session (`$AMPLIFY_COMPUTER_USE_AVAILABLE` == `true`).
 
-**When to Use:** the work is driving an on-screen GUI application, and `$AMPLIFY_CUA_AVAILABLE` is not `true`. When `$AMPLIFY_CUA_AVAILABLE` is `true`, prefer `amplify:computer-use-cua` over this agent for GUI/desktop work.
+**When to Use:** driving an on-screen GUI application whose target app is already installed in `/Applications` and `$AMPLIFY_CUA_AVAILABLE` is not `true` — built-in computer-use is macOS-only and can only reach an app installed in `/Applications` before the session started, so for any app not pre-installed in `/Applications` (or on non-macOS) prefer `amplify:computer-use-cua` instead.
 
 **Resource:** **Exclusive** — the engine serializes it to one at a time per host (prefer a concurrency-safe subagent when you need parallelism).
 
@@ -113,7 +113,7 @@ You **MUST NOT** select `amplify:computer-use` unless computer-use capability is
 
 You **MUST NOT** select `amplify:computer-use-cua` unless cua-driver is available in this session (`$AMPLIFY_CUA_AVAILABLE` == `true`).
 
-**When to Use:** the work is driving or observing an on-screen GUI/desktop application via the cua-driver MCP — cross-platform (macOS/Windows/Linux), with accessibility-tree targeting. When `$AMPLIFY_CUA_AVAILABLE` is `true`, prefer this agent over `amplify:computer-use` for GUI/desktop work; select `amplify:computer-use` only when cua is unavailable.
+**When to Use:** the work is driving or observing an on-screen GUI/desktop application via the cua-driver MCP — cross-platform (macOS/Windows/Linux), with accessibility-tree targeting. When `$AMPLIFY_CUA_AVAILABLE` is `true`, prefer this agent over `amplify:computer-use` for GUI/desktop work. It is the required choice on macOS whenever the target application is not installed in `/Applications` or was not installed before the session started, since `amplify:computer-use` cannot reach such an app; select `amplify:computer-use` only for an already-installed `/Applications` app when cua is unavailable.
 
 **Resource:** **Concurrency-safe** — cua-driver honors a No-Foreground Contract (it never changes the user's frontmost app) and can spawn isolated per-session app instances, so several can run in parallel.
 
