@@ -31,6 +31,7 @@ Transcribe the plan's task list into a JSON file — a **faithful 1:1 transcript
    "plan_file": "<absolute path to the session plan file>",
    "variables": {
       "$AMPLIFY_COMPUTER_USE_AVAILABLE": true|false,
+      "$AMPLIFY_CUA_AVAILABLE": true|false,
       "$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE": true|false,
       "$AMPLIFY_PLAYWRIGHT_AVAILABLE": true|false,
       "$AMPLIFY_CODEX_AVAILABLE": true|false,
@@ -56,6 +57,7 @@ Transcribe the plan's task list into a JSON file — a **faithful 1:1 transcript
 4. You **MUST** set `plan_file` to the absolute path of the session plan file.
 5. You **MUST** fill `variables` with the latest values of the following in-session variable as key-value pairs:
    - `$AMPLIFY_COMPUTER_USE_AVAILABLE`
+   - `$AMPLIFY_CUA_AVAILABLE`
    - `$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE`
    - `$AMPLIFY_PLAYWRIGHT_AVAILABLE`
    - `$AMPLIFY_CODEX_AVAILABLE`
