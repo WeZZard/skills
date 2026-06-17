@@ -7,58 +7,67 @@ description: <EXTREMELY_IMPORTANT>You MUST use brainstorming when the user wants
 
 ## Overview
 
-Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
+Help turn ideas into fully formed designs through natural collaborative dialogue, and progressively disclose the structure the plan will later formalize — so entering plan mode formalizes what you already discussed instead of introducing new structure.
 
-Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design in small sections (200-300 words), checking after each section whether it looks right so far.
+A good brainstorm diverges before it converges: expose a lot of choices first, let the purpose sharpen as the user reacts to those choices, then connect the surviving options into a coherent design. That convergence is exactly the design components and task graph that the amplify:write-plan skill will formalize — preview them as you go.
 
 ## The Process
 
-**Understanding the Idea:**
+The three stages below are not strictly sequential. Diverge runs first, seeded by the user's request; clarification is driven by the user reacting to the options you exposed — so Diverge and Clarify interleave. Connect follows once a direction is firm.
 
-- Check out the current project state first (files, docs, recent commits).
-- Recall the goal, purpose, design principles, and other relevant information from memories.
-- Ask questions one at a time to refine the idea with **AskUserQuestion** tool.
-- Prefer multiple choice questions when possible, but open-ended is fine too.
-- Only one question per message - if a topic needs more exploration, break it into multiple questions.
-- Focus on understanding: purpose, constraints, success criteria.
-- Explain your options by taking the user's strength and weakness into consideration.
+**Stage 1 — Diverge: expose choices (seeded by the request)**
 
-**Exploring Approaches:**
+- Seed divergence from context: check the current project state (files, docs, recent commits) and recall the goal, purpose, and design principles.
+- Then, starting from the user's request, name the candidate option space before narrowing: approaches, technologies, references, prior art.
+- Study each option in an isolated subagent to keep this conversation's context clean. You **MUST** spawn one `Explore` subagent per candidate option, in parallel (single message, multiple tool calls). Each subagent studies its one option — feasibility, trade-offs, references, risks — uses `WebSearch` to ground it in current fact, applies the Validating Information rules below, and returns a **compact brief**: what it is, pros and cons, key references, and the main risk. Keep only the briefs in this thread, not the raw research. Batch the subagents when there are many options.
+- Present the synthesized options as the way to draw out purpose, explaining each with the user's strengths and weaknesses in mind: "here are the possibilities — which pull on you, and why?" Concrete choices elicit purpose better than abstract questions.
+- Commit to nothing yet. This is the raw-materials stage.
 
-- Propose 2-3 different approaches with trade-offs
-- You **MUST** use `WebSearch` to gather ground truth for open source projects, platform specific technologies and research results.
-- Present options conversationally with your recommendation and reasoning
-- Lead with your recommended option and explain why
+**Stage 2 — Clarify: purpose sharpens (reaction-driven)**
 
-**Validating Information:**
+- Clarification is driven by the user reacting to and selecting among the Stage 1 options — so Stage 1 and Stage 2 interleave.
+- Ask questions one at a time with the **AskUserQuestion** tool; prefer multiple choice; one question per message.
+- Anchor questions to the options on the table (which option, and why) rather than asking abstractly.
+- As the direction emerges, pin down the user stories (as a [role], I want [capability], so that [benefit]), the constraints, and the success criteria. These anchor every design component downstream.
 
-- **Check Sources:** Verify the credibility of sources found via web search.
-- **Check Recency:** Explicitly check the date and time of information. Discard outdated info.
-- **Resolve Conflicts:** When findings contradict, reason about the conflict based on source authority and recency.
-- **No Hallucinations:** Do not jump to conclusions without validation. If uncertain, verify with a search or ask the user.
+**Validating Information** (applies throughout Diverge and Clarify)
 
-**Presenting the Design:**
+- **Check sources:** verify the credibility of sources found via web search.
+- **Check recency:** explicitly check the date of information; discard outdated info.
+- **Resolve conflicts:** when findings contradict, reason from source authority and recency.
+- **No hallucinations:** do not conclude without validation; if uncertain, verify with a search or ask the user.
 
-- Once you believe you understand what you're building, present the design
-- Break it into sections of 200-300 words
-- Ask after each section whether it looks right so far
-- Cover: architecture, components, data flow, error handling, testing
-- Be ready to go back and clarify if something doesn't make sense
+**Stage 3 — Connect: the convergence is the design**
 
-**Update the Plan and Review the Plan:**
+- Once a direction is firm, connect the surviving options to the clarified purpose and to each other. This convergence is the design.
+- Present it in small sections (200–300 words), checking after each whether it looks right so far.
+- Organize the design by the same components the plan uses, picking only the ones this work touches (MECE). Read `${CLAUDE_PLUGIN_ROOT}/references/plan-design-guidelines.md` for the component set and when each applies — for example User Story Map, User Stories, Architecture, Algorithm Design, Data Structure, User Interface, User Interaction, Business, and Verification.
+- As the design firms up, sketch the task shape too: the discrete steps and their dependencies. See `${CLAUDE_PLUGIN_ROOT}/references/task-design-guidelines.md` for the task-list and execution-graph shape the plan will use.
+
+**Fidelity boundary**
+
+- Here you **name** the relevant components and discuss them in prose, and you **sketch** the task steps and dependencies.
+- You **defer** to write-plan the rigorous artifacts: the box-drawing diagrams, the before/after comparison pairs, the formal execution diagram, and the traced acceptance criteria.
+- write-plan formalizes the components and task graph you already discussed — a formalization, not a new structure.
+
+**Update the Plan and Review the Plan**
 
 1. You **MUST** call **EnterPlanMode** to enter plan mode.
-2. Use the amplify:write-plan skill update the session plan file.
+2. Use the amplify:write-plan skill to update the session plan file.
 3. You **MUST** call **ExitPlanMode** for the human review.
 
 ## Key Principles
 
-- **One question at a time** - Don't overwhelm with multiple questions
-- **Multiple choice preferred** - Easier to answer than open-ended when possible
-- **YAGNI ruthlessly** - Remove unnecessary features from all designs
-- **Ground Truth First** - Use web search/fetch to validate facts; do not rely on stale internal knowledge
-- **Verify Validity** - Check source, date, and time of external info before using it
-- **Guardrails** - Never present assumptions as facts; validate before concluding
-- **Explore alternatives** - Always propose 2-3 approaches before settling
-- **Incremental validation** - Present design in sections, validate each
-- **Be flexible** - Go back and clarify when something doesn't make sense
+- **Diverge before converging** - Expose many choices before narrowing.
+- **Options as the elicitation device** - Draw out purpose by having the user react to concrete choices, not abstract questions.
+- **Study options in isolation** - Delegate each option's research to its own subagent and keep only the brief, so divergence keeps the context clean.
+- **Purpose anchors the design** - User stories, constraints, and success criteria anchor every component downstream.
+- **Progressive disclosure** - Preview the plan's design components and task graph as you converge, so plan mode formalizes rather than surprises.
+- **One question at a time** - Don't overwhelm with multiple questions.
+- **Multiple choice preferred** - Easier to answer than open-ended when possible.
+- **YAGNI ruthlessly** - Remove unnecessary features from all designs.
+- **Ground Truth First** - Use web search/fetch to validate facts; do not rely on stale internal knowledge.
+- **Verify Validity** - Check source, date, and time of external info before using it.
+- **Guardrails** - Never present assumptions as facts; validate before concluding.
+- **Incremental validation** - Present design in sections, validate each.
+- **Be flexible** - Go back and clarify when something doesn't make sense.

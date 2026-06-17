@@ -4,16 +4,20 @@
 [skills.brainstorming]
 display_name = "Brainstorming"
 tagline = "Turn ideas into fully formed designs through collaborative dialogue"
-short_summary = "Brainstorm and refine ideas into detailed designs with structured questioning and validation"
-full_summary = "This skill helps you transform rough ideas into complete, validated designs through natural conversation. It guides you through understanding your project context, exploring different approaches, and validating information before presenting a detailed design in manageable sections. The process ensures you get a well-thought-out solution that meets your specific needs and constraints."
+short_summary = "Diverge through many options, clarify your purpose by reacting to them, then connect the survivors into a design that previews the plan"
+full_summary = "This skill turns rough ideas into complete designs through natural conversation. It diverges first — exposing many options and studying each in its own subagent to keep the conversation clean — then lets your purpose sharpen as you react to those options, then connects the survivors into a coherent design. As it converges it previews the same design components and task graph that the write-plan skill will formalize, so entering plan mode formalizes what you already discussed instead of introducing new structure."
 
 [[skills.brainstorming.highlights]]
 title = "One Question at a Time"
 description = "The skill asks questions one at a time to avoid overwhelming you and ensure clear understanding. This focused approach helps refine your idea gradually while keeping the conversation natural and productive."
 
 [[skills.brainstorming.highlights]]
-title = "Multiple Approaches Explored"
-description = "Before settling on a solution, the skill presents 2-3 different approaches with clear trade-offs. This gives you options to consider and helps you make informed decisions about the best path forward."
+title = "Diverge Before Converging"
+description = "The skill exposes many options before narrowing and studies each one in its own subagent, so deep research stays out of the conversation. It then draws out your purpose by having you react to concrete choices rather than answer abstract questions."
+
+[[skills.brainstorming.highlights]]
+title = "Progressive Disclosure"
+description = "As the design converges, the skill previews the same design components and task graph the plan will use. By the time you enter plan mode, write-plan formalizes what you already discussed instead of surprising you with new structure."
 
 [[skills.brainstorming.highlights]]
 title = "Information Validation"
@@ -28,24 +32,19 @@ title = "Project Context Aware"
 description = "The skill starts by understanding your current project state, including files, documentation, and recent changes. This context-aware approach ensures solutions fit seamlessly into your existing work."
 
 [[skills.brainstorming.workflow]]
-name = "Understand Context"
-description = "Review your current project state and ask focused questions to understand your idea."
-details = "The skill examines your project files, docs, and recent commits to understand where you're starting from. It then asks targeted questions one at a time to clarify your goals, constraints, and success criteria."
+name = "Diverge — Expose Choices"
+description = "Surface many candidate options and study each one in isolation."
+details = "The skill grounds itself in your project (files, docs, recent commits), then names many candidate options and spawns a subagent per option to gather web-grounded, validated facts and return a compact brief. Only the briefs come back to the conversation, so divergence stays clean."
 
 [[skills.brainstorming.workflow]]
-name = "Explore Approaches"
-description = "Propose 2-3 different solutions with clear trade-offs and recommendations."
-details = "Based on your requirements, the skill presents multiple approaches with their pros and cons. It uses web search when needed to gather current information about technologies and provides a clear recommendation with reasoning."
+name = "Clarify — Sharpen Purpose"
+description = "Sharpen what you want by reacting to the options on the table."
+details = "The skill asks focused questions one at a time, anchored to the options it surfaced, and pins down your user stories, constraints, and success criteria. Diverge and Clarify interleave: your reactions reshape which options stay in play."
 
 [[skills.brainstorming.workflow]]
-name = "Validate Information"
-description = "Verify all external information for credibility, recency, and accuracy."
-details = "Before using any information, the skill checks source credibility, dates, and resolves conflicting information. This ensures you're working with reliable, up-to-date facts rather than assumptions or outdated knowledge."
-
-[[skills.brainstorming.workflow]]
-name = "Present Design"
-description = "Break the complete design into manageable sections and validate each one."
-details = "The skill presents the final design in small sections covering architecture, components, data flow, and more. After each 200-300 word section, it asks for your feedback to ensure everything aligns with your vision before continuing."
+name = "Connect — Build the Design"
+description = "Connect the surviving options into a design, validated section by section."
+details = "The skill connects the survivors into a coherent design, presented in 200-300 word sections you validate one at a time. It organizes the design by the same components the plan will use and sketches the tasks and their dependencies, previewing what write-plan formalizes."
 
 [[skills.brainstorming.workflow]]
 name = "Update Plan"
