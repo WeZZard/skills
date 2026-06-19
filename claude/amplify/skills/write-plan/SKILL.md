@@ -19,7 +19,7 @@ You **MUST** set **$SESSION_PLAN_FILE** to the Claude Code session plan file men
 
 1. You **MUST** set **$AMPLIFY_COMPUTER_USE_AVAILABLE** to `true` if all of the following conditions were met:
     1. The host machine is running macOS.
-    2. The comptuer-use MCP is available
+    2. The computer-use MCP is available
     3. Claude Code version is above v2.1.85+
     4. Claude Code is running in an INTERACTIVE session — never headless/CI.
 2. You **MUST** set **$AMPLIFY_COMPUTER_USE_AVAILABLE** to `false` if any of the previous conditions were not met.
@@ -42,8 +42,8 @@ You **MUST** set **$SESSION_PLAN_FILE** to the Claude Code session plan file men
 1. You **MUST** set **$AMPLIFY_CODEX_AVAILABLE** to `true` if the Codex CLI is checked available, else set `false`.
 2. You **MUST** set **$AMPLIFY_KIMI_AVAILABLE** to `true` if the Kimi CLI is checked available, else set `false`.
     <EXAMPLE_COMMANDS>
-    macOS/Unix/Linux: `command -v codex`
-    macOS/Unix/Linux: `command -v kimi`
+    macOS/BSD/UNIX/Linux: `command -v codex`
+    macOS/BSD/UNIX/Linux: `command -v kimi`
     </EXAMPLE_COMMANDS>
 3. You **MUST** set `$AMPLIFY_USE_CODEX_APPROVED` to `false` when `$AMPLIFY_CODEX_AVAILABLE` is `false` and `$AMPLIFY_USE_CODEX_APPROVED` happened to be `true`. You **MUST** prompt user about this change (Codex is no longer available in this session since the executable cannot be found.) in the assistant message.
 4. You **MUST** set `$AMPLIFY_USE_KIMI_APPROVED` to `false` when `$AMPLIFY_KIMI_AVAILABLE` is `false` and `$AMPLIFY_USE_KIMI_APPROVED` happened to be `true`. You **MUST** prompt user about this change (Kimi is no longer available in this session since the executable cannot be found.) in the assistant message.
@@ -56,29 +56,41 @@ Assume the user has zero context for the codebase and questionable taste. Docume
 
 1. You **MUST** verify the assumptions the plan based on before writing the **$SESSION_PLAN_FILE** according to **Appendix B: Identify Assumptions**.
 2. You **MUST** spawn blind subagents to verify the open assumptions whenever possible.
-3. You **MUST** use **AskUserQuestion** tool to task for human verification for the open assumptions according to **Appendix C: Identify Human Checkpoints**.
+3. You **MUST** use **AskUserQuestion** tool to task for human verification for the open assumptions according to **Appendix C: Identify Human Checkpoints**, which classifies each checkpoint as silent or askable. For the askable gate categories (subjective, financial, security-sensitive), you **MUST** ask them through the **Agent Autonomy Request** section, which owns those gate decisions.
 
 ---
 
-## Approve External Agents
+## Agent Autonomy Request
 
-An external-agent executor runs a third-party CLI on your task.
+This section covers two kinds of autonomy decisions made once per session: which external-agent CLIs the agent may run on your task, and which gated-action categories (subjective, financial, security-sensitive) the agent may perform automatically instead of stopping for a human (see **Appendix C: Identify Human Checkpoints**).
+
+The five session flags governing these decisions are all tri-state: unset = never asked, `true` = agent proceeds automatically (human gate: No), `false` = keep a human gate (human gate: Yes):
+
+- `$AMPLIFY_USE_CODEX_APPROVED` — agent may invoke the Codex CLI.
+- `$AMPLIFY_USE_KIMI_APPROVED` — agent may invoke the Kimi CLI.
+- `$AMPLIFY_SUBJECTIVE_JUDGMENT_APPROVED` — agent may make subjective judgments (UX, aesthetics) automatically.
+- `$AMPLIFY_FINANCIAL_AUTHORIZATION_APPROVED` — agent may perform paid actions (money / credits) automatically.
+- `$AMPLIFY_SECURITY_SENSITIVE_ACTION_APPROVED` — agent may perform security-sensitive actions automatically.
 
 **MUST:**
 
-1. You **MUST** request approval for external agents when `$AMPLIFY_USE_CODEX_APPROVED` or `$AMPLIFY_USE_KIMI_APPROVED` is not set.
+1. You **MUST** ask all applicable rows whose flag is unset in one batched **AskUserQuestion** call.
 
 **MUST NOT:**
 
-1. You **MUST NOT** request approval for external agents when `$AMPLIFY_USE_CODEX_APPROVED` or `$AMPLIFY_USE_KIMI_APPROVED` is set.
-2. You **MUST NOT** skip requesting approval for reasons other than the previous one.
+1. You **MUST NOT** re-ask any flag that is already set (applies to all five flags).
+2. You **MUST NOT** show the Subjective row unless any of the following conditions hold:
+    1. Subjective judgment in the plan can be delegated to computer-use and the computer-use is available (`$AMPLIFY_COMPUTER_USE_AVAILABLE` or `$AMPLIFY_CUA_AVAILABLE` is `true`).
+    2. Subjective judgment in the plan can be delegated to browser-use and the browser-use is available (`$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE` or `$AMPLIFY_PLAYWRIGHT_AVAILABLE` is `true`).
 
 **Process:**
 
-1. You **MUST** ask the user a multiple-choice question with the **AskUserQuestion** tool for approval.
-2. You **MUST** record the set of approved external agents:
-    - `$AMPLIFY_USE_CODEX_APPROVED` = `true` iff using codex is approved.
-    - `$AMPLIFY_USE_KIMI_APPROVED` = `true` iff using kimi is approved.
+1. You **MUST** ask the user one batched **AskUserQuestion** call containing only the applicable rows whose flag is unset:
+    - **Q1 — External agents** (show if `$AMPLIFY_CODEX_AVAILABLE` or `$AMPLIFY_KIMI_AVAILABLE` is `true` and the corresponding approved flag is unset): "Which external agents may be used to implement this plan?" (multi-select: Codex / Kimi). Set the value (`true`/`false`) of `$AMPLIFY_USE_CODEX_APPROVED` and `$AMPLIFY_USE_KIMI_APPROVED` based on whether the corresponding option is selected.
+    - **Q2 — Subjective** (show only if: (1) subjective judgment can be delegated to computer-use and the computer-use is available OR it can be delegated to browser-use and the browser-use is available; (2) `$AMPLIFY_SUBJECTIVE_JUDGMENT_APPROVED` is unset): "May the agent make subjective judgments (UX, aesthetics) automatically?" — `(•) Keep a human gate  ( ) Let the agent judge automatically`. Approved → `$AMPLIFY_SUBJECTIVE_JUDGMENT_APPROVED` = `true`; dismissed or kept gate → `false`.
+    - **Q3 — Financial** (show if `$AMPLIFY_FINANCIAL_AUTHORIZATION_APPROVED` is unset): "May the agent perform paid actions (money / credits) automatically?" — `(•) Keep a human gate  ( ) Let the agent proceed automatically`. Approved → `$AMPLIFY_FINANCIAL_AUTHORIZATION_APPROVED` = `true`; dismissed or kept gate → `false`.
+    - **Q4 — Security** (show if `$AMPLIFY_SECURITY_SENSITIVE_ACTION_APPROVED` is unset): "May the agent perform security-sensitive actions automatically?" — `(•) Keep a human gate  ( ) Let the agent proceed automatically`. Approved → `$AMPLIFY_SECURITY_SENSITIVE_ACTION_APPROVED` = `true`; dismissed or kept gate → `false`.
+2. You **MUST** record each outcome after the call: approved → flag = `true` (human gate: No); dismissed or kept gate → flag = `false` (human gate: Yes).
 
 ---
 
@@ -111,7 +123,7 @@ You **MUST NOT** include HTML comment blocks (<!-- HTML comments -->) inside the
 
 ## Appendix A: Plan Format (Reference)
 
-````markdown
+```markdown
 # [Plan Title]
 
 > **For Claude:**
@@ -130,7 +142,7 @@ You **MUST NOT** include HTML comment blocks (<!-- HTML comments -->) inside the
 
 ## Design
 
-<!-- Freeform contents to articulate the design.
+<!-- Structured contents to articulate the design.
 
 **MUST:**
 
@@ -159,7 +171,7 @@ You **MUST NOT** invent contents beyond the guidelines in ${CLAUDE_PLUGIN_ROOT}/
 
 -->
 
-````
+```
 
 ---
 
@@ -177,22 +189,34 @@ You **MUST** identify which part of the plan requires human checkpoint with the 
 
 **Before applying these criteria, you **MUST** explore this computer to find available tools to determine actual capabilities.** Do not assume limitations — verify them.
 
-**No Computer Use** — Agent lacks computer use capability such that it cannot verify an assumption, built feature or fixed code.
+**No Browser-use** — Agent lacks browser-use capability such that it cannot continue the action.
 
-IS: **$AMPLIFY_COMPUTER_USE_AVAILABLE** is `true`
-IS NOT: **$AMPLIFY_COMPUTER_USE_AVAILABLE** is `false`
+IS: **$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE** is `false` and **$AMPLIFY_PLAYWRIGHT_AVAILABLE** is `false` (browser-use absent; the limitation applies).
+IS NOT: **$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE** is `true` or **$AMPLIFY_PLAYWRIGHT_AVAILABLE** is `true`.
+**Agent Autonomy Request:** Silent — never raise a question; the affected check silently falls back to a Manual / human gate.
+
+**No Computer-use** — Agent lacks computer-use capability such that it cannot continue the action.
+
+IS: **$AMPLIFY_COMPUTER_USE_AVAILABLE** is `false` and **$AMPLIFY_CUA_AVAILABLE** is `false` (computer-use absent; the limitation applies).
+IS NOT: **$AMPLIFY_COMPUTER_USE_AVAILABLE** is `true` or **$AMPLIFY_CUA_AVAILABLE** is `true`.
+**Agent Autonomy Request:** Silent — never raise a question; the affected check silently falls back to a Manual / human gate.
 
 **Subjective Judgment** — Requires human opinion or preference
 
 IS: User experience quality, design aesthetics, "feels right" assessments, intuitive vs confusing evaluation
 IS NOT: Test pass/fail results, performance benchmarks, code coverage metrics, linting results
+**Agent Autonomy Request:** Askable, but only when any of the following conditions hold:
+    1. Subjective judgment in the plan can be delegated to computer-use AND the computer-use is available (`$AMPLIFY_COMPUTER_USE_AVAILABLE` or `$AMPLIFY_CUA_AVAILABLE` is `true`)
+    2. Subjective judgment in the plan can be delegated to browser-use AND browser-use is available (`$AMPLIFY_CHROME_DEVTOOLS_AVAILABLE` or `$AMPLIFY_PLAYWRIGHT_AVAILABLE` is `true`); otherwise silent.
 
 **Financial/Credit Authorization** — Action costs money or consumes paid credits
 
 IS: Cloud service charges, paid API calls (e.g., OpenAI, AWS), purchasing resources, consuming metered quotas, subscription activations
 IS NOT: Free-tier usage, local compute resources, development sandboxes with no billing
+**Agent Autonomy Request:** Always askable.
 
 **Security Sensitive** - Affects real credentials or production access
 
 IS: Production credentials, live auth tokens, real user sessions, access control changes in production
 IS NOT: Test credentials, mock auth, local dev tokens, sandboxed security testing
+**Agent Autonomy Request:** Always askable.
