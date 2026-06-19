@@ -36,16 +36,10 @@
 
 You **MUST** use this template when the plan introduces or changes user-facing workflows that span multiple activities or steps.
 
+<USER_STORY_MAP_EXAMPLE>
 ```markdown
 ## User Story Map
 
-<!--
-You **MUST** illustrate the user story map before AND after the changes.
-You **MUST** NOT just illustrate the user story map before OR after the changes and illustrate another with text descriptions.
-
-The user story map arranges user activities along the horizontal axis (the user's journey) and story detail/priority along the vertical axis.
-
-<USER_STORY_MAP_EXAMPLE>
               ── user's journey, left → right ───────────────────────►
  BACKBONE   │ [Activity A]        │ [Activity B]      │ [Activity C]       │   high-level activities
  TASKS      │ [task A1] [task A2] │ [task B1]         │ [task C1] [task C2]│   steps under each activity
@@ -54,7 +48,13 @@ The user story map arranges user activities along the horizontal axis (the user'
    ▲ pri    │ [story A2.1]        │                   │ [story C2.1]       │
  ───────────┼─────────────────────┼───────────────────┼────────────────────┤
  Release 2  │ [story A1.2]        │ [story B1.2]      │ [story C2.2]       │   lower priority / later
+```
 </USER_STORY_MAP_EXAMPLE>
+
+You **MUST** illustrate the user story map before AND after the changes.
+You **MUST** NOT just illustrate the user story map before OR after the changes and illustrate another with text descriptions.
+
+The user story map arranges user activities along the horizontal axis (the user's journey) and story detail/priority along the vertical axis.
 
 You **MUST** illustrate with one of the following forms:
 
@@ -67,27 +67,25 @@ You **MUST NOT** illustrate with any of the following forms:
 - Unordered list
 - Markdown table
 - Dedicated text descriptions
--->
-```
 
 ### User Stories
 
 You **MUST** use this template when the plan introduces or changes discrete user-facing capabilities.
 
+<USER_STORY_EXAMPLE>
 ```markdown
 ## User Stories
 
-<!--
-You **MUST** list the user stories that are added, removed, or changed by this plan.
-
-Each user story **MUST** follow the format:
-
-<USER_STORY_EXAMPLE>
 1. As a [role 1], I want [capability 1],
     so that [benefit 1].
 2. As a [role 2], I want [capability 2], 
     so that [benefit 2].
+```
 </USER_STORY_EXAMPLE>
+
+You **MUST** list the user stories that are added, removed, or changed by this plan.
+
+Each user story **MUST** follow the format shown above.
 
 You **MUST** illustrate with one of the following forms:
 
@@ -99,8 +97,6 @@ You **MUST NOT** illustrate with any of the following forms:
 - Unordered list
 - Table
 - Dedicated text descriptions
--->
-```
 
 ### Business
 
@@ -195,6 +191,7 @@ The data structure describes the static shape of data: the fields and their type
 
 You **MUST** illustrate with one of the following forms:
 
+- Code examples
 - Diagrams drawn with box-drawing characters, for example an entity-and-field layout. DO NOT output Mermaid syntax.
 - Schema or type definition code blocks, for example a table schema or a type declaration.
 
@@ -266,13 +263,10 @@ You **MUST NOT** illustrate with any of the following forms:
 
 You **MUST** use this template when the plan involves code, configuration, or prompt additions, removals, and changes.
 
+<VERIFICATION_EXAMPLE>
 ```markdown
 ## Verification
-<!--
 
-You **MUST** present how to verify the plan in the following format.
-
-<VERIFICATION_EXAMPLE>
 ### 1. [Name of The Entity 1 to Verify]
 
 **Scope:** <verification_scope>
@@ -296,8 +290,10 @@ You **MUST** present how to verify the plan in the following format.
 ### Coverage Map
 
 <An optional coverage map when the test coverage infrastructure is ready in the project.>
-
+```
 </VERIFICATION_EXAMPLE>
+
+You **MUST** present how to verify the plan in the format shown above.
 
 **MUST:**
 
@@ -317,19 +313,16 @@ You **MUST** present how to verify the plan in the following format.
 2. You **MUST NOT** require **Reproducers** for non bug-fix plans.
 3. You **MUST NOT** treat a **Browser-use-enabled** or **Computer-use-enabled** case as a substitute for a required human gate.
 
-**Verification Scopes:*
+**Verification Scopes:**
 
-<VERIFICATION_SCOPES>
 - **Unit:** Prove a single unit or algorithm in isolation — the lowest design layer (Algorithm Design and individual components). Plan the production code and its unit tests together, with exact paths for both, covering happy-path and edge cases.
 - **Integration:** Prove the collaborations across the boundaries the Architecture defines (modules, processes, DB, network, etc.). Plan these when components are orchestrated together.
 - **System:** Prove the assembled product honors the Business model — its domain workflows and product-level rules — within one running deployment.
 - **End-to-end(E2E):** Prove a complete user story or journey on the User Story Map, exercising the full stack after wiring (or the stack-appropriate equivalent).
 - **Regression:** Prove a previously broken user story or business rule stays fixed. You **MUST** schedule a regression reproducer (failing test or minimal repro) before tasks that apply the fix; ordering must be explicit in **Tasks**.
-</VERIFICATION_SCOPES>
 
-**Test Case Categories:*
+**Test Case Categories:**
 
-<TEST_CASE_CATEGORIES>
 - **Reproducer:** A case that fails before the fix and passes after it, locking in the user story or business rule the defect violated. Applies only to bug-fix plans.
 - **Happy Path:** A case exercising a user story's main path with valid input — the primary route through the user story map — proving the promised benefit is delivered.
 - **Edge:** A case at a boundary the design defines: the limits of an algorithm or a business constraint (empty, minimum, maximum, off-by-one, concurrent, or otherwise extreme), where correct behavior is easy to lose.
@@ -337,11 +330,6 @@ You **MUST** present how to verify the plan in the following format.
 - **Browser-use-enabled:** A case an `amplify:browser-use-*` subagent performs by operating the running web target in a browser the way a user would and capturing snapshots at defined checkpoints, then judging them against the User Story Map / User Interface / User Interaction. Semi-automated: it reclaims part of what would otherwise be **Manual** effort, but **complements, not replaces,** a required human gate. The runtime audit-resolver turns these cases into **Behavioral Verification** auditors. Reusing the snapshots as regression baselines is a separate testing-pipeline concern, out of scope here.
 - **Computer-use-enabled:** A case an `amplify:computer-use` or `amplify:computer-use-cua` subagent performs by operating the GUI/desktop on screen the way a user would and capturing snapshots at defined checkpoints, then judging them against the User Story Map / User Interface / User Interaction. Semi-automated: it reclaims part of what would otherwise be **Manual** effort, but **complements, not replaces,** a required human gate. The runtime audit-resolver turns these cases into **Behavioral Verification** auditors. Reusing the snapshots as regression baselines is a separate testing-pipeline concern, out of scope here.
 - **Manual:** A case a human must verify because no subagent can reach it (`amplify:computer-use`, `amplify:computer-use-cua`, or `amplify:browser-use-*` unavailable or the path is unreachable) — typically the subjective or experiential aspects of the user story map — per the human-checkpoint criteria in `write-plan/SKILL.md`. Prefer a **Browser-use-enabled** or **Computer-use-enabled** case when a subagent can perform it.
-</TEST_CASE_CATEGORIES>
-
--->
-
-```
 
 ## Supplemenray Contents
 
@@ -374,23 +362,23 @@ You **MUST** NOT just illustrate the project structure before OR after the chang
 
 You **MUST** use this template when additions, removals, or changes are introduced to the tech stack.
 
+<TECH_STACK_EXAMPLE>
 ```markdown
 ## Tech Stack
 
-<!--
-You **MUST** illustrate the tech stack before AND after the changes.
-You **MUST** NOT just illustrate the tech stack before OR after the changes and illustrate another with text descriptions.
-
-You **MUST** present an item's sub-items (for example a category and the specific technologies and versions under it) as a nested ordered sub-list, one sub-item per line, and you **MUST NOT** compact them into a single line.
-
-<TECH_STACK_EXAMPLE>
 1. [category 1, e.g. Frontend]
     1. [technology + version, e.g. React 19]
     2. [technology + version, e.g. TypeScript 5.6]
 2. [category 2, e.g. Backend]
     1. [technology + version, e.g. Node.js 22]
     2. [technology + version, e.g. PostgreSQL 16]
+```
 </TECH_STACK_EXAMPLE>
+
+You **MUST** illustrate the tech stack before AND after the changes.
+You **MUST** NOT just illustrate the tech stack before OR after the changes and illustrate another with text descriptions.
+
+You **MUST** present an item's sub-items (for example a category and the specific technologies and versions under it) as a nested ordered sub-list, one sub-item per line, and you **MUST NOT** compact them into a single line.
 
 You **MUST** illustrate with one of the following forms:
 
@@ -403,7 +391,5 @@ You **MUST NOT** illustrate with any of the following forms:
 - Markdown table
 - Dedicated text descriptions
 - An item's sub-items compacted onto one line
--->
-```
 
 </PLAN_DESIGN_GUIDELINES>
