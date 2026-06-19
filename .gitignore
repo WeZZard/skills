@@ -66,3 +66,6 @@ website/.astro/
 .env.*.local
 website/_screenshots/
 website/screenshots/
+
+# Handoff (local agent handoff dir)
+.handoff/
