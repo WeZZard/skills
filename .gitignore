@@ -13,6 +13,11 @@ Icon?
 .zed/
 *.zed
 
+# Vim
+*.swp
+*.swo
+*.swn
+
 # Node
 node_modules/
 .npm/
