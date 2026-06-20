@@ -1,0 +1,192 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from app.claude_store import list_sessions, load_conversation
+from app.config import resolve_projects_dir
+from tests.conftest import assistant_tool, tool_result, user_event, write_jsonl
+
+
+def test_projects_dir_env_precedence(claude_projects: Path):
+    assert resolve_projects_dir() == claude_projects
+
+
+def test_lists_sessions(populated_projects: Path):
+    sessions = list_sessions()
+    assert len(sessions) == 1
+    assert sessions[0].title == "Debug Amplify run"
+    assert sessions[0].subagent_count == 2
+
+
+def test_loads_main_and_nested_subagents(populated_projects: Path):
+    session = list_sessions()[0]
+    export = load_conversation(session.id)
+
+    assert export is not None
+    assert export.summary.title == "Debug Amplify run"
+    assert len(export.subagent_transcripts) == 1
+    child = export.subagent_transcripts[0]
+    assert child.task_part_id == "toolu_task"
+    assert child.agent_type == "general"
+    assert child.parent_task_nav is not None
+    assert child.parent_task_nav.toolUseId == "toolu_task"
+    assert child.parent_result_nav is not None
+    assert child.parent_result_nav.toolUseId == "toolu_task"
+    assert child.relationship_basis == "explicit toolUseResult.agentId"
+    assert child.relationship_hint == "attached by explicit toolUseResult.agentId"
+    assert len(child.subagent_transcripts) == 1
+    assert child.subagent_transcripts[0].task_part_id == "toolu_nested"
+    assert child.subagent_transcripts[0].parent_task_nav is not None
+    assert child.subagent_transcripts[0].parent_task_nav.agentPath == "main/agent-a"
+    assert child.subagent_transcripts[0].messages[0].nav is not None
+    assert child.subagent_transcripts[0].messages[0].nav.agentPath == "main/agent-a/agent-b"
+
+
+def test_inferred_subagent_relationship_uses_tool_metadata(claude_projects: Path):
+    project = claude_projects / "-inferred"
+    session = "inferred-session"
+    tool_event = assistant_tool("a1", "u1", session, "toolu_inferred")
+    tool_event["message"]["content"][0]["metadata"] = {"agentId": "agent-c"}
+    write_jsonl(
+        project / f"{session}.jsonl",
+        [
+            user_event("u1", None, session, "Infer child"),
+            tool_event,
+            tool_result("r1", "a1", session, "toolu_inferred", "Done"),
+        ],
+    )
+    write_jsonl(
+        project / session / "subagents" / "agent-agent-c.jsonl",
+        [user_event("cu1", None, session, "Inferred child", agent_id="agent-c")],
+    )
+
+    session_ref = list_sessions()[0]
+    export = load_conversation(session_ref.id)
+
+    assert export is not None
+    assert len(export.subagent_transcripts) == 1
+    child = export.subagent_transcripts[0]
+    assert child.task_part_id == "toolu_inferred"
+    assert child.parent_result_nav is not None
+    assert child.relationship_basis == "inferred tool metadata agent id"
+    assert child.relationship_hint == "attached by inferred tool metadata agent id"
+
+
+def test_first_problem_points_to_nested_tool_result(populated_projects: Path):
+    session = list_sessions()[0]
+    export = load_conversation(session.id)
+
+    assert export is not None
+    assert export.problem_flags
+    assert any(flag.kind == "tool_result_error" for flag in export.problem_flags)
+    assert export.summary.first_problem
+
+
+def test_first_problem_uses_cross_scope_event_time(claude_projects: Path):
+    project = claude_projects / "-problem-order"
+    session = "problem-session"
+    write_jsonl(
+        project / f"{session}.jsonl",
+        [
+            user_event("u1", None, session, "Find first problem"),
+            assistant_tool("a1", "u1", session, "toolu_task"),
+            tool_result("r1", "a1", session, "toolu_task", "Done", agent_id="agent-a"),
+            {
+                "type": "attachment",
+                "uuid": "late-hook",
+                "timestamp": "2026-01-01T00:00:09.000Z",
+                "cwd": "/tmp/project",
+                "attachment": {
+                    "type": "hook",
+                    "hookEventName": "PostToolUse",
+                    "hookName": "late-hook",
+                    "exitCode": 1,
+                    "stderr": "late failure",
+                },
+            },
+        ],
+    )
+    write_jsonl(
+        project / session / "subagents" / "agent-agent-a.jsonl",
+        [
+            user_event("su1", None, session, "Subagent start", ts="2026-01-01T00:00:03.000Z", agent_id="agent-a"),
+            tool_result(
+                "sr1",
+                "su1",
+                session,
+                "toolu_nested",
+                "Error: nested failed",
+                is_error=True,
+                sidechain_agent="agent-a",
+            ),
+        ],
+    )
+
+    session_ref = list_sessions()[0]
+    export = load_conversation(session_ref.id)
+
+    assert export is not None
+    assert export.problem_flags[0].nav.agentPath == "main/agent-a"
+    assert export.problem_flags[0].nav.lineNumber == 2
+
+
+def test_navigation_addresses_include_file_and_line(populated_projects: Path):
+    session = list_sessions()[0]
+    export = load_conversation(session.id)
+
+    assert export is not None
+    part = export.messages[1].parts[0]
+    assert part.nav is not None
+    assert part.nav.jsonlFile.endswith("sess-main.jsonl")
+    assert part.nav.lineNumber == 2
+    assert part.nav.toolUseId == "toolu_task"
+
+
+def test_workflow_subagents_get_sibling_navigation(claude_projects: Path):
+    project = claude_projects / "-workflow-project"
+    session = "workflow-session"
+    write_jsonl(
+        project / f"{session}.jsonl",
+        [user_event("u1", None, session, "Workflow run")],
+    )
+    write_jsonl(
+        project / session / "subagents" / "workflows" / "run-1" / "agent-wf-a.jsonl",
+        [user_event("wa1", None, session, "Workflow A", agent_id="wf-a")],
+    )
+    write_jsonl(
+        project / session / "subagents" / "workflows" / "run-1" / "agent-wf-b.jsonl",
+        [user_event("wb1", None, session, "Workflow B", agent_id="wf-b")],
+    )
+
+    session_ref = list_sessions()[0]
+    export = load_conversation(session_ref.id)
+
+    assert export is not None
+    workflow_children = [child for child in export.subagent_transcripts if child.agent_type == "workflow-subagent"]
+    assert len(workflow_children) == 2
+    first, second = sorted(workflow_children, key=lambda child: child.messages[0].nav.agentPath)
+    assert first.next_sibling_nav is not None
+    assert first.next_sibling_nav.agentPath.endswith("/wf-b")
+    assert first.previous_sibling_nav is None
+    assert second.previous_sibling_nav is not None
+    assert second.previous_sibling_nav.agentPath.endswith("/wf-a")
+    assert second.next_sibling_nav is None
+
+
+def test_duplicate_session_ids_are_unique_across_projects(claude_projects: Path):
+    session = "duplicate-session"
+    first = claude_projects / "-first-project"
+    second = claude_projects / "-second-project"
+    write_jsonl(first / f"{session}.jsonl", [user_event("u1", None, session, "First project")])
+    write_jsonl(second / f"{session}.jsonl", [user_event("u2", None, session, "Second project")])
+
+    sessions = sorted(list_sessions(), key=lambda item: item.directory or "")
+
+    assert len(sessions) == 2
+    assert sessions[0].id != sessions[1].id
+    first_export = load_conversation(sessions[0].id)
+    second_export = load_conversation(sessions[1].id)
+    assert first_export is not None
+    assert second_export is not None
+    titles = {first_export.summary.title, second_export.summary.title}
+    assert titles == {"First project", "Second project"}

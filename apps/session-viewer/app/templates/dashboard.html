@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Code Sessions</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/css/base.css?v=20260620b" />
+  </head>
+  <body>
+    <main class="dashboard-shell">
+      <header class="app-header">
+        <div>
+          <h1>Claude Code Sessions</h1>
+          <p class="source-line">
+            Claude home: <code>{{ source.claude_home }}</code><br />
+            Projects: <code>{{ source.projects_dir }}</code>
+          </p>
+        </div>
+        <form class="session-search" method="get">
+          <input
+            name="q"
+            value="{{ query }}"
+            placeholder="Search title, directory, model, or id"
+            data-testid="session-search"
+          />
+          <input
+            name="directory"
+            value="{{ directory }}"
+            placeholder="Directory filter"
+            data-testid="directory-filter"
+          />
+          <button type="submit">Search</button>
+        </form>
+      </header>
+
+      {% if not source.exists or not source.readable %}
+        <section class="empty-state" data-testid="source-empty-state">
+          <h2>No readable Claude projects directory</h2>
+          <p>Resolved projects path: <code>{{ source.projects_dir }}</code></p>
+          <pre>uv run python -m app --claude-home /path/to/claude-home</pre>
+          <pre>uv run python -m app --projects-dir /path/to/projects</pre>
+        </section>
+      {% elif sessions %}
+        <section class="session-list" data-testid="session-list">
+          {% for session in sessions %}
+            <article class="session-row" data-testid="session-row" data-session-id="{{ session.id }}">
+              <a href="/conversation/{{ session.id }}">
+                <div class="session-main">
+                  <h2>{{ session.title or "Untitled session" }}</h2>
+                  <p>{{ session.directory or "Unknown directory" }}</p>
+                </div>
+                <div class="session-meta">
+                  <span>{{ session.model or "Unknown model" }}</span>
+                  <span>{{ session.message_count }} sampled events</span>
+                  <span>{{ session.subagent_count }} subagents</span>
+                  {% if session.first_problem %}
+                    <span class="problem-pill">Problem: {{ session.first_problem }}</span>
+                  {% endif %}
+                </div>
+              </a>
+            </article>
+          {% endfor %}
+        </section>
+      {% else %}
+        <section class="empty-state" data-testid="session-empty-state">
+          <h2>No sessions matched</h2>
+          <p>The source path is readable, but no root JSONL sessions matched the current filters.</p>
+        </section>
+      {% endif %}
+    </main>
+  </body>
+</html>

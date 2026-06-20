@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ conversation.summary.title }} | Claude Code Session Viewer</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/css/base.css?v=20260620-stable-repeat-tree-pin" />
+  </head>
+  <body>
+    <script id="conversation-data" type="application/json">{{ conversation_json | safe }}</script>
+    <div class="workbench-shell dual-workbench" data-testid="conversation-workbench">
+      <header class="command-bar" data-testid="command-bar">
+        <a class="back-link" href="/">Sessions</a>
+        <div class="session-heading">
+          <nav id="breadcrumb" class="breadcrumb" aria-label="Transcript breadcrumb" data-testid="breadcrumb"></nav>
+          <h1>{{ conversation.summary.title }}</h1>
+          <p class="source-line">{{ conversation.summary.directory or source.projects_dir }}</p>
+        </div>
+        <div class="command-actions" aria-label="Transcript actions">
+          <div class="layout-switch" role="group" aria-label="Conversation layout">
+            <button id="readerLayoutBtn" data-layout="reader" aria-pressed="true">Focus</button>
+            <button id="graphLayoutBtn" data-layout="graph" aria-pressed="false">Overview</button>
+          </div>
+          <button id="returnElementBtn" aria-label="Return to previous transcript element" disabled>Return</button>
+          <button id="forwardElementBtn" aria-label="Forward to returned transcript element" disabled>Forward</button>
+          <button id="copyLinkBtn">Copy link</button>
+        </div>
+        <div id="linkStatus" class="link-status" aria-live="polite"></div>
+      </header>
+
+      <aside class="left-rail reader-rail" aria-label="Transcript browser">
+        <section class="rail-section">
+          <h2>Session</h2>
+          <div id="sessionSummary" class="flow-summary" data-testid="flow-summary"></div>
+        </section>
+        <section class="rail-section nav-tabs-section">
+          <div class="left-nav-tabs" role="tablist" aria-label="Transcript navigation">
+            <button id="messageNavTab" role="tab" aria-selected="true" data-left-tab="messages">Message Navigation</button>
+            <button id="agentTreeTab" role="tab" aria-selected="false" data-left-tab="agents">Agent Tree</button>
+          </div>
+          <div id="messageNavPanel" class="left-nav-panel" role="tabpanel" aria-labelledby="messageNavTab">
+            <div id="agentSelector" class="agent-filter" data-testid="agent-filter" role="listbox" aria-label="Agent stream selector"></div>
+            <div id="openAgentChips" class="selected-agent-strip" data-testid="selected-agent-strip" aria-label="Selected and open agents"></div>
+            <div id="messageIndex" class="nav-list message-index" data-testid="message-index"></div>
+          </div>
+          <div id="agentTreePanel" class="left-nav-panel hidden" role="tabpanel" aria-labelledby="agentTreeTab">
+            <div id="agentTree" class="agent-tree" data-testid="subagent-tree" role="tree" aria-label="Agent invocation tree"></div>
+          </div>
+        </section>
+        <section id="graphLegendSection" class="rail-section hidden">
+          <h2>Legend</h2>
+          <div id="flowLegend" class="legend-list" data-testid="flow-legend"></div>
+        </section>
+      </aside>
+
+      <main id="transcript" class="transcript-surface" data-testid="transcript-root" aria-label="Transcript workspace">
+        <section id="readerLayout" class="reader-layout" data-testid="reader-layout" aria-label="Transcript focus view">
+          <div id="mainContent" class="reader-main-scroll">
+            <div id="readerMainStream" class="reader-main-stream"></div>
+          </div>
+          <div
+            id="agentStreamSeparator"
+            class="agent-stream-separator"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize main agent and subagent panels"
+            tabindex="0"
+            title="Drag to resize main agent and subagent panels"
+          ></div>
+          <div id="subagentPanelOverlay" class="subagent-panel-overlay" data-testid="subagent-panel-overlay" aria-label="Open subagent panels"></div>
+        </section>
+        <section id="graphLayout" class="graph-layout hidden" data-testid="execution-graph-layout" aria-label="Transcript overview">
+          <div id="graphViewport" class="execution-graph-viewport" data-testid="execution-graph">
+            <div id="graphSizer" class="execution-graph-sizer"></div>
+            <div id="graphLayer" class="execution-graph-layer">
+              <svg id="graphEdges" class="execution-graph-edges" aria-hidden="true"></svg>
+              <div id="graphLanes" class="execution-graph-lanes"></div>
+              <div id="graphCapsules" class="execution-graph-capsules"></div>
+            </div>
+            <div id="graphSelectionStatus" class="flow-selection-status" data-testid="selected-capsule-summary" aria-live="polite"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/static/js/conversation.js?v=20260620-stable-repeat-tree-pin"></script>
+  </body>
+</html>
