@@ -31,6 +31,7 @@ The Agent tool can set only `model` at spawn, not `tools`/`mcpServers`. Therefor
 
 1. You **MUST NOT** grant any auditor tools that modify files. The auditor verifies, it does not fix.
 2. You **MUST NOT** attempt to set tools or mcpServers at spawn — they are ignored.
+3. You **MUST NOT** grant or allow the `Agent` tool to any spawned subagent — every subagent is a leaf and **MUST NOT** spawn further subagents. Built-in executors (`general-purpose`/`explore`/`plan`) carry the `Agent` tool and cannot be tools-restricted at spawn, so the spawning prompt **MUST** restate the Agent-tool ban and the graph-engine ban.
 
 ## Context Injection
 
@@ -98,6 +99,9 @@ REUSE: <existing functions/utilities/patterns to prefer over new code>
 
 POSTURE: DRY, YAGNI; reuse over new code; TDD where the task is test-bearing
 (write a reproducer before the fix for bug tasks).
+
+You **MUST NOT** use the `Agent` tool and **MUST NOT** spawn subagents — you are a leaf in the execution tree.
+You **MUST NOT** run the graph engine (`task.mjs`).
 
 PRIOR AUDIT FINDINGS (resolve exactly these; do not regress passing criteria):
 <auditor FINDINGS — omit this block on the first attempt>

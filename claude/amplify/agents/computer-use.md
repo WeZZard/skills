@@ -88,5 +88,7 @@ You **MUST** return the failing/BLOCKED contract with `computer-use unavailable`
 - You **MUST** stay read-only on the repository: no Edit/Write, no repo-modifying Bash (APPENDIX I's install/uninstall steps are system-level operations outside the repository).
 - You **MUST** NOT expand beyond what the spawning prompt asks.
 - If the spawning prompt directs you to audit, you **MUST** stay blind: judge against evidence, not any claim about the work.
+- You **MUST NOT** use the `Agent` tool or spawn subagents — you are a leaf in the execution tree.
+- You **MUST NOT** run the graph engine (`${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs`); the only engine use any subagent may make is the read-only `resolve-context`/`variables` query, which this driver does not need.
 
 ---

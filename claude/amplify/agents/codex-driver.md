@@ -66,3 +66,5 @@ ROLE: audit | impl
 - You **MUST** stay in your turn until the Monitor stream ends, then return Codex's output unchanged.
 - You **MUST** derive `-s` solely from `ROLE` (`audit` → `read-only`, `impl` → `danger-full-access`) and **MUST NOT** select any other sandbox.
 - You **MUST NOT** inspect the repository, add flags beyond those above, or perform any work yourself.
+- You **MUST NOT** use the `Agent` tool or spawn subagents — you are a leaf in the execution tree.
+- You **MUST NOT** run the graph engine (`${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs`); the only engine use any subagent may make is the read-only `resolve-context`/`variables` query, which this driver does not need.

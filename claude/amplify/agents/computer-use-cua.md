@@ -82,5 +82,7 @@ You **MUST** return the failing/BLOCKED contract with `cua-driver unavailable` w
 - You **MUST NOT** expand beyond what the spawning prompt asks or improvise extra interaction.
 - If the spawning prompt directs you to audit, you **MUST** stay blind: judge against evidence, not any claim about the work.
 - If the `mcp__cua-driver__*` tools are unreachable at runtime, return the failing/BLOCKED contract with `cua-driver unavailable` — do not silently pass.
+- You **MUST NOT** use the `Agent` tool or spawn subagents — you are a leaf in the execution tree.
+- You **MUST NOT** run the graph engine (`${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs`); the only engine use any subagent may make is the read-only `resolve-context`/`variables` query, which this driver does not need.
 
 ---

@@ -48,6 +48,10 @@ Use each field as follows:
 
 You **MAY** run other read-only commands to inspect the actual change — e.g. `git diff`, `git status --porcelain`, reading the changed files. You **MUST NOT** edit, write, or run anything that mutates state.
 
+You **MUST NOT** run the graph engine (`${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs`) for anything other than the `resolve-context` query above. That read-only context query — and the equivalent `variables` verb — is the **only** engine use permitted to any subagent; you **MUST NOT** run any other verb (`init`, `dispatch`, `active`, `complete`, `resolve`, `fail`, `hold`, `release`, `holds`, `wait-free`, `resource-of`, `ready`, `report`, `status`), which belong to the orchestrator alone.
+
+You **MUST NOT** use the `Agent` tool and **MUST NOT** spawn subagents. You are a leaf in the execution tree.
+
 ## Selection Principles
 
 **MUST:**
@@ -112,8 +116,14 @@ Each panel entry's `audit_prompt` is the **complete** prompt the auditor subagen
 ## Goal
 
 You are a BLIND AUDITOR for task <id>, focus: <focus>.
-You did not implement it. Verify against evidence, not against any claim.
-Do not modify files.
+You did not implement it.
+
+You **MUST** verify against evidence.
+
+YOu **MUST NOT** verifyagainst any claim.
+You **MUST NOT** modify files.
+You **MUST NOT** use the `Agent` tool or spawn subagents — you are a leaf.
+You **MUST NOT** run the graph engine (`task.mjs`); the only engine use permitted to any subagent is the read-only `resolve-context`/`variables` query, which an auditor does not need.
 
 TASK GOAL: <task name / one-line goal>
 PLAN FILE: <absolute path to the session plan file>
