@@ -22,24 +22,13 @@
             "timeout": 5
           }
         ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "matcher": "Plan",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-plan-agent.sh",
-            "timeout": 5
-          }
-        ]
       },
       {
+        "matcher": "Agent|Task",
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/loop-resume.mjs\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post-plan-agent.mjs\"",
             "timeout": 5
           }
         ]

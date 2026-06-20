@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 // amplify:execute-plan loop-resume hook.
 //
-// Registered under SubagentStop and Stop. On every subagent completion it
-// re-primes the orchestrator's scheduling loop with deterministic context;
-// on a true stall (an active graph with running == 0) it blocks turn-end.
+// Registered under Stop only — fired for the MAIN agent (the execute-plan
+// orchestrator). A SubagentStop hook's additionalContext is delivered to the
+// subagent that stopped, not the parent orchestrator (per Claude Code's hooks
+// reference), so re-priming the scheduling loop must run on the main agent's
+// Stop. On a true stall (an active graph with running == 0) it blocks turn-end.
 //
 // Scoping: it passes the hook payload's session_id to `active --session` so it
 // only counts graphs owned by THIS chat window. Two windows sharing one project
-// dir no longer interfere — and when nothing matches (e.g. session id absent),
-// it stays silent / emits {} and never blocks, so the failure mode is safe.
+// dir no longer interfere — and when no graph is active (e.g. session id absent),
+// it emits nothing and never blocks, so the failure mode is safe.
 //
 // A hook must never break the session: on ANY error it exits 0 silently.
 
@@ -90,10 +92,7 @@ async function main() {
   }
 
   if (!Array.isArray(graphs) || graphs.length === 0) {
-    // No active execute-plan run for this project.
-    if (event === "Stop") {
-      console.log(JSON.stringify({}));
-    }
+    // No active execute-plan run for this project — stay silent (emit nothing).
     process.exit(0);
   }
 
@@ -118,17 +117,6 @@ async function main() {
     }
     process.exit(0);
   }
-
-  // SubagentStop
-  console.log(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "SubagentStop",
-        additionalContext: ctx,
-      },
-    })
-  );
-  process.exit(0);
 }
 
 main();
