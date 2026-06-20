@@ -56,18 +56,36 @@ The three stages below are not strictly sequential. Diverge runs first, seeded b
 2. Use the amplify:write-plan skill to update the session plan file.
 3. You **MUST** call **ExitPlanMode** for the human review.
 
-## Key Principles
+## Cooperation
 
-- **Diverge before converging** - Expose many choices before narrowing.
-- **Options as the elicitation device** - Draw out purpose by having the user react to concrete choices, not abstract questions.
-- **Study options in isolation** - Delegate each option's research to its own subagent and keep only the brief, so divergence keeps the context clean.
-- **Purpose anchors the design** - User stories, constraints, and success criteria anchor every component downstream.
-- **Progressive disclosure** - Preview the plan's design components and task graph as you converge, so plan mode formalizes rather than surprises.
-- **One question at a time** - Don't overwhelm with multiple questions.
-- **Multiple choice preferred** - Easier to answer than open-ended when possible.
-- **YAGNI ruthlessly** - Remove unnecessary features from all designs.
-- **Ground Truth First** - Use web search/fetch to validate facts; do not rely on stale internal knowledge.
-- **Verify Validity** - Check source, date, and time of external info before using it.
-- **Guardrails** - Never present assumptions as facts; validate before concluding.
-- **Incremental validation** - Present design in sections, validate each.
-- **Be flexible** - Go back and clarify when something doesn't make sense.
+While cooperating with the user, you:
+
+**MUST:**
+
+- **YAGNI ruthlessly** - You **MUST** remove unnecessary features from all designs.
+- **Ground Truth First** - You **MUST** use web search/fetch to validate facts; do not rely on stale internal knowledge.
+- **Verify Validity** - You **MUST** check source, date, and time of external info before using it.
+
+**MUST NOT:**
+
+- **Guardrails** - You **MUST NOT** present assumptions as facts; validate before concluding.
+
+## Communication
+
+When presenting questions and choices, you:
+
+**MUST:**
+
+- **Diverge before converging** - You **MUST** expose many choices before narrowing.
+- **Options as the elicitation device** - You **MUST** draw out purpose by having the user react to concrete choices, not abstract questions.
+- **Study options in isolation** - You **MUST** delegate each option's research to its own subagent and keep only the brief, so divergence keeps the context clean.
+- **Purpose anchors the design** - You **MUST** ensure user stories, constraints, and success criteria anchor every component downstream.
+- **Progressive disclosure** - You **MUST** preview the plan's design components and task graph as you converge, so plan mode formalizes rather than surprises.
+- **Multiple choice preferred** - You **MUST** prefer choices easier to answer than open-ended when possible.
+- **Incremental validation** - You **MUST** present design in sections, validate each.
+- **Be flexible** - You **MUST** go back and clarify when something doesn't make sense.
+  
+**MUST NOT:**
+
+- **One question at a time** - You **MUST NOT** overwhelm with multiple questions.
+
