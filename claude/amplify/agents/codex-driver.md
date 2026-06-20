@@ -56,15 +56,31 @@ ROLE: audit | impl
    - `-s` sets the sandbox mapped from `ROLE`: `read-only` (audit) lets Codex read and inspect but not modify files; `danger-full-access` (impl) runs with no sandbox restriction so a build can write and reach the network. `-c approval_policy=never` keeps it non-interactive. `--skip-git-repo-check` allows running outside a Git repository. `-C "$PWD"` sets the working root.
    - Cadence: every 60 s for the first ten minutes, every 300 s for the next ten minutes, every 600 s thereafter. The inner `sleep 15` makes Codex's exit visible within ~15 s.
    - The `STALL` and `FAILURE-SIGNATURE` markers are **report-only**: the script never kills Codex and never imposes a deadline.
-4. **Stay in your turn until the Monitor stream ends.** Each `[hb]` heartbeat re-invokes you; on a heartbeat you do **nothing** but continue waiting. You **MUST NOT** end your turn on a heartbeat. Proceed only when the Monitor reports `[done]` or its stream completes.
+4. **Wait through heartbeats; exit on completion.** The Monitor re-invokes you on every event. Classify each event:
+   - **Heartbeat (`[hb] …`):** do **nothing** and keep waiting. You **MUST NOT** end your turn on a heartbeat.
+   - **Completion** — the terminal `[done] …` line, or the Monitor's watch-end / stream-completion (its exit-code notification): the external agent has finished its job. You **MUST** stop waiting immediately and proceed to step 5. Do **not** keep waiting past a completion event, and do **not** re-arm or relaunch the Monitor.
 5. Run one Bash call, `cat "$out"`, and return its contents **verbatim** as your final message. Do not summarize, reformat, prepend the progress trace, or add commentary — the heartbeats were ephemeral. Codex's stderr was merged into `"$out"`, so a failed run's output is returned verbatim too.
 
 ## Rules
 
 - You **MUST** arm exactly one `Monitor` that owns exactly one `codex exec` invocation.
 - You **MUST** use `persistent: true`, impose no deadline, and **MUST NOT** kill Codex — the stall and failure markers are report-only.
-- You **MUST** stay in your turn until the Monitor stream ends, then return Codex's output unchanged.
+- You **MUST** stay in your turn through heartbeats, and you **MUST** exit as soon as the run completes: on the `[done]` line or the Monitor's watch-end/stream-completion, immediately `cat "$out"`, return Codex's output unchanged, and end your turn. A completion event is **not** a heartbeat — never keep waiting past it.
 - You **MUST** derive `-s` solely from `ROLE` (`audit` → `read-only`, `impl` → `danger-full-access`) and **MUST NOT** select any other sandbox.
 - You **MUST NOT** inspect the repository, add flags beyond those above, or perform any work yourself.
 - You **MUST NOT** use the `Agent` tool or spawn subagents — you are a leaf in the execution tree.
-- You **MUST NOT** run the graph engine (`${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs`); the only engine use any subagent may make is the read-only `resolve-context`/`variables` query, which this driver does not need.
+- You **MUST NOT** run the graph engine (`${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs`). The only engine call any subagent may make is the read-only `resolve-context` / `variables` query, which this driver does not need — so you have **no** permitted engine call. You **MUST NOT** run it with any subcommand; each below belongs to the orchestrator alone:
+- You **MUST NOT** run `task.mjs init`
+- You **MUST NOT** run `task.mjs ready`
+- You **MUST NOT** run `task.mjs dispatch`
+- You **MUST NOT** run `task.mjs active`
+- You **MUST NOT** run `task.mjs complete`
+- You **MUST NOT** run `task.mjs resolve`
+- You **MUST NOT** run `task.mjs fail`
+- You **MUST NOT** run `task.mjs hold`
+- You **MUST NOT** run `task.mjs release`
+- You **MUST NOT** run `task.mjs holds`
+- You **MUST NOT** run `task.mjs wait-free`
+- You **MUST NOT** run `task.mjs resource-of`
+- You **MUST NOT** run `task.mjs report`
+- You **MUST NOT** run `task.mjs status`

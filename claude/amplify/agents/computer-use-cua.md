@@ -83,6 +83,20 @@ You **MUST** return the failing/BLOCKED contract with `cua-driver unavailable` w
 - If the spawning prompt directs you to audit, you **MUST** stay blind: judge against evidence, not any claim about the work.
 - If the `mcp__cua-driver__*` tools are unreachable at runtime, return the failing/BLOCKED contract with `cua-driver unavailable` — do not silently pass.
 - You **MUST NOT** use the `Agent` tool or spawn subagents — you are a leaf in the execution tree.
-- You **MUST NOT** run the graph engine (`${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs`); the only engine use any subagent may make is the read-only `resolve-context`/`variables` query, which this driver does not need.
+- You **MUST NOT** run the graph engine (`${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs`). The only engine call any subagent may make is the read-only `resolve-context` / `variables` query, which this driver does not need — so you have **no** permitted engine call. You **MUST NOT** run it with any subcommand; each below belongs to the orchestrator alone:
+- You **MUST NOT** run `task.mjs init`
+- You **MUST NOT** run `task.mjs ready`
+- You **MUST NOT** run `task.mjs dispatch`
+- You **MUST NOT** run `task.mjs active`
+- You **MUST NOT** run `task.mjs complete`
+- You **MUST NOT** run `task.mjs resolve`
+- You **MUST NOT** run `task.mjs fail`
+- You **MUST NOT** run `task.mjs hold`
+- You **MUST NOT** run `task.mjs release`
+- You **MUST NOT** run `task.mjs holds`
+- You **MUST NOT** run `task.mjs wait-free`
+- You **MUST NOT** run `task.mjs resource-of`
+- You **MUST NOT** run `task.mjs report`
+- You **MUST NOT** run `task.mjs status`
 
 ---
