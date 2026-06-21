@@ -25,6 +25,7 @@ const state = {
   timelineBlockRenderCount: 0,
   timelineDetailRenderCount: 0,
   agentTreeDrawerOpen: false,
+  expandedAttachmentSections: new Set(),
 };
 
 const navByKey = new Map();
@@ -123,6 +124,9 @@ const TYPE_STYLE = {
 };
 
 const ATTACHMENT_PREVIEW_CHARS = 300;
+const ATTACHMENT_TEXT_COLLAPSE_CHARS = 900;
+const ATTACHMENT_TEXT_COLLAPSE_LINES = 12;
+const ATTACHMENT_LIST_SAMPLE_LIMIT = 8;
 
 function esc(value) {
   const div = document.createElement("div");
@@ -250,17 +254,6 @@ function hasValue(value) {
   return value !== null && value !== undefined && value !== "";
 }
 
-function attachmentMetaRows(state) {
-  return [
-    ["Type", state.attachmentType],
-    ["Hook event", state.hookEventName],
-    ["Hook", state.hookName],
-    ["Matcher", state.matcher],
-    ["Tool", state.toolName],
-    ["Exit code", state.exitCode],
-  ].filter(([, value]) => hasValue(value));
-}
-
 function previewState(value) {
   if (!hasValue(value)) return null;
   const valueText = String(value).trim();
@@ -310,6 +303,8 @@ function normalizedAttachmentState(part, rawEventKey) {
   if (attachment?.exitCode !== undefined && attachment?.exitCode !== null && !hasValue(state.exitCode)) {
     state.exitCode = attachment.exitCode;
   }
+  if (hasValue(attachment?.stdout) && !hasValue(state.stdout)) state.stdout = String(attachment.stdout).trim();
+  if (hasValue(attachment?.stderr) && !hasValue(state.stderr)) state.stderr = String(attachment.stderr).trim();
   const stdout = previewState(attachment?.stdout);
   const stderr = previewState(attachment?.stderr);
   if (stdout && !hasValue(state.stdoutPreview)) {
@@ -325,50 +320,541 @@ function normalizedAttachmentState(part, rawEventKey) {
   return state;
 }
 
+function rawAttachmentForKey(rawEventKey) {
+  const rawEvent = rawEventByAddress.get(rawEventKey);
+  const raw = rawEvent?.raw && typeof rawEvent.raw === "object" ? rawEvent.raw : null;
+  return raw?.attachment && typeof raw.attachment === "object" ? raw.attachment : null;
+}
+
+function humanAttachmentType(type) {
+  const special = {
+    auto_mode: "Auto Mode",
+    auto_mode_exit: "Auto Mode Exit",
+    command_permissions: "Command Permissions",
+    compact_file_reference: "Compact File Reference",
+    date_change: "Date Change",
+    deferred_tools_delta: "Deferred Tools Delta",
+    edited_text_file: "Edited Text File",
+    goal_status: "Goal Status",
+    hook_additional_context: "Hook Additional Context",
+    hook_blocking_error: "Hook Blocking Error",
+    hook_non_blocking_error: "Hook Non-Blocking Error",
+    hook_success: "Hook Success",
+    invoked_skills: "Invoked Skills",
+    mcp_instructions_delta: "MCP Instructions Delta",
+    nested_memory: "Nested Memory",
+    plan_file_reference: "Plan File Reference",
+    plan_mode: "Plan Mode",
+    plan_mode_exit: "Plan Mode Exit",
+    plan_mode_reentry: "Plan Mode Reentry",
+    queued_command: "Queued Command",
+    skill_listing: "Skill Listing",
+    task_reminder: "Task Reminder",
+    task_status: "Task Status",
+    todo_reminder: "Todo Reminder",
+    ultra_effort_enter: "Ultra Effort Enter",
+  };
+  if (special[type]) return special[type];
+  return String(type || "attachment")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function basename(path) {
+  return String(path || "").split(/[\\/]/).filter(Boolean).pop() || "";
+}
+
+function yesNo(value) {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return value;
+}
+
+function valueCount(value) {
+  return Number(value || 0).toLocaleString();
+}
+
+function plural(count, singular, pluralText = `${singular}s`) {
+  return `${valueCount(count)} ${Number(count || 0) === 1 ? singular : pluralText}`;
+}
+
+function attachmentItems(value) {
+  if (!hasValue(value)) return [];
+  if (Array.isArray(value)) return value.filter(hasValue).map((item) => text(item).trim()).filter(Boolean);
+  return [text(value).trim()].filter(Boolean);
+}
+
+function attachmentText(value) {
+  return attachmentItems(value).join("\n\n").trim();
+}
+
+function tryParseJsonText(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || !/^[{[]/.test(trimmed)) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function formatDurationMs(value) {
+  return hasValue(value) ? `${Number(value).toLocaleString()} ms` : "";
+}
+
+function formatChars(value) {
+  return `${valueCount(String(value || "").length)} chars`;
+}
+
+function compactAttachmentRows(rows) {
+  return rows.filter(([, value]) => hasValue(value));
+}
+
+function makeAttachmentDisplay(type, badge, title, summary) {
+  return {
+    type,
+    badge,
+    title,
+    summary,
+    rows: [],
+    sections: [],
+  };
+}
+
+function listAttachmentSection(fieldKey, label, items, options = {}) {
+  return {
+    kind: "list",
+    fieldKey,
+    label,
+    items: attachmentItems(items),
+    emptyText: options.emptyText || "None",
+    ordered: options.ordered === true,
+    limit: options.limit || ATTACHMENT_LIST_SAMPLE_LIMIT,
+  };
+}
+
+function textAttachmentSection(fieldKey, label, value, options = {}) {
+  const valueText = attachmentText(value);
+  if (!valueText && options.keepEmpty !== true) return null;
+  return {
+    kind: "text",
+    fieldKey,
+    label,
+    text: valueText,
+    emptyText: options.emptyText || "None",
+    countLabel: options.countLabel || (valueText ? formatChars(valueText) : "0 chars"),
+  };
+}
+
+function statusAttachmentSection(fieldKey, label, lines) {
+  const values = attachmentItems(lines);
+  if (!values.length) return null;
+  return { kind: "status", fieldKey, label, lines: values };
+}
+
+function addSection(display, section) {
+  if (section) display.sections.push(section);
+}
+
+function meaningfulLineDetails(lines, names) {
+  const lineItems = attachmentItems(lines);
+  const nameItems = attachmentItems(names);
+  if (!lineItems.length) return [];
+  if (lineItems.length !== nameItems.length) return lineItems;
+  return lineItems.some((item, index) => item !== nameItems[index]) ? lineItems : [];
+}
+
+function skillNamesFromContent(content) {
+  return attachmentText(content).split("\n").map((line) => {
+    const match = line.match(/^-\s*([^:]+):/);
+    return match ? match[1].trim() : "";
+  }).filter(Boolean);
+}
+
+function attachmentDisplayModel(part, rawEventKey) {
+  const state = normalizedAttachmentState(part, rawEventKey);
+  const attachment = rawAttachmentForKey(rawEventKey) || {};
+  const type = state.attachmentType || attachment.type || "unknown";
+  const display = makeAttachmentDisplay(type, humanAttachmentType(type).toUpperCase(), humanAttachmentType(type), "Attachment payload available in Raw");
+
+  if (type === "hook_success") {
+    const stdoutJson = tryParseJsonText(attachment.stdout);
+    const hookOutput = stdoutJson?.hookSpecificOutput && typeof stdoutJson.hookSpecificOutput === "object" ? stdoutJson.hookSpecificOutput : null;
+    const additionalContext = hookOutput?.additionalContext || "";
+    const hookEvent = hookOutput?.hookEventName || state.hookEventName || attachment.hookEvent;
+    display.badge = "HOOK SUCCESS";
+    display.title = state.hookName || hookEvent || "Hook success";
+    display.summary = additionalContext ? `${hookEvent || "Hook"} hook added execution context` : "Hook completed successfully";
+    display.rows = compactAttachmentRows([
+      ["Hook Event", hookEvent],
+      ["Hook Name", state.hookName],
+      ["Tool Use ID", attachment.toolUseID],
+      ["Command", attachment.command],
+      ["Exit Code", state.exitCode],
+      ["Duration", formatDurationMs(attachment.durationMs)],
+    ]);
+    addSection(display, textAttachmentSection("stdout.hookSpecificOutput.additionalContext", "Additional Context", additionalContext));
+  } else if (type === "hook_additional_context") {
+    const content = attachment.content || [];
+    display.badge = "HOOK CONTEXT";
+    display.title = state.hookEventName || state.hookName || "Hook context";
+    display.summary = "Additional context injected into the prompt";
+    display.rows = compactAttachmentRows([
+      ["Hook Event", state.hookEventName],
+      ["Hook Name", state.hookName],
+      ["Tool Use ID", attachment.toolUseID],
+      ["Content", `${plural(attachmentItems(content).length, "item")} / ${formatChars(attachmentText(content))}`],
+    ]);
+    addSection(display, textAttachmentSection("content", "Additional Context", content));
+  } else if (type === "deferred_tools_delta") {
+    const added = attachmentItems(attachment.addedNames);
+    const removed = attachmentItems(attachment.removedNames);
+    const readded = attachmentItems(attachment.readdedNames);
+    const pending = attachmentItems(attachment.pendingMcpServers);
+    display.badge = "TOOLS DELTA";
+    display.title = "Deferred tools changed";
+    display.summary = `${valueCount(added.length)} tools added, ${valueCount(removed.length)} removed, ${valueCount(readded.length)} re-added`;
+    display.rows = compactAttachmentRows([
+      ["Added Tools", added.length],
+      ["Removed Tools", removed.length],
+      ["Re-added Tools", readded.length],
+      ["Pending MCP Servers", pending.length],
+    ]);
+    addSection(display, listAttachmentSection("addedNames", "Added Tools", added));
+    addSection(display, listAttachmentSection("removedNames", "Removed Tools", removed));
+    addSection(display, listAttachmentSection("readdedNames", "Re-added Tools", readded));
+    addSection(display, listAttachmentSection("pendingMcpServers", "Pending MCP Servers", pending));
+    const details = meaningfulLineDetails(attachment.addedLines, added);
+    if (details.length) addSection(display, listAttachmentSection("addedLines", "Tool Details", details));
+  } else if (type === "agent_listing_delta") {
+    const added = attachmentItems(attachment.addedTypes);
+    const removed = attachmentItems(attachment.removedTypes);
+    display.badge = "AGENTS DELTA";
+    display.title = "Agent catalog changed";
+    display.summary = `${valueCount(added.length)} agents added, ${valueCount(removed.length)} removed`;
+    display.rows = compactAttachmentRows([
+      ["Added Agents", added.length],
+      ["Removed Agents", removed.length],
+      ["Initial Listing", yesNo(attachment.isInitial)],
+      ["Concurrency Note", attachment.showConcurrencyNote ? "Available" : ""],
+    ]);
+    addSection(display, listAttachmentSection("addedTypes", "Added Agents", added));
+    addSection(display, listAttachmentSection("removedTypes", "Removed Agents", removed));
+    addSection(display, listAttachmentSection("addedLines", "Agent Details", attachment.addedLines));
+    if (attachment.showConcurrencyNote) addSection(display, statusAttachmentSection("showConcurrencyNote", "Concurrency Note", ["Additional concurrency guidance is available in Raw"]));
+  } else if (type === "mcp_instructions_delta") {
+    const added = attachmentItems(attachment.addedNames);
+    const removed = attachmentItems(attachment.removedNames);
+    const blocks = attachmentItems(attachment.addedBlocks);
+    display.badge = "MCP INSTRUCTIONS";
+    display.title = "MCP instructions changed";
+    display.summary = `${plural(added.length, "MCP server")} added, ${valueCount(removed.length)} removed`;
+    display.rows = compactAttachmentRows([
+      ["Added Servers", added.length],
+      ["Removed Servers", removed.length],
+      ["Instruction Blocks", blocks.length],
+    ]);
+    addSection(display, listAttachmentSection("addedNames", "Added Servers", added));
+    addSection(display, listAttachmentSection("removedNames", "Removed Servers", removed));
+    addSection(display, listAttachmentSection("addedBlocks", "Instruction Blocks", blocks));
+  } else if (type === "skill_listing") {
+    const names = attachmentItems(attachment.names);
+    const fallbackNames = names.length ? names : skillNamesFromContent(attachment.content);
+    const skillCount = hasValue(attachment.skillCount) ? Number(attachment.skillCount) : fallbackNames.length;
+    display.badge = "SKILL LISTING";
+    display.title = "Available skills";
+    display.summary = `${valueCount(skillCount)} skills listed`;
+    display.rows = compactAttachmentRows([
+      ["Skill Count", skillCount],
+      ["Initial Listing", yesNo(attachment.isInitial)],
+      ["Skill Names", fallbackNames.length],
+      ["Descriptions", hasValue(attachment.content) ? formatChars(attachment.content) : ""],
+    ]);
+    addSection(display, listAttachmentSection("names", "Skill Names", fallbackNames));
+    addSection(display, textAttachmentSection("content", "Skill Descriptions", attachment.content));
+  } else if (type === "task_reminder" || type === "todo_reminder") {
+    const items = attachmentItems(attachment.content);
+    const itemCount = hasValue(attachment.itemCount) ? Number(attachment.itemCount) : items.length;
+    const todo = type === "todo_reminder";
+    display.badge = todo ? "TODO REMINDER" : "TASK REMINDER";
+    display.title = todo ? "Todo reminder" : "Task reminder";
+    display.summary = itemCount ? `${valueCount(itemCount)} active ${todo ? "todo" : "task"} reminders` : `No active ${todo ? "todo" : "task"} reminders`;
+    display.rows = compactAttachmentRows([[todo ? "Todo Items" : "Reminder Items", itemCount]]);
+    addSection(display, listAttachmentSection("content", todo ? "Todos" : "Reminders", items));
+  } else if (type === "queued_command") {
+    display.badge = "QUEUED COMMAND";
+    display.title = "Prompt queued";
+    display.summary = "A command-mode prompt was queued for the session";
+    display.rows = compactAttachmentRows([
+      ["Command Mode", attachment.commandMode],
+      ["Source UUID", attachment.source_uuid],
+      ["Origin", attachment.origin],
+    ]);
+    addSection(display, textAttachmentSection("prompt", "Queued Prompt", attachment.prompt));
+  } else if (type === "command_permissions") {
+    const allowed = attachmentItems(attachment.allowedTools);
+    display.badge = "COMMAND PERMISSIONS";
+    display.title = "Tool permissions updated";
+    display.summary = `${plural(allowed.length, "tool")} allowed`;
+    display.rows = compactAttachmentRows([["Allowed Tools", allowed.length]]);
+    addSection(display, listAttachmentSection("allowedTools", "Allowed Tools", allowed));
+  } else if (type === "edited_text_file") {
+    display.badge = "EDITED FILE";
+    display.title = basename(attachment.filename) || "Edited file";
+    display.summary = "Text file edit recorded";
+    display.rows = compactAttachmentRows([["File", attachment.filename]]);
+    addSection(display, textAttachmentSection("snippet", "Snippet", attachment.snippet));
+  } else if (type === "plan_mode") {
+    display.badge = "PLAN MODE";
+    display.title = "Entered plan mode";
+    display.summary = "Planning reminder is active";
+    display.rows = compactAttachmentRows([
+      ["Reminder Type", attachment.reminderType],
+      ["Subagent", yesNo(attachment.isSubAgent)],
+      ["Plan File", attachment.planFilePath],
+      ["Plan Exists", yesNo(attachment.planExists)],
+    ]);
+    if (attachment.planExists === false) addSection(display, statusAttachmentSection("planFileStatus", "Plan File Status", ["Plan file is referenced but does not exist on disk."]));
+  } else if (type === "plan_mode_exit") {
+    display.badge = "PLAN MODE EXIT";
+    display.title = "Exited plan mode";
+    display.summary = "Planning mode ended";
+    display.rows = compactAttachmentRows([
+      ["Plan File", attachment.planFilePath],
+      ["Plan Exists", yesNo(attachment.planExists)],
+    ]);
+    if (attachment.planExists === false) addSection(display, statusAttachmentSection("planFileStatus", "Plan File Status", ["Plan file is referenced but does not exist on disk."]));
+  } else if (type === "plan_mode_reentry") {
+    display.badge = "PLAN MODE REENTRY";
+    display.title = "Re-entered plan mode";
+    display.summary = "Existing plan workflow resumed";
+    display.rows = compactAttachmentRows([["Plan File", attachment.planFilePath]]);
+  } else if (type === "file") {
+    const file = attachment.content?.file && typeof attachment.content.file === "object" ? attachment.content.file : null;
+    const fileContent = file?.content || attachment.content;
+    display.badge = "FILE";
+    display.title = basename(attachment.filename || file?.filePath) || "File";
+    display.summary = "File content attached";
+    display.rows = compactAttachmentRows([
+      ["File", attachment.filename || file?.filePath],
+      ["Display Path", attachment.displayPath],
+      ["Content Type", attachment.content?.type],
+      ["Lines", file?.numLines || file?.totalLines],
+    ]);
+    addSection(display, textAttachmentSection("content.file.content", "File Content", fileContent, { countLabel: file?.numLines ? `${valueCount(file.numLines)} lines` : "" }));
+  } else if (type === "date_change") {
+    display.badge = "DATE CHANGE";
+    display.title = "Date changed";
+    display.summary = `Session date changed to ${attachment.newDate || "unknown date"}`;
+    display.rows = compactAttachmentRows([["New Date", attachment.newDate]]);
+  } else if (type === "nested_memory") {
+    const memory = attachment.content && typeof attachment.content === "object" ? attachment.content : {};
+    display.badge = "NESTED MEMORY";
+    display.title = basename(attachment.path || memory.path) || "Nested memory";
+    display.summary = "Project memory loaded";
+    display.rows = compactAttachmentRows([
+      ["Path", attachment.path || memory.path],
+      ["Display Path", attachment.displayPath],
+      ["Memory Type", memory.type],
+      ["Differs From Disk", yesNo(memory.contentDiffersFromDisk)],
+    ]);
+    addSection(display, textAttachmentSection("content.content", "Memory Content", memory.content));
+  } else if (type === "hook_non_blocking_error") {
+    display.badge = "HOOK WARNING";
+    display.title = state.hookName || "Hook warning";
+    display.summary = "Hook failed with non-blocking error";
+    display.rows = compactAttachmentRows([
+      ["Hook Event", state.hookEventName],
+      ["Hook Name", state.hookName],
+      ["Tool Use ID", attachment.toolUseID],
+      ["Command", attachment.command],
+      ["Exit Code", state.exitCode],
+      ["Duration", formatDurationMs(attachment.durationMs)],
+    ]);
+    addSection(display, textAttachmentSection("stderr", "Error Message", attachment.stderr));
+  } else if (type === "auto_mode" || type === "auto_mode_exit") {
+    const exit = type === "auto_mode_exit";
+    display.badge = exit ? "AUTO MODE EXIT" : "AUTO MODE";
+    display.title = exit ? "Auto mode disabled" : "Auto mode enabled";
+    display.summary = exit ? "Claude exited automatic execution mode" : "Claude entered automatic execution mode";
+  } else if (type === "plan_file_reference") {
+    display.badge = "PLAN FILE";
+    display.title = basename(attachment.planFilePath) || "Plan file";
+    display.summary = "Plan file referenced";
+    display.rows = compactAttachmentRows([
+      ["Plan File", attachment.planFilePath],
+      ["Content", hasValue(attachment.planContent) ? formatChars(attachment.planContent) : ""],
+    ]);
+    addSection(display, textAttachmentSection("planContent", "Plan Content", attachment.planContent));
+  } else if (type === "invoked_skills") {
+    const skills = Array.isArray(attachment.skills) ? attachment.skills : [];
+    display.badge = "INVOKED SKILLS";
+    display.title = "Skills loaded";
+    display.summary = `${plural(skills.length, "skill")} invoked`;
+    display.rows = compactAttachmentRows([["Skills", skills.length]]);
+    addSection(display, listAttachmentSection("skills.name", "Skill Names", skills.map((skill) => skill?.name || "")));
+    addSection(display, listAttachmentSection("skills.content", "Skill Contents", skills.map((skill) => `${skill?.name || "skill"} - ${skill?.content || ""}`)));
+  } else if (type === "compact_file_reference") {
+    display.badge = "FILE REFERENCE";
+    display.title = basename(attachment.filename) || "File reference";
+    display.summary = "File referenced";
+    display.rows = compactAttachmentRows([
+      ["File", attachment.filename],
+      ["Display Path", attachment.displayPath],
+    ]);
+  } else if (type === "task_status") {
+    display.badge = "TASK STATUS";
+    display.title = attachment.description || "Task status";
+    display.summary = `${attachment.taskType || "Task"} task ${attachment.status || "updated"}`;
+    display.rows = compactAttachmentRows([
+      ["Task ID", attachment.taskId],
+      ["Task Type", attachment.taskType],
+      ["Status", attachment.status],
+      ["Output File", attachment.outputFilePath],
+    ]);
+    addSection(display, textAttachmentSection("description", "Description", attachment.description));
+    if ("deltaSummary" in attachment) addSection(display, statusAttachmentSection("deltaSummary", "Delta Summary", [attachment.deltaSummary || "None"]));
+  } else if (type === "ultra_effort_enter") {
+    display.badge = "ULTRA EFFORT";
+    display.title = "Ultra effort enabled";
+    display.summary = "Full reminder instructions are active";
+    display.rows = compactAttachmentRows([["Reminder Type", attachment.reminderType]]);
+  } else if (type === "goal_status") {
+    display.badge = "GOAL STATUS";
+    display.title = attachment.met ? "Goal met" : "Goal not met";
+    display.summary = attachment.met ? "Goal condition has been satisfied" : "Goal condition still requires attention";
+    display.rows = compactAttachmentRows([
+      ["Met", yesNo(attachment.met)],
+      ["Sentinel", yesNo(attachment.sentinel)],
+      ["Iterations", attachment.iterations],
+      ["Duration", hasValue(attachment.durationMs) ? `${valueCount(attachment.durationMs)} ms` : ""],
+      ["Tokens", hasValue(attachment.tokens) ? valueCount(attachment.tokens) : ""],
+    ]);
+    addSection(display, textAttachmentSection("condition", "Goal Condition", attachment.condition));
+    addSection(display, textAttachmentSection("reason", "Reason", attachment.reason));
+  } else if (type === "hook_blocking_error") {
+    const blocking = attachment.blockingError && typeof attachment.blockingError === "object" ? attachment.blockingError : {};
+    display.badge = "HOOK BLOCKED";
+    display.title = state.hookName || "Hook blocked";
+    display.summary = "Hook blocked execution";
+    display.rows = compactAttachmentRows([
+      ["Hook Event", state.hookEventName],
+      ["Hook Name", state.hookName],
+      ["Tool Use ID", attachment.toolUseID],
+    ]);
+    addSection(display, textAttachmentSection("blockingError.blockingError", "Blocking Error", blocking.blockingError));
+    addSection(display, textAttachmentSection("blockingError.command", "Blocking Command", blocking.command));
+  } else {
+    display.badge = "ATTACHMENT";
+    display.title = humanAttachmentType(type);
+    display.summary = "Attachment payload available in Raw";
+    display.rows = compactAttachmentRows(Object.entries(attachment)
+      .filter(([key, value]) => key !== "type" && key !== "stdout" && key !== "stderr" && !Array.isArray(value) && (typeof value !== "object" || value === null))
+      .map(([key, value]) => [humanAttachmentType(key), yesNo(value)]));
+    Object.entries(attachment).forEach(([key, value]) => {
+      if (["type", "stdout", "stderr"].includes(key)) return;
+      if (Array.isArray(value)) addSection(display, listAttachmentSection(key, humanAttachmentType(key), value));
+      else if (typeof value === "object" && value !== null) addSection(display, textAttachmentSection(key, humanAttachmentType(key), value));
+      else if (typeof value === "string" && value.length > 120) addSection(display, textAttachmentSection(key, humanAttachmentType(key), value));
+    });
+  }
+
+  if (!display.sections.length && !display.rows.length) {
+    display.sections.push(statusAttachmentSection("status", "Status", [display.summary]));
+  }
+  return display;
+}
+
 function attachmentSummary(part, rawEventKey) {
-  const state = normalizedAttachmentState(part, rawEventKey);
-  const hookEventName = String(state.hookEventName || "");
-  const hookDetail = String(state.hookName || "");
-  const hookName = [
-    hookEventName && !(hookDetail && (hookDetail === hookEventName || hookDetail.startsWith(`${hookEventName}:`))) ? hookEventName : "",
-    hookDetail,
-  ].filter(Boolean).join("/");
-  const parts = [];
-  if (hookName) parts.push(`Hook: ${hookName}`);
-  else if (state.toolName) parts.push(`Attachment for ${state.toolName}`);
-  else parts.push(`Attachment event: ${state.attachmentType}`);
-  if (hasValue(state.exitCode)) parts.push(`exit ${state.exitCode}`);
-  if (hasValue(state.stderrPreview)) parts.push(`stderr${state.stderrTruncated ? " truncated" : ""}`);
-  if (hasValue(state.stdoutPreview)) parts.push(`stdout${state.stdoutTruncated ? " truncated" : ""}`);
-  return parts.join(" · ");
+  const display = attachmentDisplayModel(part, rawEventKey);
+  return [display.title, display.summary].filter(Boolean).join(" · ");
 }
 
-function renderAttachmentPreview(label, value, truncated, length) {
-  if (!hasValue(value)) return "";
-  const count = Number(length || String(value).length).toLocaleString();
-  return `
-    <section class="attachment-preview">
-      <header>
-        <strong>${esc(label)}</strong>
-        <span>${truncated ? "truncated" : "preview"} · ${esc(count)} chars</span>
-      </header>
-      <pre>${esc(value)}</pre>
-    </section>`;
+function attachmentSectionKey(rawEventKey, section) {
+  return `${rawEventKey || "attachment"}::${section.fieldKey || section.label}`;
 }
 
-function renderAttachmentPartBody(part, rawEventKey) {
-  const state = normalizedAttachmentState(part, rawEventKey);
-  const rows = attachmentMetaRows(state);
-  const previews = [
-    renderAttachmentPreview("stderr", state.stderrPreview, state.stderrTruncated, state.stderrLength),
-    renderAttachmentPreview("stdout", state.stdoutPreview, state.stdoutTruncated, state.stdoutLength),
-  ].join("");
+function textCollapse(value) {
+  const valueText = text(value);
+  const lines = valueText.split("\n");
+  const lineLimited = lines.slice(0, ATTACHMENT_TEXT_COLLAPSE_LINES).join("\n");
+  let collapsed = lineLimited.length > ATTACHMENT_TEXT_COLLAPSE_CHARS
+    ? lineLimited.slice(0, ATTACHMENT_TEXT_COLLAPSE_CHARS - 3)
+    : lineLimited;
+  const truncated = lines.length > ATTACHMENT_TEXT_COLLAPSE_LINES || valueText.length > collapsed.length;
+  if (truncated && !collapsed.endsWith("...")) collapsed = `${collapsed.replace(/\s+$/, "")}\n...`;
+  return { collapsed, truncated };
+}
+
+function renderAttachmentSection(section, rawEventKey) {
+  if (!section) return "";
+  const key = attachmentSectionKey(rawEventKey, section);
+  const expanded = state.expandedAttachmentSections.has(key);
+  const headerButton = (expandable) => expandable
+    ? `<button type="button" class="attachment-section-toggle" data-action="toggle-attachment-section" data-section-key="${escAttr(key)}" aria-expanded="${expanded ? "true" : "false"}">${expanded ? "Collapse" : "Expand"}</button>`
+    : "";
+  if (section.kind === "list") {
+    const items = (section.items || []).filter(Boolean);
+    const limit = section.limit || ATTACHMENT_LIST_SAMPLE_LIMIT;
+    const itemPreviewChars = 220;
+    const expandable = items.length > limit || items.some((item) => text(item).length > itemPreviewChars);
+    const shown = expanded || !expandable ? items : items.slice(0, limit);
+    const extra = Math.max(0, items.length - shown.length);
+    const tag = section.ordered ? "ol" : "ul";
+    const body = shown.length
+      ? `<${tag}>${shown.map((item) => `<li>${esc(expanded || !expandable ? item : compact(item, itemPreviewChars))}</li>`).join("")}${extra ? `<li class="attachment-more">+${extra.toLocaleString()} more</li>` : ""}</${tag}>`
+      : `<p>${esc(section.emptyText || "None")}</p>`;
+    return `
+      <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
+        <header><strong>${esc(section.label)}</strong><span>${items.length.toLocaleString()} items</span>${headerButton(expandable)}</header>
+        ${body}
+      </section>`;
+  }
+  if (section.kind === "text") {
+    const fullText = section.text || "";
+    const collapsed = textCollapse(fullText);
+    const expandable = collapsed.truncated;
+    const renderedText = expanded || !expandable ? fullText : collapsed.collapsed;
+    return `
+      <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
+        <header><strong>${esc(section.label)}</strong><span>${esc(section.countLabel || formatChars(fullText))}</span>${headerButton(expandable)}</header>
+        <pre>${esc(renderedText || section.emptyText || "None")}</pre>
+      </section>`;
+  }
+  if (section.kind === "status") {
+    return `
+      <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
+        <header><strong>${esc(section.label)}</strong></header>
+        <div class="attachment-status-list">${section.lines.map((line) => `<p>${esc(line)}</p>`).join("")}</div>
+      </section>`;
+  }
+  return "";
+}
+
+function renderAttachmentMetaRows(rows) {
+  if (!rows.length) return "";
   return `
-    <div class="attachment-event" data-raw-event-key="${escAttr(rawEventKey)}">
-      <p class="attachment-summary">${esc(attachmentSummary(part, rawEventKey))}</p>
-      ${rows.length ? `<dl class="attachment-meta">${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join("")}</dl>` : ""}
-      ${previews || '<p class="attachment-empty">No stdout or stderr captured.</p>'}
-      <div class="attachment-raw hidden" data-raw-payload data-raw-event-key="${escAttr(rawEventKey)}"></div>
+    <dl class="attachment-meta">
+      ${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(yesNo(value))}</dd>`).join("")}
+    </dl>`;
+}
+
+function renderAttachmentPartBody(part, rawEventKey, options = {}) {
+  const display = attachmentDisplayModel(part, rawEventKey);
+  const showRawPayload = options.showRawPayload !== false;
+  return `
+    <div class="attachment-event" data-raw-event-key="${escAttr(rawEventKey)}" data-attachment-type="${escAttr(display.type)}">
+      <div class="attachment-display-heading">
+        <span class="attachment-type-badge">${esc(display.badge)}</span>
+        <strong>${esc(display.title)}</strong>
+      </div>
+      <p class="attachment-summary">${esc(display.summary)}</p>
+      ${renderAttachmentMetaRows(display.rows)}
+      <div class="attachment-sections">
+        ${display.sections.map((section) => renderAttachmentSection(section, rawEventKey)).join("")}
+      </div>
+      ${showRawPayload ? `<div class="attachment-raw hidden" data-raw-payload data-raw-event-key="${escAttr(rawEventKey)}"></div>` : ""}
     </div>`;
 }
 
@@ -1529,9 +2015,8 @@ function updateTimelineDetailDockLayout(count = document.querySelectorAll("[data
 function renderTimelineDetailPart(part, partIndex) {
   const attachment = isAttachmentPart(part);
   const rawEventKey = eventAddress(part.nav);
-  const hasRawPayload = attachment && rawEventByAddress.has(rawEventKey);
   const body = attachment
-    ? renderAttachmentPartBody(part, rawEventKey)
+    ? renderAttachmentPartBody(part, rawEventKey, { showRawPayload: false })
     : `<pre>${esc(partText(part) || "(empty)")}</pre>`;
   return `
     <article class="timeline-detail-part ${escAttr(attachment ? "attachment" : typeStyle(part.type).className || part.type || "part")} ${part.state?.is_error ? "error" : ""}" data-raw-event-key="${escAttr(rawEventKey)}">
@@ -1539,10 +2024,91 @@ function renderTimelineDetailPart(part, partIndex) {
         <span>${partIndex + 1}</span>
         <strong>${esc(part.type === "tool" ? part.tool || "tool call" : attachment ? "attachment" : typeStyle(part.type).label || part.type || "part")}</strong>
         ${part.nav?.toolUseId ? `<code>${esc(part.nav.toolUseId)}</code>` : ""}
-        ${hasRawPayload ? `<div class="timeline-detail-part-actions"><button type="button" data-action="toggle-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}" aria-expanded="false">View payload</button><button type="button" data-action="copy-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}">Copy JSON</button></div>` : ""}
       </header>
       ${body}
     </article>`;
+}
+
+function timelineDetailProblemText(problem) {
+  return compact(`${problem.kind || "problem"}: ${problem.message || problem.reason || problem.id || ""}`, 180);
+}
+
+function timelineDetailCommonFailures(problems, parts) {
+  const failures = [];
+  problems.forEach((problem) => {
+    const haystack = `${problem.kind || ""} ${problem.message || ""} ${problem.reason || ""}`.toLowerCase();
+    if (/(error|failure|failed|interrupted|denied|not found|hook|parser)/.test(haystack)) {
+      failures.push(timelineDetailProblemText(problem));
+    }
+  });
+  parts.forEach((part) => {
+    if (part.state?.is_error) failures.push(`${typeStyle(part.type).label || part.type || "part"} reported an error`);
+  });
+  return [...new Set(failures)].filter(Boolean);
+}
+
+function timelineDetailHasError(problems, parts) {
+  return problems.some((problem) => problem.severity === "error") || timelineDetailCommonFailures(problems, parts).length > 0;
+}
+
+function timelineDetailRawEvents(displayCapsule, parts) {
+  const addresses = new Set();
+  if (displayCapsule.rawOnly && displayCapsule.rawEvent) addresses.add(eventAddress(displayCapsule.rawEvent.nav));
+  addresses.add(eventAddress(displayCapsule.nav));
+  parts.forEach((part) => addresses.add(eventAddress(part.nav)));
+  const seen = new Set();
+  return [...addresses]
+    .filter(Boolean)
+    .map((address) => rawEventByAddress.get(address))
+    .filter(Boolean)
+    .filter((event) => {
+      const key = eventAddress(event.nav);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function formatRawJsonlValue(value) {
+  if (typeof value === "string") {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
+  }
+  return text(value);
+}
+
+function renderTimelineDetailRaw(displayCapsule, parts) {
+  const rawEvents = timelineDetailRawEvents(displayCapsule, parts);
+  const fallback = displayCapsule.rawOnly ? displayCapsule.rawEvent?.raw : displayCapsule.message || displayCapsule.rawEvent?.raw;
+  const rawValue = rawEvents.length === 1
+    ? rawEvents[0].raw
+    : rawEvents.length
+      ? rawEvents.map((event) => event.raw)
+      : fallback;
+  return `<div class="timeline-detail-raw"><pre class="timeline-detail-raw-code"><code>${esc(formatRawJsonlValue(rawValue) || "(raw JSONL unavailable)")}</code></pre></div>`;
+}
+
+function pinIconSvg() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" class="timeline-detail-pin-icon"><path d="M12 17v5" /><path d="M5 17h14v-1.8a2 2 0 0 0-.6-1.4L16 11.4V6h1a1 1 0 0 0 1-1V2H6v3a1 1 0 0 0 1 1h1v5.4l-2.4 2.4A2 2 0 0 0 5 15.2Z" /></svg>`;
+}
+
+function renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems, parts) {
+  const commonFailures = timelineDetailCommonFailures(problems, parts);
+  const problemSummary = problems.length === 1 ? "1 problem" : problems.length ? `${problems.length} problems` : "None";
+  return `
+    <dl class="timeline-detail-meta">
+      <dt>Agent</dt><dd>${esc(timelineTrackLabel(track))}</dd>
+      <dt>Block</dt><dd>${displayCapsule.messageIndex + 1}</dd>
+      <dt>Time</dt><dd>${timestamp ? esc(timestamp) : "Unknown"}</dd>
+      <dt>Line</dt><dd>${displayCapsule.nav?.lineNumber || "Unknown"}</dd>
+      <dt>Path</dt><dd>${esc(displayCapsule.nav?.agentPath || "main")}</dd>
+      <dt>Problems</dt><dd>${esc(problemSummary)}</dd>
+      <dt>Common failures</dt><dd>${commonFailures.length ? commonFailures.map(esc).join("<br>") : "None"}</dd>
+    </dl>
+    ${problems.length ? `<div class="timeline-detail-problems">${problems.map((problem) => `<div><strong>${esc(problem.kind || "problem")}</strong><span>${esc(problem.message || problem.reason || problem.id || "")}</span></div>`).join("")}</div>` : ""}`;
 }
 
 function renderTimelineDetailWindow(item, index) {
@@ -1555,36 +2121,41 @@ function renderTimelineDetailWindow(item, index) {
   const problems = displayCapsule.problems || [];
   const parts = displayCapsule.message?.parts || [];
   const rawBody = displayCapsule.rawOnly ? rawText(displayCapsule.rawEvent) : "";
+  const hasError = timelineDetailHasError(problems, parts);
+  const detailId = `timeline-detail-${index}-${domId(displayCapsule.key)}`;
   const bodyHtml = displayCapsule.rawOnly
     ? `<pre class="timeline-detail-body">${esc(rawBody || "(empty raw event)")}</pre>`
     : `<div class="timeline-detail-parts">
         ${parts.map(renderTimelineDetailPart).join("") || '<p class="muted">(no content)</p>'}
       </div>`;
+  const metadataHtml = renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems, parts);
+  const rawHtml = renderTimelineDetailRaw(displayCapsule, parts);
   return `
-    <article class="timeline-detail-window ${pinned ? "pinned" : "live"}" data-testid="timeline-detail-panel" data-detail-mode="${escAttr(item.mode)}" data-detail-capsule-key="${escAttr(displayCapsule.key)}" data-detail-index="${index}">
+    <article class="timeline-detail-window ${pinned ? "pinned" : "live"}" data-testid="timeline-detail-panel" data-detail-mode="${escAttr(item.mode)}" data-detail-capsule-key="${escAttr(displayCapsule.key)}" data-detail-index="${index}" data-detail-tab="contents">
       <div class="timeline-detail-titlebar">
         <strong>${pinned ? "Pinned message" : "Message detail"}</strong>
         <div class="timeline-detail-actions">
+          ${canPin ? `<button type="button" class="timeline-detail-pin ${pinned ? "active" : ""}" data-action="toggle-timeline-detail-pin" data-testid="timeline-detail-pin" aria-pressed="${pinned ? "true" : "false"}" aria-label="${pinned ? "Unpin message detail" : "Pin message detail"}" title="${pinned ? "Unpin" : "Pin"}">${pinIconSvg()}</button>` : ""}
           <button type="button" class="timeline-detail-close" data-action="close-timeline-detail" aria-label="Close timeline detail">&times;</button>
-          ${canPin ? `<button type="button" class="timeline-detail-pin ${pinned ? "active" : ""}" data-action="toggle-timeline-detail-pin" data-testid="timeline-detail-pin" aria-pressed="${pinned ? "true" : "false"}" aria-label="${pinned ? "Unpin message detail" : "Pin message detail"}" title="${pinned ? "Unpin" : "Pin"}">${pinned ? "Pinned" : "Pin"}</button>` : ""}
         </div>
       </div>
       <header class="timeline-detail-header">
-        <div>
-          <span class="timeline-detail-type ${escAttr(style.className)}">${esc(style.label)}</span>
-          <h2>${esc(compact(displayCapsule.summary || displayCapsule.label, 120))}</h2>
+        <span class="timeline-detail-type ${escAttr(style.className)}">${esc(style.label)}</span>
+        <div class="timeline-detail-tablist" role="tablist" aria-label="Message detail sections">
+          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="contents" id="${detailId}-contents-tab" aria-controls="${detailId}-contents-panel" aria-selected="true">Contents</button>
+          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="metadata" id="${detailId}-metadata-tab" aria-controls="${detailId}-metadata-panel" aria-selected="false" tabindex="-1">Metadata${hasError ? '<span class="timeline-detail-tab-alert" aria-label="Contains errors">!</span>' : ""}</button>
+          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="raw" id="${detailId}-raw-tab" aria-controls="${detailId}-raw-panel" aria-selected="false" tabindex="-1">Raw</button>
         </div>
       </header>
-      <dl class="timeline-detail-meta">
-        <dt>Agent</dt><dd>${esc(timelineTrackLabel(track))}</dd>
-        <dt>Block</dt><dd>${displayCapsule.messageIndex + 1}</dd>
-        ${timestamp ? `<dt>Time</dt><dd>${esc(timestamp)}</dd>` : ""}
-        ${displayCapsule.nav?.lineNumber ? `<dt>Line</dt><dd>${displayCapsule.nav.lineNumber}</dd>` : ""}
-        ${displayCapsule.nav?.agentPath ? `<dt>Path</dt><dd>${esc(displayCapsule.nav.agentPath)}</dd>` : ""}
-        ${problems.length ? `<dt>Problems</dt><dd>${problems.length}</dd>` : ""}
-      </dl>
-      ${problems.length ? `<div class="timeline-detail-problems">${problems.map((problem) => `<div><strong>${esc(problem.kind || "problem")}</strong><span>${esc(problem.message || problem.reason || problem.id || "")}</span></div>`).join("")}</div>` : ""}
-      ${bodyHtml}
+      <section class="timeline-detail-panel-section" data-detail-panel="contents" id="${detailId}-contents-panel" role="tabpanel" aria-labelledby="${detailId}-contents-tab">
+        ${bodyHtml}
+      </section>
+      <section class="timeline-detail-panel-section" data-detail-panel="metadata" id="${detailId}-metadata-panel" role="tabpanel" aria-labelledby="${detailId}-metadata-tab" hidden>
+        ${metadataHtml}
+      </section>
+      <section class="timeline-detail-panel-section" data-detail-panel="raw" id="${detailId}-raw-panel" role="tabpanel" aria-labelledby="${detailId}-raw-tab" hidden>
+        ${rawHtml}
+      </section>
     </article>`;
 }
 
@@ -1746,6 +2317,22 @@ function closeTimelineDetail(button) {
   renderBreadcrumb();
   scheduleGraphRender();
   updateNavigationButtons();
+}
+
+function setTimelineDetailTab(button) {
+  const detailWindow = button?.closest("[data-testid='timeline-detail-panel']");
+  const target = button?.dataset.detailTabTarget || "contents";
+  const tab = ["contents", "metadata", "raw"].includes(target) ? target : "contents";
+  if (!detailWindow) return;
+  detailWindow.dataset.detailTab = tab;
+  detailWindow.querySelectorAll(".timeline-detail-tab").forEach((tabButton) => {
+    const selected = tabButton.dataset.detailTabTarget === tab;
+    tabButton.setAttribute("aria-selected", String(selected));
+    tabButton.tabIndex = selected ? 0 : -1;
+  });
+  detailWindow.querySelectorAll("[data-detail-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.detailPanel !== tab;
+  });
 }
 
 function renderReaderActiveState() {
@@ -1943,6 +2530,20 @@ function copyRawPayload(button) {
   const rawEventKey = button.dataset.rawEventKey || button.closest("[data-raw-event-key]")?.dataset.rawEventKey || "";
   const payload = rawPayloadTextForKey(rawEventKey);
   if (payload) copyText(payload, "Copied raw JSON");
+}
+
+function toggleAttachmentSection(button) {
+  const key = button.dataset.sectionKey || "";
+  if (!key) return;
+  if (state.expandedAttachmentSections.has(key)) state.expandedAttachmentSections.delete(key);
+  else state.expandedAttachmentSections.add(key);
+  if (state.layout === "reader") {
+    renderReader();
+    renderMessageIndex();
+    renderReaderActiveState();
+  }
+  state.timelineDetailKey = "";
+  renderGraphStatus();
 }
 
 function layoutMetrics() {
@@ -2217,6 +2818,18 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     toggleTimelineDetailPin(button);
+    return;
+  }
+  if (action === "timeline-detail-tab") {
+    event.preventDefault();
+    event.stopPropagation();
+    setTimelineDetailTab(button);
+    return;
+  }
+  if (action === "toggle-attachment-section") {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleAttachmentSection(button);
     return;
   }
   if (action === "toggle-raw-payload") {

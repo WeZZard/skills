@@ -26,6 +26,68 @@ VIEWPORTS = [
     ("mobile", 390, 844, 2),
 ]
 
+EXPECTED_ATTACHMENT_TYPES = {
+    "hook_success",
+    "hook_additional_context",
+    "deferred_tools_delta",
+    "task_reminder",
+    "todo_reminder",
+    "queued_command",
+    "command_permissions",
+    "edited_text_file",
+    "plan_mode",
+    "plan_mode_exit",
+    "mcp_instructions_delta",
+    "agent_listing_delta",
+    "plan_mode_reentry",
+    "file",
+    "date_change",
+    "nested_memory",
+    "hook_non_blocking_error",
+    "auto_mode",
+    "auto_mode_exit",
+    "plan_file_reference",
+    "invoked_skills",
+    "compact_file_reference",
+    "task_status",
+    "ultra_effort_enter",
+    "goal_status",
+    "hook_blocking_error",
+    "skill_listing",
+    "experimental_attachment",
+}
+
+EXPECTED_ATTACHMENT_BADGES = {
+    "HOOK SUCCESS",
+    "HOOK CONTEXT",
+    "TOOLS DELTA",
+    "TASK REMINDER",
+    "TODO REMINDER",
+    "QUEUED COMMAND",
+    "COMMAND PERMISSIONS",
+    "EDITED FILE",
+    "PLAN MODE",
+    "PLAN MODE EXIT",
+    "MCP INSTRUCTIONS",
+    "AGENTS DELTA",
+    "PLAN MODE REENTRY",
+    "FILE",
+    "DATE CHANGE",
+    "NESTED MEMORY",
+    "HOOK WARNING",
+    "AUTO MODE",
+    "AUTO MODE EXIT",
+    "PLAN FILE",
+    "INVOKED SKILLS",
+    "FILE REFERENCE",
+    "TASK STATUS",
+    "ULTRA EFFORT",
+    "GOAL STATUS",
+    "HOOK BLOCKED",
+    "SKILL LISTING",
+    "ATTACHMENT",
+}
+
 STORY_MANIFEST: dict[str, dict[str, Any]] = {
     "reader.default": {
         "description": "Waterfall remains available and selecting message cards does not open the floating detail UI.",
@@ -82,6 +144,10 @@ STORY_MANIFEST: dict[str, dict[str, Any]] = {
     "ui.layering": {
         "description": "Window-level overlays from the header and message detail dock render above and clear container-scoped timeline content.",
         "requiredEvidence": ["dom_assertion", "geometry"],
+    },
+    "timeline.detail_tabs": {
+        "description": "Message detail windows show a badge row with Contents/Metadata/Raw tabs, move message text into Contents, show raw JSONL in Raw, and badge Metadata on errors.",
+        "requiredEvidence": ["dom_assertion", "interaction"],
     },
     "nav.return_forward": {
         "description": "Backward and Forward restore in-app transcript focus in both directions.",
@@ -301,7 +367,7 @@ def tool_result(
     return event
 
 
-def attachment_event(uuid: str, session: str, *, index: int) -> dict[str, Any]:
+def attachment_event(uuid: str, session: str, *, index: int, attachment: dict[str, Any]) -> dict[str, Any]:
     return {
         "type": "attachment",
         "uuid": uuid,
@@ -309,13 +375,7 @@ def attachment_event(uuid: str, session: str, *, index: int) -> dict[str, Any]:
         "timestamp": f"2026-01-01T00:{index // 60:02d}:{index % 60:02d}.000Z",
         "cwd": "/tmp/project",
         "gitBranch": "main",
-        "attachment": {
-            "type": "hook",
-            "hookEventName": "SessionStart",
-            "hookName": "startup",
-            "exitCode": 0,
-            "stdout": "startup context " * 80,
-        },
+        "attachment": attachment,
     }
 
 
@@ -328,11 +388,371 @@ def build_large_fixture(projects_dir: Path) -> str:
     nested_children = [f"agent-{index:03d}" for index in range(19, 48)]
     deep_children = [f"agent-{index:03d}" for index in range(48, 65)]
 
-    root_events: list[dict[str, Any]] = [
-        user_event("root-title", session, "Dual layout stress session", index=0),
-        attachment_event("root-startup-hook", session, index=1),
+    hook_additional_context = "\n".join(
+        [
+            "# Using Amplify Skills",
+            "<EXTREMELY_IMPORTANT>",
+            "Support every claim with local evidence and keep the active plan updated.",
+            "Review the generated browser evidence before reporting completion.",
+            "</EXTREMELY_IMPORTANT>",
+        ]
+        + [f"Context rule {index}: preserve semantic attachment sections for reviewers." for index in range(1, 18)]
+        + ["FINAL CONTEXT MARKER"]
+    )
+    hook_success_stdout = json.dumps(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "SessionStart",
+                "additionalContext": hook_additional_context,
+            },
+            "diagnostics": {"source": "fixture", "status": "ok"},
+        }
+    )
+    tool_names = [
+        "CronCreate",
+        "CronDelete",
+        "CronList",
+        "DesignSync",
+        "NotebookRead",
+        "NotebookWrite",
+        "WebFetch",
+        "WebSearch",
+        "XcodeBuild",
+        "XcodeTest",
     ]
-    cursor = 2
+    agent_types = [
+        "amplify:audit-resolver",
+        "amplify:browser-use-chrome-devtools",
+        "amplify:browser-use-playwright",
+        "amplify:plan-file-editor",
+        "amplify:subagent-designer",
+        "claude",
+        "Plan",
+        "Review",
+        "Scout",
+    ]
+    mcp_blocks = [
+        "## cua-driver\ncua-driver: cross-platform background computer-use automation.",
+        "## figma\nUse Figma tooling for write actions inside the active design file.",
+        "## github\nRead repository issues and pull requests through the connected GitHub app.",
+        "## playwright\nDrive browser verification through Playwright and collect screenshots.",
+        "## x-docs\nResolve local documentation snippets before using broad search.",
+        "## xmcp\nInspect tool metadata and server health.",
+        "## linear\nCoordinate issue references and project status.",
+        "## gmail\nSearch mail only when the user explicitly asks for mailbox context.",
+        "## notion\nResolve connected notes only when workspace context is requested.",
+    ]
+    skill_names = [
+        "linear-cli",
+        "product-planning",
+        "done",
+        "next",
+        "standup",
+        "browser-audit",
+        "test-fixtures",
+        "release-notes",
+        "repo-scout",
+        "design-review",
+    ]
+    skill_content = "\n".join(
+        f"- {name}: {name.replace('-', ' ')} workflow guidance for this validation fixture."
+        for name in skill_names
+    )
+    plan_content = "# Demo Plan\n\n" + "\n".join(
+        f"{index}. Verify attachment card behavior for semantic fields."
+        for index in range(1, 18)
+    )
+    invoked_skill_content = "\n".join(
+        [f"Instruction line {index}: keep extracted content readable in the card body." for index in range(1, 14)]
+        + ["FULL SKILL CONTENT MARKER"]
+    )
+
+    attachment_payloads = [
+        (
+            "root-startup-hook",
+            {
+                "type": "hook_success",
+                "hookEvent": "SessionStart",
+                "hookName": "SessionStart:startup",
+                "exitCode": 0,
+                "command": "${CLAUDE_PLUGIN_ROOT}/hooks/session-start.sh",
+                "durationMs": 384,
+                "stdout": hook_success_stdout,
+            },
+        ),
+        (
+            "root-hook-context",
+            {
+                "type": "hook_additional_context",
+                "hookEvent": "UserPromptSubmit",
+                "hookName": "UserPromptSubmit",
+                "content": [hook_additional_context],
+            },
+        ),
+        (
+            "root-deferred-tools",
+            {
+                "type": "deferred_tools_delta",
+                "addedNames": tool_names,
+                "removedNames": ["LegacyTodoWrite", "OldNotebookEdit"],
+                "readdedNames": ["WebSearch"],
+                "pendingMcpServers": ["figma", "x-docs"],
+                "addedLines": [f"{name}: available from fixture tooling" for name in tool_names],
+            },
+        ),
+        (
+            "root-agent-listing",
+            {
+                "type": "agent_listing_delta",
+                "addedTypes": agent_types,
+                "removedTypes": ["legacy-browser-agent", "legacy-plan-agent"],
+                "addedLines": [f"{name}: handles a focused validation responsibility" for name in agent_types],
+                "isInitial": False,
+                "showConcurrencyNote": True,
+            },
+        ),
+        (
+            "root-mcp-instructions",
+            {
+                "type": "mcp_instructions_delta",
+                "addedNames": ["cua-driver", "figma", "github", "playwright", "x-docs", "xmcp", "linear", "gmail", "notion"],
+                "removedNames": ["deprecated-browser"],
+                "addedBlocks": mcp_blocks,
+            },
+        ),
+        (
+            "root-skill-listing",
+            {
+                "type": "skill_listing",
+                "skillCount": len(skill_names),
+                "names": skill_names,
+                "content": skill_content,
+            },
+        ),
+        (
+            "root-task-reminder",
+            {
+                "type": "task_reminder",
+                "itemCount": 3,
+                "content": ["Read the plan", "Implement semantic cards", "Run browser validation"],
+            },
+        ),
+        (
+            "root-todo-reminder",
+            {
+                "type": "todo_reminder",
+                "itemCount": 2,
+                "content": ["Review truncated sections", "Audit Raw tab completeness"],
+            },
+        ),
+        (
+            "root-queued-command",
+            {
+                "type": "queued_command",
+                "prompt": "The computer-use MCP is now online. Resume the paused browser verification.",
+                "commandMode": "prompt",
+                "source_uuid": "root-queued-command-source",
+                "origin": "plugin",
+            },
+        ),
+        (
+            "root-command-permissions",
+            {
+                "type": "command_permissions",
+                "allowedTools": ["Read", "Grep", "Glob", "Bash(git status:*)", "Bash(node --check:*)"],
+            },
+        ),
+        (
+            "root-edited-text-file",
+            {
+                "type": "edited_text_file",
+                "filename": "/tmp/project/CLAUDE.md",
+                "snippet": "1\t# CLAUDE.md\n2\tUse semantic cards for attachment output.\n3\tKeep raw payloads available.",
+            },
+        ),
+        (
+            "root-plan-mode",
+            {
+                "type": "plan_mode",
+                "reminderType": "full",
+                "isSubAgent": False,
+                "planFilePath": "/tmp/project/.plan/demo/index.md",
+                "planExists": False,
+            },
+        ),
+        (
+            "root-plan-mode-exit",
+            {
+                "type": "plan_mode_exit",
+                "planFilePath": "/tmp/project/.plan/demo/index.md",
+                "planExists": False,
+            },
+        ),
+        (
+            "root-plan-mode-reentry",
+            {
+                "type": "plan_mode_reentry",
+                "planFilePath": "/tmp/project/.plan/demo/index.md",
+            },
+        ),
+        (
+            "root-file-attachment",
+            {
+                "type": "file",
+                "filename": "/tmp/project/config/session-viewer.json",
+                "displayPath": "config/session-viewer.json",
+                "content": {
+                    "type": "text",
+                    "file": {
+                        "filePath": "/tmp/project/config/session-viewer.json",
+                        "content": '{\n  "attachmentCards": "semantic",\n  "rawPayload": true\n}',
+                        "numLines": 4,
+                        "startLine": 1,
+                        "totalLines": 4,
+                    },
+                },
+            },
+        ),
+        (
+            "root-date-change",
+            {
+                "type": "date_change",
+                "newDate": "2026-06-14",
+            },
+        ),
+        (
+            "root-nested-memory",
+            {
+                "type": "nested_memory",
+                "path": "/tmp/project/CLAUDE.md",
+                "displayPath": "../CLAUDE.md",
+                "content": {
+                    "path": "/tmp/project/CLAUDE.md",
+                    "type": "Project",
+                    "content": "# CLAUDE.md\n\nUse local evidence and preserve user-authored changes.",
+                    "contentDiffersFromDisk": False,
+                },
+            },
+        ),
+        (
+            "root-hook-non-blocking-error",
+            {
+                "type": "hook_non_blocking_error",
+                "hookEvent": "Stop",
+                "hookName": "Stop:review-gate",
+                "toolUseID": "toolu-warning",
+                "exitCode": 127,
+                "durationMs": 10,
+                "command": "node ${CLAUDE_PLUGIN_ROOT}/scripts/stop-review-gate-hook.mjs",
+                "stdout": "",
+                "stderr": "Failed with non-blocking status code: /bin/sh: node: command not found",
+            },
+        ),
+        (
+            "root-auto-mode",
+            {
+                "type": "auto_mode",
+            },
+        ),
+        (
+            "root-auto-mode-exit",
+            {
+                "type": "auto_mode_exit",
+            },
+        ),
+        (
+            "root-plan-file-reference",
+            {
+                "type": "plan_file_reference",
+                "planFilePath": "/tmp/project/.plan/demo/index.md",
+                "planContent": plan_content,
+            },
+        ),
+        (
+            "root-invoked-skills",
+            {
+                "type": "invoked_skills",
+                "skills": [
+                    {
+                        "name": "amplify:brainstorming",
+                        "path": "plugin:amplify:brainstorming",
+                        "content": invoked_skill_content,
+                    },
+                    {
+                        "name": "browser:control-in-app-browser",
+                        "path": "plugin:browser:control-in-app-browser",
+                        "content": "Open local URLs and verify interactions with screenshots.",
+                    },
+                ],
+            },
+        ),
+        (
+            "root-compact-file-reference",
+            {
+                "type": "compact_file_reference",
+                "filename": "/tmp/project/tests/session-viewer.test.mjs",
+                "displayPath": "tests/session-viewer.test.mjs",
+            },
+        ),
+        (
+            "root-task-status",
+            {
+                "type": "task_status",
+                "taskId": "af0f7940a364ab246",
+                "taskType": "local_agent",
+                "description": "Implement semantic attachment card extractor",
+                "status": "completed",
+                "deltaSummary": None,
+                "outputFilePath": "/private/tmp/claude-501/task.output",
+            },
+        ),
+        (
+            "root-ultra-effort-enter",
+            {
+                "type": "ultra_effort_enter",
+                "reminderType": "full",
+            },
+        ),
+        (
+            "root-goal-status",
+            {
+                "type": "goal_status",
+                "met": False,
+                "sentinel": True,
+                "condition": "Run compile, tests, linter, and browser verification before marking complete.",
+                "reason": "Browser validation has not completed yet.",
+                "iterations": 3,
+                "durationMs": 525000,
+                "tokens": 242943,
+            },
+        ),
+        (
+            "root-hook-blocking-error",
+            {
+                "type": "hook_blocking_error",
+                "hookEvent": "Stop",
+                "hookName": "Stop:loop-resume",
+                "toolUseID": "toolu-blocked",
+                "blockingError": {
+                    "blockingError": "amplify:execute-plan loop has ready work but no subagents in flight",
+                    "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/loop-resume.mjs",
+                },
+            },
+        ),
+        (
+            "root-unknown-attachment",
+            {
+                "type": "experimental_attachment",
+                "content": "Unknown attachment content should remain readable through the fallback card.",
+            },
+        ),
+    ]
+    root_events: list[dict[str, Any]] = [user_event("root-title", session, "Dual layout stress session", index=0)]
+    root_events.extend(
+        attachment_event(uuid, session, index=index, attachment=payload)
+        for index, (uuid, payload) in enumerate(attachment_payloads, start=1)
+    )
+    cursor = len(root_events)
     for child in root_children:
         tool_id = f"toolu_{child}"
         root_events.append(assistant_tool(f"spawn-{child}", session, tool_id, child, index=cursor))
@@ -1269,14 +1689,51 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     expect(page.get_by_text("Open raw JSON for the full payload.")).to_have_count(0)
     attachment = page.locator(".reader-part.attachment").first
     expect(attachment).to_be_visible()
-    expect(attachment.locator(".attachment-summary")).to_contain_text("Hook:")
-    expect(attachment.locator("[data-action='toggle-raw-payload']")).to_have_text("View payload")
-    attachment.locator("[data-action='toggle-raw-payload']").click()
-    expect(attachment.locator("[data-raw-payload]")).to_be_visible()
-    expect(attachment.locator("[data-raw-payload] pre")).to_contain_text('"attachment"')
-    expect(attachment.locator("[data-action='toggle-raw-payload']")).to_have_text("Hide payload")
-    attachment.locator("[data-action='toggle-raw-payload']").click()
-    expect(attachment.locator("[data-raw-payload]")).to_be_hidden()
+    reader_attachment_detail = page.evaluate(
+        """() => {
+            const attachments = Array.from(document.querySelectorAll('.reader-part.attachment .attachment-event'));
+            const sectionLabels = Array.from(document.querySelectorAll('.reader-part.attachment .attachment-section header strong'))
+                .map((item) => item.innerText.trim());
+            const disallowedSectionLabels = new Set(['Output', 'Standard Output', 'Standard Error', 'Context Preview']);
+            return {
+                types: attachments.map((item) => item.dataset.attachmentType || ''),
+                badges: attachments.map((item) => item.querySelector('.attachment-type-badge')?.innerText.trim() || ''),
+                titleCount: attachments.filter((item) => item.querySelector('.attachment-display-heading strong')).length,
+                sectionCount: attachments.filter((item) => item.querySelector('.attachment-section')).length,
+                semanticContentCount: attachments.filter((item) => item.querySelector('.attachment-section, .attachment-meta dd')).length,
+                sectionLabels,
+                disallowedLabels: sectionLabels.filter((label) => disallowedSectionLabels.has(label)),
+                nonHumanLabels: sectionLabels.filter((label) => /_|[a-z][A-Z]/.test(label)),
+                stdoutBodyCount: Array.from(document.querySelectorAll('.reader-part.attachment .attachment-section pre'))
+                    .filter((item) => /hookSpecificOutput|"stdout"|standard output:/i.test(item.innerText)).length,
+            };
+        }"""
+    )
+    assert EXPECTED_ATTACHMENT_TYPES <= set(reader_attachment_detail["types"]), reader_attachment_detail
+    assert EXPECTED_ATTACHMENT_BADGES <= set(reader_attachment_detail["badges"]), reader_attachment_detail
+    assert reader_attachment_detail["titleCount"] >= len(EXPECTED_ATTACHMENT_TYPES), reader_attachment_detail
+    assert reader_attachment_detail["semanticContentCount"] >= len(EXPECTED_ATTACHMENT_TYPES), reader_attachment_detail
+    assert reader_attachment_detail["disallowedLabels"] == [], reader_attachment_detail
+    assert reader_attachment_detail["nonHumanLabels"] == [], reader_attachment_detail
+    assert reader_attachment_detail["stdoutBodyCount"] == 0, reader_attachment_detail
+    hook_attachment = page.locator(".reader-part.attachment [data-attachment-type='hook_success']").first.locator("xpath=ancestor::section[contains(@class, 'reader-part')][1]")
+    expect(hook_attachment.locator(".attachment-summary")).to_contain_text("SessionStart hook added execution context")
+    additional_context_section = hook_attachment.locator(".attachment-section", has_text="Additional Context").first
+    expect(additional_context_section).to_contain_text("Using Amplify Skills")
+    expect(additional_context_section).not_to_contain_text("FINAL CONTEXT MARKER")
+    expect(additional_context_section.locator("[data-action='toggle-attachment-section']")).to_have_text("Expand")
+    additional_context_section.locator("[data-action='toggle-attachment-section']").click()
+    expect(hook_attachment.locator(".attachment-section", has_text="Additional Context").first).to_contain_text("FINAL CONTEXT MARKER")
+    expect(hook_attachment.locator(".attachment-section", has_text="Additional Context").first.locator("[data-action='toggle-attachment-section']")).to_have_text("Collapse")
+    expect(hook_attachment.locator("[data-action='toggle-raw-payload']")).to_have_text("View payload")
+    hook_attachment.locator("[data-action='toggle-raw-payload']").click()
+    expect(hook_attachment.locator("[data-raw-payload]")).to_be_visible()
+    expect(hook_attachment.locator("[data-raw-payload] pre")).to_contain_text('"attachment"')
+    expect(hook_attachment.locator("[data-raw-payload] pre")).to_contain_text("hookSpecificOutput")
+    expect(hook_attachment.locator("[data-raw-payload] pre")).to_contain_text("FINAL CONTEXT MARKER")
+    expect(hook_attachment.locator("[data-action='toggle-raw-payload']")).to_have_text("Hide payload")
+    hook_attachment.locator("[data-action='toggle-raw-payload']").click()
+    expect(hook_attachment.locator("[data-raw-payload]")).to_be_hidden()
     expect(page.locator(".reader-message .message-gutter")).to_have_count(0)
     expect(page.locator(".reader-message .message-card-index").first).to_be_visible()
     left_nav_header_metrics = page.evaluate(
@@ -1357,7 +1814,7 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     assert_no_horizontal_overflow(page)
 
     record(page, "reader.default", kind="dom_assertion", flow="reader.waterfall", viewport=viewport, selector="[data-testid='reader-layout']", assertion="Waterfall layout is reachable and selecting message cards does not open the floating detail panel")
-    record(page, "reader.default", kind="interaction", flow="reader.attachment_payload", viewport=viewport, selector=".reader-part.attachment", assertion="Attachment events render structured summaries and lazily expand raw JSON without showing parser hint text")
+    record(page, "reader.default", kind="interaction", flow="reader.attachment_payload", viewport=viewport, selector=".reader-part.attachment", assertion="Attachment events render type-specific cards for all observed Claude attachment types and lazily expand raw JSON")
     record(page, "reader.default", kind="geometry", flow="reader.message_cards", viewport=viewport, selector=".reader-message .message-card-index", assertion="message cards have no leading gutter and show the ordinal at the right edge of the title bar")
     record(page, "left_nav.tabs", kind="dom_assertion", flow="reader.message_navigation", viewport=viewport, selector="[data-testid='message-index']", assertion="Waterfall left navigation defaults to the selected agent message list with one Agents drawer button")
     record(page, "left_nav.tabs", kind="geometry", flow="reader.pinned_nav_header", viewport=viewport, selector="[data-testid='left-pane-header']", assertion="left navigation single-button pane header remained fixed while the message navigation body scrolled")
@@ -1641,6 +2098,268 @@ def validate_limited_timeline_alignment(page: Page, url: str, viewport: str) -> 
     )
 
 
+def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
+    panel = page.get_by_test_id("timeline-detail-panel").first
+    expect(panel).to_be_visible()
+    detail = panel.evaluate(
+        """(panel) => {
+            const tablist = panel.querySelector('.timeline-detail-tablist');
+            const tabs = Array.from(panel.querySelectorAll('.timeline-detail-tab'));
+            const metadataTab = panel.querySelector('[data-detail-tab-target="metadata"]');
+            const rawTab = panel.querySelector('[data-detail-tab-target="raw"]');
+            const tablistStyle = getComputedStyle(tablist);
+            const metadataTabStyle = getComputedStyle(metadataTab);
+            const rawTabStyle = getComputedStyle(rawTab);
+            const contentsPanel = panel.querySelector('[data-detail-panel="contents"]');
+            const metadataPanel = panel.querySelector('[data-detail-panel="metadata"]');
+            const rawPanel = panel.querySelector('[data-detail-panel="raw"]');
+            const actionButtons = Array.from(panel.querySelectorAll('.timeline-detail-actions button'));
+            const pinButton = panel.querySelector('[data-testid="timeline-detail-pin"]');
+            const closeButton = panel.querySelector('.timeline-detail-close');
+            return {
+                headerSummaryCount: panel.querySelectorAll('.timeline-detail-header h2').length,
+                badgeText: panel.querySelector('.timeline-detail-type')?.innerText.trim() || '',
+                tabTexts: tabs.map((tab) => tab.innerText.replace(/\\s+/g, ' ').trim()),
+                tabTargets: tabs.map((tab) => tab.dataset.detailTabTarget || ''),
+                tabRoles: tabs.map((tab) => tab.getAttribute('role') || ''),
+                tablistDisplay: tablistStyle.display,
+                tablistRadius: Number.parseFloat(tablistStyle.borderTopLeftRadius) || 0,
+                metadataDividerWidth: Number.parseFloat(metadataTabStyle.borderLeftWidth) || 0,
+                rawDividerWidth: Number.parseFloat(rawTabStyle.borderLeftWidth) || 0,
+                selectedTab: panel.dataset.detailTab || '',
+                contentsSelected: panel.querySelector('[data-detail-tab-target="contents"]')?.getAttribute('aria-selected') || '',
+                metadataSelected: panel.querySelector('[data-detail-tab-target="metadata"]')?.getAttribute('aria-selected') || '',
+                rawSelected: panel.querySelector('[data-detail-tab-target="raw"]')?.getAttribute('aria-selected') || '',
+                contentsHidden: contentsPanel.hidden,
+                metadataHidden: metadataPanel.hidden,
+                rawHidden: rawPanel.hidden,
+                contentHasBody: Boolean(contentsPanel.querySelector('.timeline-detail-parts, .timeline-detail-body')),
+                rawHasCodeBlock: Boolean(rawPanel.querySelector('pre code')),
+                metadataAlertCount: metadataTab.querySelectorAll('.timeline-detail-tab-alert').length,
+                actionOrder: actionButtons.map((button) => button.dataset.action || ''),
+                pinText: pinButton?.innerText.trim() || '',
+                pinHasIcon: Boolean(pinButton?.querySelector('svg')),
+                pinLeftOfClose: pinButton && closeButton
+                    ? pinButton.getBoundingClientRect().left < closeButton.getBoundingClientRect().left
+                    : false,
+            };
+        }"""
+    )
+    assert detail["headerSummaryCount"] == 0, detail
+    assert detail["badgeText"], detail
+    assert detail["tabTexts"] == ["Contents", "Metadata", "Raw"], detail
+    assert detail["tabTargets"] == ["contents", "metadata", "raw"], detail
+    assert detail["tabRoles"] == ["tab", "tab", "tab"], detail
+    assert detail["tablistDisplay"] in {"flex", "inline-flex"}, detail
+    assert detail["tablistRadius"] >= 12, detail
+    assert detail["metadataDividerWidth"] >= 1, detail
+    assert detail["rawDividerWidth"] >= 1, detail
+    assert detail["selectedTab"] == "contents", detail
+    assert detail["contentsSelected"] == "true" and detail["metadataSelected"] == "false" and detail["rawSelected"] == "false", detail
+    assert detail["contentsHidden"] is False and detail["metadataHidden"] is True and detail["rawHidden"] is True, detail
+    assert detail["contentHasBody"], detail
+    assert detail["rawHasCodeBlock"], detail
+    assert detail["actionOrder"][:2] == ["toggle-timeline-detail-pin", "close-timeline-detail"], detail
+    assert detail["pinText"] == "", detail
+    assert detail["pinHasIcon"], detail
+    assert detail["pinLeftOfClose"], detail
+    record(
+        page,
+        "timeline.detail_tabs",
+        kind="dom_assertion",
+        flow="timeline.detail_structure",
+        viewport=viewport,
+        selector="[data-testid='timeline-detail-panel']",
+        assertion=(
+            f"detail top section shows {detail['badgeText']!r} badge plus merged Contents/Metadata/Raw tabs "
+            "with no duplicated summary heading under the badge"
+        ),
+    )
+
+    panel.get_by_role("tab", name="Metadata").click()
+    metadata = panel.evaluate(
+        """(panel) => {
+            const labels = Array.from(panel.querySelectorAll('[data-detail-panel="metadata"] .timeline-detail-meta dt'))
+                .map((item) => item.innerText.trim());
+            return {
+                selectedTab: panel.dataset.detailTab || '',
+                contentsSelected: panel.querySelector('[data-detail-tab-target="contents"]')?.getAttribute('aria-selected') || '',
+                metadataSelected: panel.querySelector('[data-detail-tab-target="metadata"]')?.getAttribute('aria-selected') || '',
+                rawSelected: panel.querySelector('[data-detail-tab-target="raw"]')?.getAttribute('aria-selected') || '',
+                contentsHidden: panel.querySelector('[data-detail-panel="contents"]').hidden,
+                metadataHidden: panel.querySelector('[data-detail-panel="metadata"]').hidden,
+                rawHidden: panel.querySelector('[data-detail-panel="raw"]').hidden,
+                labels,
+            };
+        }"""
+    )
+    expected_labels = {"Agent", "Block", "Time", "Line", "Path", "Problems", "Common failures"}
+    assert metadata["selectedTab"] == "metadata", metadata
+    assert metadata["contentsSelected"] == "false" and metadata["metadataSelected"] == "true" and metadata["rawSelected"] == "false", metadata
+    assert metadata["contentsHidden"] is True and metadata["metadataHidden"] is False and metadata["rawHidden"] is True, metadata
+    assert expected_labels <= set(metadata["labels"]), metadata
+    record(
+        page,
+        "timeline.detail_tabs",
+        kind="interaction",
+        flow="timeline.detail_metadata_tab",
+        viewport=viewport,
+        selector="[data-detail-tab-target='metadata']",
+        assertion="Metadata tab switches the second section to Agent, Block, Time, Line, Path, Problems, and Common failures",
+    )
+
+    panel.get_by_role("tab", name="Contents").click()
+    expect(panel.locator("[data-detail-tab-target='contents']")).to_have_attribute("aria-selected", "true")
+
+    panel.get_by_role("tab", name="Raw").click()
+    raw = panel.evaluate(
+        """(panel) => {
+            const code = panel.querySelector('[data-detail-panel="raw"] pre code');
+            return {
+                selectedTab: panel.dataset.detailTab || '',
+                contentsSelected: panel.querySelector('[data-detail-tab-target="contents"]')?.getAttribute('aria-selected') || '',
+                metadataSelected: panel.querySelector('[data-detail-tab-target="metadata"]')?.getAttribute('aria-selected') || '',
+                rawSelected: panel.querySelector('[data-detail-tab-target="raw"]')?.getAttribute('aria-selected') || '',
+                contentsHidden: panel.querySelector('[data-detail-panel="contents"]').hidden,
+                metadataHidden: panel.querySelector('[data-detail-panel="metadata"]').hidden,
+                rawHidden: panel.querySelector('[data-detail-panel="raw"]').hidden,
+                codeText: code?.innerText || '',
+            };
+        }"""
+    )
+    assert raw["selectedTab"] == "raw", raw
+    assert raw["contentsSelected"] == "false" and raw["metadataSelected"] == "false" and raw["rawSelected"] == "true", raw
+    assert raw["contentsHidden"] is True and raw["metadataHidden"] is True and raw["rawHidden"] is False, raw
+    assert '"type"' in raw["codeText"] or '"table"' in raw["codeText"], raw
+    record(
+        page,
+        "timeline.detail_tabs",
+        kind="interaction",
+        flow="timeline.detail_raw_tab",
+        viewport=viewport,
+        selector="[data-detail-tab-target='raw']",
+        assertion="Raw tab switches the second section to a formatted raw JSONL code block",
+    )
+
+    panel.get_by_role("tab", name="Contents").click()
+    expect(panel.locator("[data-detail-tab-target='contents']")).to_have_attribute("aria-selected", "true")
+
+
+def assert_timeline_detail_error_badge(page: Page, viewport: str) -> None:
+    target = page.evaluate(
+        """() => window.SESSION_VIEWER.capsules.find((item) => item.type === 'tool_result' && item.problemCount > 0)"""
+    )
+    assert target, "expected a problem-bearing tool result capsule in the fixture"
+    scroll_graph_to_capsule(page, target["key"])
+    page.locator(f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']").click()
+    panel = page.get_by_test_id("timeline-detail-panel").first
+    expect(panel).to_be_visible()
+    error_detail = panel.evaluate(
+        """(panel) => ({
+            badgeText: panel.querySelector('.timeline-detail-type')?.innerText.trim() || '',
+            headerSummaryCount: panel.querySelectorAll('.timeline-detail-header h2').length,
+            tabTexts: Array.from(panel.querySelectorAll('.timeline-detail-tab')).map((tab) => tab.innerText.replace(/\\s+/g, ' ').trim()),
+        })"""
+    )
+    assert error_detail["badgeText"] == "TOOL RESULT", error_detail
+    assert error_detail["headerSummaryCount"] == 0, error_detail
+    assert error_detail["tabTexts"][0] == "Contents" and error_detail["tabTexts"][2] == "Raw", error_detail
+    assert error_detail["tabTexts"][1].startswith("Metadata") and error_detail["tabTexts"][1].endswith("!"), error_detail
+    metadata_tab = panel.locator("[data-detail-tab-target='metadata']")
+    expect(metadata_tab).to_contain_text("Metadata")
+    expect(metadata_tab.locator(".timeline-detail-tab-alert")).to_be_visible()
+    metadata_tab.click()
+    expect(panel.locator("[data-detail-panel='metadata']")).to_be_visible()
+    common_failures = panel.locator(".timeline-detail-meta dt", has_text="Common failures").locator("xpath=following-sibling::dd[1]")
+    expect(common_failures).not_to_have_text("None")
+    record(
+        page,
+        "timeline.detail_tabs",
+        kind="interaction",
+        flow="timeline.detail_error_badge",
+        viewport=viewport,
+        selector="[data-detail-tab-target='metadata'] .timeline-detail-tab-alert",
+        assertion="error-bearing tool result keeps the TOOL RESULT badge row, shows an exclamation badge on Metadata, and lists common failures",
+    )
+
+
+def assert_timeline_attachment_detail(page: Page, viewport: str) -> None:
+    targets = page.evaluate(
+        """() => window.SESSION_VIEWER.capsules
+            .filter((item) => item.type === 'attachment')
+            .map((item) => ({ key: item.key }))"""
+    )
+    assert targets, "expected attachment capsules in the fixture"
+    seen_types: set[str] = set()
+    hook_raw_verified = False
+    for target in targets:
+        scroll_graph_to_capsule(page, target["key"])
+        page.locator(f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']").click()
+        panel = page.get_by_test_id("timeline-detail-panel").first
+        expect(panel).to_be_visible()
+        detail = panel.evaluate(
+            """(panel) => {
+                const event = panel.querySelector('.attachment-event');
+                const contents = panel.querySelector('[data-detail-panel="contents"]');
+                const contentRoot = contents || panel;
+                const sectionLabels = Array.from(contentRoot.querySelectorAll('.attachment-section header strong'))
+                    .map((item) => item.innerText.trim());
+                const disallowedSectionLabels = new Set(['Output', 'Standard Output', 'Standard Error', 'Context Preview']);
+                return {
+                    badgeText: panel.querySelector('.timeline-detail-type')?.innerText.trim() || '',
+                    attachmentType: event?.dataset.attachmentType || '',
+                    typeBadge: event?.querySelector('.attachment-type-badge')?.innerText.trim() || '',
+                    titleText: event?.querySelector('.attachment-display-heading strong')?.innerText.trim() || '',
+                    summaryText: event?.querySelector('.attachment-summary')?.innerText.trim() || '',
+                    sectionCount: event?.querySelectorAll('.attachment-section').length || 0,
+                    rowCount: event?.querySelectorAll('.attachment-meta dd').length || 0,
+                    sectionLabels,
+                    disallowedLabels: sectionLabels.filter((label) => disallowedSectionLabels.has(label)),
+                    nonHumanLabels: sectionLabels.filter((label) => /_|[a-z][A-Z]/.test(label)),
+                    payloadButtonCount: panel.querySelectorAll('[data-action="toggle-raw-payload"], [data-action="copy-raw-payload"]').length,
+                    rawPayloadContainerCount: panel.querySelectorAll('[data-raw-payload]').length,
+                    contentsText: contents?.innerText || '',
+                    stdoutBodyCount: Array.from(contentRoot.querySelectorAll('.attachment-section pre'))
+                        .filter((item) => /hookSpecificOutput|"stdout"|standard output:/i.test(item.innerText)).length,
+                    contentPreCount: contents?.querySelectorAll('.attachment-section pre').length || 0,
+                };
+            }"""
+        )
+        assert detail["badgeText"] == "ATTACHMENT", detail
+        assert detail["attachmentType"], detail
+        assert detail["typeBadge"], detail
+        assert detail["titleText"], detail
+        assert detail["summaryText"], detail
+        assert detail["sectionCount"] + detail["rowCount"] >= 1, detail
+        assert detail["payloadButtonCount"] == 0, detail
+        assert detail["rawPayloadContainerCount"] == 0, detail
+        assert detail["disallowedLabels"] == [], detail
+        assert detail["nonHumanLabels"] == [], detail
+        assert detail["stdoutBodyCount"] == 0, detail
+        seen_types.add(detail["attachmentType"])
+        if detail["attachmentType"] == "hook_success":
+            assert "Additional Context" in detail["sectionLabels"], detail
+            assert "Using Amplify Skills" in detail["contentsText"], detail
+            assert "hookSpecificOutput" not in detail["contentsText"], detail
+            panel.get_by_role("tab", name="Raw").click()
+            raw_text = panel.locator("[data-detail-panel='raw']").inner_text()
+            assert '"stdout"' in raw_text and "hookSpecificOutput" in raw_text, raw_text[:500]
+            assert "FINAL CONTEXT MARKER" in raw_text, raw_text[:500]
+            panel.get_by_role("tab", name="Contents").click()
+            hook_raw_verified = True
+    assert EXPECTED_ATTACHMENT_TYPES <= seen_types, seen_types
+    assert hook_raw_verified, seen_types
+    record(
+        page,
+        "timeline.detail_tabs",
+        kind="dom_assertion",
+        flow="timeline.detail_attachment_types",
+        viewport=viewport,
+        selector=".timeline-detail-part.attachment",
+        assertion="attachment detail cards show type-specific content, omit stdout/stderr bodies, and keep complete payloads in Raw",
+    )
+
+
 def assert_window_layering(page: Page, viewport: str) -> None:
     page.locator("#sessionInfoButton").click()
     expect(page.locator("#sessionInfoPopover")).to_be_visible()
@@ -1794,8 +2513,12 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     dom_count = page.evaluate("document.querySelectorAll('*').length")
     assert dom_count < 9000, f"timeline page DOM too large: {dom_count}"
     assert_no_horizontal_overflow(page)
+    assert_timeline_detail_tabs(page, viewport)
     if viewport in {"studio-native", "desktop"}:
         assert_window_layering(page, viewport)
+    if viewport == "desktop":
+        assert_timeline_attachment_detail(page, viewport)
+        assert_timeline_detail_error_badge(page, viewport)
 
     record(page, "graph.dom_svg", kind="dom_assertion", flow="timeline.open", viewport=viewport, selector="[data-testid='overview-timeline']", assertion=f"default Timeline rendered {counts['messages']} logical messages without canvas and without the left rail")
     record(page, "perf.large_session", kind="dom_assertion", flow="timeline.dom_budget", viewport=viewport, selector="[data-testid='timeline-block']", assertion=f"virtual timeline rendered {rendered_blocks} visible blocks")
