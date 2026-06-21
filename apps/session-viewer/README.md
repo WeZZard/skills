@@ -47,3 +47,12 @@ Backward/Forward focus restoration, golden-section Waterfall sizing, Agent Tree
 subagent toggles, independent subagent scrolling, timeline spawn edges,
 large-session DOM budgets, OpenCode transcript readability, and
 Studio/desktop/mobile overflow.
+
+## Utilities
+
+Scan Claude Code JSONL transcripts for attachment types and payload shapes:
+
+```bash
+uv run python scripts/scan_claude_attachments.py --projects-dir ~/.claude/projects
+uv run python scripts/scan_claude_attachments.py --claude-config-dir ~/.claude --json
+```

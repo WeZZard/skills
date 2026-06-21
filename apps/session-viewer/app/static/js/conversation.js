@@ -19,6 +19,7 @@ const state = {
   timelineBlockKey: "",
   timelineDetailKey: "",
   pinnedTimelineDetailKeys: [],
+  readerRawCapsuleKey: "",
   graphStatusText: "",
   timelineHeaderRenderCount: 0,
   timelineTrackRenderCount: 0,
@@ -240,6 +241,39 @@ function partText(part) {
   if (part.state?.error) return text(part.state.error);
   if (part.state) return text(part.state);
   return "";
+}
+
+function humanFieldName(value) {
+  return String(value || "field")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace(/\b(Id|Url|Api|Mcp)\b/g, (match) => match.toUpperCase());
+}
+
+function structuredToolPayload(part) {
+  if (part?.type !== "tool") return null;
+  const input = part.state?.input;
+  if (input && typeof input === "object" && !Array.isArray(input)) return input;
+  const parsed = tryParseJsonText(partText(part));
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+  return null;
+}
+
+function renderStructuredToolPayload(part) {
+  const payload = structuredToolPayload(part);
+  const entries = payload ? Object.entries(payload).filter(([, value]) => hasValue(value)) : [];
+  if (!entries.length) return `<pre>${esc(partText(part) || "(no payload)")}</pre>`;
+  return `
+    <dl class="tool-payload-fields">
+      ${entries.map(([key, value]) => `
+        <div class="tool-payload-field">
+          <dt>${esc(humanFieldName(key))}</dt>
+          <dd><pre class="tool-payload-value">${esc(text(value))}</pre></dd>
+        </div>`).join("")}
+    </dl>`;
 }
 
 function messageText(message) {
@@ -771,6 +805,150 @@ function attachmentSummary(part, rawEventKey) {
   return [display.title, display.summary].filter(Boolean).join(" · ");
 }
 
+function rawEventForMessage(message) {
+  return rawEventByAddress.get(eventAddress(message?.nav)) || null;
+}
+
+function kindClass(value) {
+  return String(value || "mixed").replace(/_/g, "-");
+}
+
+function kindForLineType(value) {
+  const key = String(value || "raw_event").replace(/-/g, "_");
+  if (key === "user") return { key: "user", label: "user", compact: "USER" };
+  if (key === "assistant") return { key: "assistant", label: "assistant", compact: "ASST" };
+  if (key === "attachment") return { key: "attachment", label: "attachment", compact: "ATT" };
+  if (key === "system") return { key: "system", label: "system", compact: "SYS" };
+  return { key: "raw_event", label: keyTitle(key), compact: "RAW" };
+}
+
+function keyTitle(value) {
+  return String(value || "unknown")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .toLowerCase();
+}
+
+function compactKindLabel(label, fallback = "KIND") {
+  const firstWord = String(label || fallback).split(/\s+/).filter(Boolean)[0] || fallback;
+  const normalized = firstWord.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  return (normalized || fallback).slice(0, 6);
+}
+
+function partContentKind(part, lineKind) {
+  if (isAttachmentPart(part)) {
+    const rawEventKey = eventAddress(part.nav);
+    const attachment = rawAttachmentForKey(rawEventKey) || {};
+    const subtype = attachment.type || part?.state?.attachmentType || "attachment";
+    const label = humanAttachmentType(subtype);
+    return { key: "attachment", label, compact: compactKindLabel(label, "ATT") };
+  }
+  if (part?.type === "tool_result") return { key: "tool_result", label: "tool result", compact: "RESULT" };
+  if (part?.type === "tool") return { key: "tool", label: "tool call", compact: "TOOL" };
+  if (part?.type === "reasoning") return { key: "reasoning", label: "reasoning", compact: "REASON" };
+  if (part?.type === "text") {
+    if (lineKind.key === "assistant" || lineKind.key === "user") return { key: "message", label: "message", compact: "MSG" };
+    if (lineKind.key === "attachment") return { key: "attachment", label: "attachment", compact: "ATT" };
+    return { key: lineKind.key, label: lineKind.label, compact: lineKind.compact };
+  }
+  const style = typeStyle(part?.type);
+  return {
+    key: part?.type || "mixed",
+    label: style.label || keyTitle(part?.type),
+    compact: compactKindLabel(style.label || part?.type, "MIX"),
+  };
+}
+
+function uniqueContentKinds(kinds) {
+  const seen = new Set();
+  const out = [];
+  kinds.forEach((kind) => {
+    const signature = `${kind.key}:${kind.label}`;
+    if (seen.has(signature)) return;
+    seen.add(signature);
+    out.push(kind);
+  });
+  return out;
+}
+
+function primaryKindKey(lineKind, contentKinds) {
+  const keys = contentKinds.map((kind) => kind.key);
+  if (lineKind.key === "attachment") return "attachment";
+  if (lineKind.key === "user") return keys.includes("tool_result") ? "tool_result" : "user";
+  if (lineKind.key === "assistant") {
+    if (keys.includes("tool")) return "tool";
+    if (keys.includes("message")) return "assistant";
+    if (keys.includes("reasoning")) return "reasoning";
+    return "assistant";
+  }
+  if (keys.length === 1) return keys[0];
+  return lineKind.key || "mixed";
+}
+
+function messageKindModel(message) {
+  const rawEvent = rawEventForMessage(message);
+  const rawType = rawEvent?.raw && typeof rawEvent.raw === "object" ? rawEvent.raw.type : "";
+  const lineKind = kindForLineType(rawType || message?.role || "raw_event");
+  const contentKinds = uniqueContentKinds((message?.parts || []).map((part) => partContentKind(part, lineKind)));
+  if (!contentKinds.length) contentKinds.push({ key: lineKind.key, label: lineKind.label, compact: lineKind.compact });
+  const primaryKey = primaryKindKey(lineKind, contentKinds);
+  const contentLabel = contentKinds.map((kind) => kind.label).join(" + ");
+  return {
+    line: lineKind,
+    contentKinds,
+    primaryKey,
+    primaryStyle: typeStyle(primaryKey),
+    fullLabel: `${lineKind.label} / ${contentLabel}`,
+    compactLabel: `${lineKind.compact} · ${contentKinds[0].compact}`,
+    contentLabel,
+  };
+}
+
+function rawEventKindModel(event) {
+  const rawType = event?.raw && typeof event.raw === "object" ? event.raw.type : "raw_event";
+  const lineKind = kindForLineType(rawType || "raw_event");
+  return {
+    line: lineKind,
+    contentKinds: [{ key: "raw_event", label: "raw event", compact: "RAW" }],
+    primaryKey: "raw_event",
+    primaryStyle: typeStyle("raw_event"),
+    fullLabel: `${lineKind.label} / raw event`,
+    compactLabel: `${lineKind.compact} · RAW`,
+    contentLabel: "raw event",
+  };
+}
+
+function titleBarContentKinds(kind) {
+  if (kind.line.key === "user") {
+    return [{ key: "message", label: "message", compact: "MSG" }];
+  }
+  if (kind.line.key !== "assistant") return kind.contentKinds;
+  return uniqueContentKinds(kind.contentKinds.map((item) => (
+    item.key === "assistant" || item.key === "message"
+      ? { key: "message", label: "message", compact: "MSG" }
+      : item
+  )));
+}
+
+function renderMessageKindStack(kind) {
+  const contentKinds = titleBarContentKinds(kind);
+  return `
+    <span class="message-kind-stack" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
+      <span class="role-badge message-line-kind ${escAttr(kindClass(kind.line.key))}">${esc(kind.line.label)}</span>
+      <span class="message-content-kinds">
+        ${contentKinds.map((item) => `<span class="message-content-kind ${escAttr(kindClass(item.key))}">${esc(item.label)}</span>`).join("")}
+      </span>
+    </span>`;
+}
+
+function renderTimelineDetailKindStack(kind) {
+  return `
+    <div class="timeline-detail-kind-stack" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}">
+      <span class="timeline-detail-type ${escAttr(kindClass(kind.line.key))}">${esc(kind.line.label)}</span>
+      ${kind.contentKinds.map((item) => `<span class="timeline-detail-content-type ${escAttr(kindClass(item.key))}">${esc(item.label)}</span>`).join("")}
+    </div>`;
+}
+
 function attachmentSectionKey(rawEventKey, section) {
   return `${rawEventKey || "attachment"}::${section.fieldKey || section.label}`;
 }
@@ -865,14 +1043,7 @@ function rawPayloadTextForKey(rawEventKey) {
 
 function capsuleType(message) {
   if (!message) return "raw_event";
-  const parts = message.parts || [];
-  const partTypes = new Set(parts.map((part) => part.type));
-  if (partTypes.has("tool_result")) return "tool_result";
-  if (partTypes.has("tool")) return "tool";
-  if (parts.some(isAttachmentPart)) return "attachment";
-  if (partTypes.has("reasoning") && partTypes.size === 1) return "reasoning";
-  if (partTypes.size > 1 && !partTypes.has("text")) return "mixed";
-  return message.role || "mixed";
+  return messageKindModel(message).primaryKey;
 }
 
 function typeStyle(type) {
@@ -979,7 +1150,8 @@ function buildModels() {
       const key = rememberNav(message.nav) || `${track.id}:message:${messageIndex}`;
       const parts = message.parts || [];
       const problems = problemListForMessage(message);
-      const type = capsuleType(message);
+      const kindModel = messageKindModel(message);
+      const type = kindModel.primaryKey;
       const capsule = {
         key,
         trackId: track.id,
@@ -988,7 +1160,10 @@ function buildModels() {
         nav: message.nav,
         role: message.role || "",
         type,
-        label: `${message.role || "message"} ${messageIndex + 1}`,
+        label: `${kindModel.fullLabel} ${messageIndex + 1}`,
+        kindModel,
+        lineType: kindModel.line.label,
+        contentTypes: kindModel.contentKinds.map((kind) => kind.label),
         summary: compact(messageText(message) || message.role || "message"),
         timestamp: message.time_created || 0,
         lineNumber: message.nav?.lineNumber || 0,
@@ -1022,6 +1197,7 @@ function buildModels() {
     (track.transcript.raw_events || []).forEach((event) => {
       if (renderedAddresses.has(eventAddress(event.nav))) return;
       const key = rememberNav(event.nav);
+      const kindModel = rawEventKindModel(event);
       const capsule = {
         key,
         trackId: track.id,
@@ -1029,8 +1205,11 @@ function buildModels() {
         message: null,
         nav: event.nav,
         role: "raw",
-        type: "raw_event",
-        label: "raw event",
+        type: kindModel.primaryKey,
+        label: kindModel.fullLabel,
+        kindModel,
+        lineType: kindModel.line.label,
+        contentTypes: kindModel.contentKinds.map((kind) => kind.label),
         summary: compact(rawText(event)),
         timestamp: Date.parse(event.raw?.timestamp || "") || 0,
         lineNumber: event.nav?.lineNumber || 0,
@@ -1679,13 +1858,14 @@ function renderReaderMessage(message, track, index) {
   const key = navKeyToCapsuleKey.get(navKey(message.nav)) || "";
   const capsule = key ? capsuleByKey.get(key) : null;
   const problems = capsule?.problems || [];
+  const kind = capsule?.kindModel || messageKindModel(message);
   return `
-    <article class="reader-message ${escAttr(message.role || "message")} ${problems.length ? "has-problem" : ""} ${key === state.currentCapsuleKey ? "active" : ""}" id="${readerMessageId(track.id, index)}" data-action="focus-capsule" data-agent-id="${escAttr(track.id)}" data-message-index="${index}" data-capsule-key="${escAttr(key)}" data-testid="transcript-message" role="button" tabindex="0" aria-current="${key === state.currentCapsuleKey ? "true" : "false"}" aria-label="${escAttr(`${message.role || "message"} message ${index + 1}`)}">
+    <article class="reader-message ${escAttr(kindClass(kind.line.key))} ${problems.length ? "has-problem" : ""} ${key === state.currentCapsuleKey ? "active" : ""}" id="${readerMessageId(track.id, index)}" data-action="focus-capsule" data-agent-id="${escAttr(track.id)}" data-message-index="${index}" data-capsule-key="${escAttr(key)}" data-testid="transcript-message" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" role="button" tabindex="0" aria-current="${key === state.currentCapsuleKey ? "true" : "false"}" aria-label="${escAttr(`${kind.fullLabel} message ${index + 1}`)}">
       <div class="message-card">
         <header class="message-header">
           <div class="message-header-left">
             <span class="role-dot" aria-hidden="true"></span>
-            <span class="role-badge ${escAttr(message.role || "message")}">${esc(message.role || "message")}</span>
+            ${renderMessageKindStack(kind)}
             <span class="message-meta">
               ${message.time_created ? `<span>${esc(formatFullTime(message.time_created))}</span>` : ""}
               ${message.modelID ? `<span>${esc(message.modelID)}</span>` : ""}
@@ -1693,7 +1873,10 @@ function renderReaderMessage(message, track, index) {
               ${problems.length ? `<span class="problem-tag">${problems.length} problems</span>` : ""}
             </span>
           </div>
-          <span class="message-card-index" aria-label="Message ${index + 1}">#${index + 1}</span>
+          <div class="message-header-actions">
+            <button type="button" class="message-raw-button" data-action="open-reader-raw">Raw</button>
+            <span class="message-card-index" aria-label="Message ${index + 1}">#${index + 1}</span>
+          </div>
         </header>
         <div class="message-body">
           ${(message.parts || []).map((part, partIndex) => renderPart(part, { track, message, messageIndex: index, partIndex })).join("") || '<span class="muted">(no content)</span>'}
@@ -1707,20 +1890,24 @@ function renderPart(part, context) {
   const attachment = isAttachmentPart(part);
   const rawEventKey = eventAddress(part.nav);
   const style = part.type === "tool_result" ? "tool-result" : part.type === "tool" ? "tool" : attachment ? "attachment" : part.type || "part";
+  const partKind = partContentKind(part, kindForLineType(rawEventByAddress.get(rawEventKey)?.raw?.type || context?.message?.role || ""));
   const testId = part.type === "tool_result" ? "tool-result" : part.type === "tool" ? "tool-call" : "transcript-part";
   const childTrack = childTrackByParentTaskKey.get(navKey(part.nav));
   const pairedKey = navKeyToCapsuleKey.get(navKey(pairedNav(part))) || "";
   const hasRawPayload = attachment && rawEventByAddress.has(rawEventKey);
   const partBody = attachment
     ? renderAttachmentPartBody(part, rawEventKey)
-    : part.type === "tool" || part.type === "tool_result"
+    : part.type === "tool"
+    ? renderStructuredToolPayload(part)
+    : part.type === "tool_result"
     ? `<pre>${esc(partText(part) || "(no payload)")}</pre>`
     : `<div class="part-text">${esc(partText(part) || "")}</div>`;
   return `
     <section class="reader-part ${escAttr(style)} ${part.state?.is_error ? "error" : ""}" data-nav-key="${escAttr(key)}" data-raw-event-key="${escAttr(rawEventKey)}" data-testid="${testId}">
       <header class="part-header">
-        <strong>${esc(part.type === "tool" ? part.tool || "tool" : attachment ? "attachment" : typeStyle(part.type).label || part.type)}</strong>
+        <strong>${esc(part.type === "tool" ? part.tool || partKind.label : partKind.label)}</strong>
         <div class="part-actions">
+          ${part.type === "tool" && part.tool ? `<span class="tag">${esc(partKind.label)}</span>` : ""}
           ${part.nav?.toolUseId ? `<span class="tag">${esc(part.nav.toolUseId)}</span>` : ""}
           ${pairedKey ? `<button data-action="focus-capsule" data-capsule-key="${escAttr(pairedKey)}">${part.type === "tool" ? "Result" : "Call"}</button>` : ""}
           ${hasRawPayload ? `<button type="button" data-action="toggle-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}" aria-expanded="false">View payload</button><button type="button" data-action="copy-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}">Copy JSON</button>` : ""}
@@ -1756,6 +1943,7 @@ function pairedNav(part) {
 
 function setLayout(layout, options = {}) {
   state.layout = layout === "graph" ? "graph" : "reader";
+  if (state.layout === "graph") state.readerRawCapsuleKey = "";
   els.workbench.dataset.layout = state.layout;
   els.readerLayout.classList.toggle("hidden", state.layout !== "reader");
   els.graphLayout.classList.toggle("hidden", state.layout !== "graph");
@@ -1820,6 +2008,12 @@ function timelineTrackKind(track) {
 
 function timelineBlockTypeName(type) {
   return typeStyle(type).label.toUpperCase();
+}
+
+function timelineBlockKindLabel(capsule, index) {
+  const kind = capsule?.kindModel;
+  if (!kind) return `${timelineBlockTypeName(capsule?.type)} ${index + 1}`;
+  return `${kind.contentKinds[0]?.compact || "KIND"} ${index + 1}`;
 }
 
 function timelineTrackBounds(track) {
@@ -1916,9 +2110,10 @@ function renderGraphVirtual() {
         const active = key === state.currentCapsuleKey;
         const selected = state.selectedGraphKeys.has(key);
         const style = typeStyle(capsule.type);
+        const kind = capsule.kindModel || rawEventKindModel(capsule.rawEvent);
         blockHtml.push(`
-          <button class="timeline-block ${style.className} ${active ? "active" : ""} ${selected ? "selected" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-testid="timeline-block" style="left:${capsule.x}px;top:${capsule.y}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${style.label}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${index + 1}, ${style.label}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
-            <span class="timeline-block-label">${esc(`${timelineBlockTypeName(capsule.type)} ${index + 1}`)}</span>
+          <button class="timeline-block ${style.className} ${active ? "active" : ""} ${selected ? "selected" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-testid="timeline-block" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" style="left:${capsule.x}px;top:${capsule.y}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${kind.fullLabel}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${index + 1}, ${kind.fullLabel}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
+            <span class="timeline-block-label">${esc(timelineBlockKindLabel(capsule, index))}</span>
           </button>`);
       }
     });
@@ -2015,6 +2210,8 @@ function updateTimelineDetailDockLayout(count = document.querySelectorAll("[data
 function renderTimelineDetailPart(part, partIndex) {
   const attachment = isAttachmentPart(part);
   const rawEventKey = eventAddress(part.nav);
+  const lineKind = kindForLineType(rawEventByAddress.get(rawEventKey)?.raw?.type || "");
+  const partKind = partContentKind(part, lineKind);
   const body = attachment
     ? renderAttachmentPartBody(part, rawEventKey, { showRawPayload: false })
     : `<pre>${esc(partText(part) || "(empty)")}</pre>`;
@@ -2022,7 +2219,8 @@ function renderTimelineDetailPart(part, partIndex) {
     <article class="timeline-detail-part ${escAttr(attachment ? "attachment" : typeStyle(part.type).className || part.type || "part")} ${part.state?.is_error ? "error" : ""}" data-raw-event-key="${escAttr(rawEventKey)}">
       <header>
         <span>${partIndex + 1}</span>
-        <strong>${esc(part.type === "tool" ? part.tool || "tool call" : attachment ? "attachment" : typeStyle(part.type).label || part.type || "part")}</strong>
+        <strong>${esc(part.type === "tool" ? part.tool || partKind.label : partKind.label)}</strong>
+        ${part.type === "tool" && part.tool ? `<code>${esc(partKind.label)}</code>` : ""}
         ${part.nav?.toolUseId ? `<code>${esc(part.nav.toolUseId)}</code>` : ""}
       </header>
       ${body}
@@ -2095,11 +2293,13 @@ function pinIconSvg() {
   return `<svg viewBox="0 0 24 24" aria-hidden="true" class="timeline-detail-pin-icon"><path d="M12 17v5" /><path d="M5 17h14v-1.8a2 2 0 0 0-.6-1.4L16 11.4V6h1a1 1 0 0 0 1-1V2H6v3a1 1 0 0 0 1 1h1v5.4l-2.4 2.4A2 2 0 0 0 5 15.2Z" /></svg>`;
 }
 
-function renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems, parts) {
+function renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems, parts, kind) {
   const commonFailures = timelineDetailCommonFailures(problems, parts);
   const problemSummary = problems.length === 1 ? "1 problem" : problems.length ? `${problems.length} problems` : "None";
   return `
     <dl class="timeline-detail-meta">
+      <dt>Line type</dt><dd>${esc(kind?.line?.label || displayCapsule.lineType || "Unknown")}</dd>
+      <dt>Content types</dt><dd>${esc(kind?.contentLabel || (displayCapsule.contentTypes || []).join(", ") || "Unknown")}</dd>
       <dt>Agent</dt><dd>${esc(timelineTrackLabel(track))}</dd>
       <dt>Block</dt><dd>${displayCapsule.messageIndex + 1}</dd>
       <dt>Time</dt><dd>${timestamp ? esc(timestamp) : "Unknown"}</dd>
@@ -2116,44 +2316,46 @@ function renderTimelineDetailWindow(item, index) {
   const pinned = item.mode === "pinned";
   const canPin = state.layout === "graph";
   const track = trackById.get(displayCapsule.trackId);
-  const style = typeStyle(displayCapsule.type);
+  const kind = displayCapsule.kindModel || (displayCapsule.rawOnly ? rawEventKindModel(displayCapsule.rawEvent) : messageKindModel(displayCapsule.message));
   const timestamp = formatFullTime(displayCapsule.timestamp);
   const problems = displayCapsule.problems || [];
   const parts = displayCapsule.message?.parts || [];
   const rawBody = displayCapsule.rawOnly ? rawText(displayCapsule.rawEvent) : "";
   const hasError = timelineDetailHasError(problems, parts);
   const detailId = `timeline-detail-${index}-${domId(displayCapsule.key)}`;
+  const initialTab = ["contents", "metadata", "raw"].includes(item.initialTab) ? item.initialTab : "contents";
+  const detailTitle = item.title || (pinned ? "Pinned message" : "Message detail");
   const bodyHtml = displayCapsule.rawOnly
     ? `<pre class="timeline-detail-body">${esc(rawBody || "(empty raw event)")}</pre>`
     : `<div class="timeline-detail-parts">
         ${parts.map(renderTimelineDetailPart).join("") || '<p class="muted">(no content)</p>'}
       </div>`;
-  const metadataHtml = renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems, parts);
+  const metadataHtml = renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems, parts, kind);
   const rawHtml = renderTimelineDetailRaw(displayCapsule, parts);
   return `
-    <article class="timeline-detail-window ${pinned ? "pinned" : "live"}" data-testid="timeline-detail-panel" data-detail-mode="${escAttr(item.mode)}" data-detail-capsule-key="${escAttr(displayCapsule.key)}" data-detail-index="${index}" data-detail-tab="contents">
+    <article class="timeline-detail-window ${pinned ? "pinned" : "live"}" data-testid="timeline-detail-panel" data-detail-mode="${escAttr(item.mode)}" data-detail-capsule-key="${escAttr(displayCapsule.key)}" data-detail-index="${index}" data-detail-tab="${escAttr(initialTab)}">
       <div class="timeline-detail-titlebar">
-        <strong>${pinned ? "Pinned message" : "Message detail"}</strong>
+        <strong>${esc(detailTitle)}</strong>
         <div class="timeline-detail-actions">
           ${canPin ? `<button type="button" class="timeline-detail-pin ${pinned ? "active" : ""}" data-action="toggle-timeline-detail-pin" data-testid="timeline-detail-pin" aria-pressed="${pinned ? "true" : "false"}" aria-label="${pinned ? "Unpin message detail" : "Pin message detail"}" title="${pinned ? "Unpin" : "Pin"}">${pinIconSvg()}</button>` : ""}
           <button type="button" class="timeline-detail-close" data-action="close-timeline-detail" aria-label="Close timeline detail">&times;</button>
         </div>
       </div>
       <header class="timeline-detail-header">
-        <span class="timeline-detail-type ${escAttr(style.className)}">${esc(style.label)}</span>
+        ${renderTimelineDetailKindStack(kind)}
         <div class="timeline-detail-tablist" role="tablist" aria-label="Message detail sections">
-          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="contents" id="${detailId}-contents-tab" aria-controls="${detailId}-contents-panel" aria-selected="true">Contents</button>
-          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="metadata" id="${detailId}-metadata-tab" aria-controls="${detailId}-metadata-panel" aria-selected="false" tabindex="-1">Metadata${hasError ? '<span class="timeline-detail-tab-alert" aria-label="Contains errors">!</span>' : ""}</button>
-          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="raw" id="${detailId}-raw-tab" aria-controls="${detailId}-raw-panel" aria-selected="false" tabindex="-1">Raw</button>
+          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="contents" id="${detailId}-contents-tab" aria-controls="${detailId}-contents-panel" aria-selected="${initialTab === "contents" ? "true" : "false"}" ${initialTab === "contents" ? "" : 'tabindex="-1"'}>Contents</button>
+          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="metadata" id="${detailId}-metadata-tab" aria-controls="${detailId}-metadata-panel" aria-selected="${initialTab === "metadata" ? "true" : "false"}" ${initialTab === "metadata" ? "" : 'tabindex="-1"'}>Metadata${hasError ? '<span class="timeline-detail-tab-alert" aria-label="Contains errors">!</span>' : ""}</button>
+          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="raw" id="${detailId}-raw-tab" aria-controls="${detailId}-raw-panel" aria-selected="${initialTab === "raw" ? "true" : "false"}" ${initialTab === "raw" ? "" : 'tabindex="-1"'}>Raw</button>
         </div>
       </header>
-      <section class="timeline-detail-panel-section" data-detail-panel="contents" id="${detailId}-contents-panel" role="tabpanel" aria-labelledby="${detailId}-contents-tab">
+      <section class="timeline-detail-panel-section" data-detail-panel="contents" id="${detailId}-contents-panel" role="tabpanel" aria-labelledby="${detailId}-contents-tab" ${initialTab === "contents" ? "" : "hidden"}>
         ${bodyHtml}
       </section>
-      <section class="timeline-detail-panel-section" data-detail-panel="metadata" id="${detailId}-metadata-panel" role="tabpanel" aria-labelledby="${detailId}-metadata-tab" hidden>
+      <section class="timeline-detail-panel-section" data-detail-panel="metadata" id="${detailId}-metadata-panel" role="tabpanel" aria-labelledby="${detailId}-metadata-tab" ${initialTab === "metadata" ? "" : "hidden"}>
         ${metadataHtml}
       </section>
-      <section class="timeline-detail-panel-section" data-detail-panel="raw" id="${detailId}-raw-panel" role="tabpanel" aria-labelledby="${detailId}-raw-tab" hidden>
+      <section class="timeline-detail-panel-section" data-detail-panel="raw" id="${detailId}-raw-panel" role="tabpanel" aria-labelledby="${detailId}-raw-tab" ${initialTab === "raw" ? "" : "hidden"}>
         ${rawHtml}
       </section>
     </article>`;
@@ -2165,7 +2367,14 @@ function renderTimelineDetailPanel(capsule) {
     state.pinnedTimelineDetailKeys = [];
     return;
   }
-  const windows = state.layout === "graph" ? timelineDetailWindows(capsule) : [];
+  const readerRawCapsule = state.layout === "reader" && state.readerRawCapsuleKey
+    ? capsuleByKey.get(state.readerRawCapsuleKey)
+    : null;
+  const windows = state.layout === "graph"
+    ? timelineDetailWindows(capsule)
+    : readerRawCapsule
+      ? [{ capsule: readerRawCapsule, mode: "reader-raw", initialTab: "raw", title: "Raw JSON" }]
+      : [];
   updateTimelineDetailDockLayout(windows.length);
   if (!windows.length) {
     if (state.timelineDetailKey !== "" || !els.timelineDetailPanel.classList.contains("hidden")) {
@@ -2199,7 +2408,7 @@ function renderGraphStatus() {
   }
   const capsule = selectedCapsule();
   const textContent = capsule
-    ? `${typeStyle(capsule.type).label} · ${capsule.nav?.agentPath || "main"} · ${capsule.summary}${capsule.problemCount ? ` · ${capsule.problemCount} problems` : ""}`
+    ? `${capsule.kindModel?.fullLabel || typeStyle(capsule.type).label} · ${capsule.nav?.agentPath || "main"} · ${capsule.summary}${capsule.problemCount ? ` · ${capsule.problemCount} problems` : ""}`
     : "";
   if (state.graphStatusText !== textContent) {
     state.graphStatusText = textContent;
@@ -2298,7 +2507,9 @@ function closeTimelineDetail(button) {
   const detailWindow = button?.closest("[data-testid='timeline-detail-panel']");
   const detailKey = detailWindow?.dataset.detailCapsuleKey || "";
   const mode = detailWindow?.dataset.detailMode || "";
-  if (mode === "pinned" && detailKey) {
+  if (mode === "reader-raw") {
+    state.readerRawCapsuleKey = "";
+  } else if (mode === "pinned" && detailKey) {
     removePinnedTimelineDetailKey(detailKey);
     if (state.currentCapsuleKey === detailKey) {
       state.currentCapsuleKey = "";
@@ -2317,6 +2528,14 @@ function closeTimelineDetail(button) {
   renderBreadcrumb();
   scheduleGraphRender();
   updateNavigationButtons();
+}
+
+function openReaderRaw(button) {
+  const key = button?.closest(".reader-message")?.dataset.capsuleKey || "";
+  if (!key || !capsuleByKey.has(key)) return;
+  state.readerRawCapsuleKey = key;
+  focusCapsule(key, { scroll: false });
+  renderTimelineDetailPanel(capsuleByKey.get(key));
 }
 
 function setTimelineDetailTab(button) {
@@ -2416,7 +2635,7 @@ function renderBreadcrumb() {
   if (state.layout === "graph") parts.push("Timeline");
   else parts.push("Waterfall");
   if (nav?.agentPath) parts.push(...nav.agentPath.split("/"));
-  if (capsule) parts.push(typeStyle(capsule.type).label);
+  if (capsule) parts.push(capsule.kindModel?.fullLabel || typeStyle(capsule.type).label);
   els.breadcrumb.innerHTML = compactHtml(parts
     .filter(Boolean)
     .map((part, index) => `<span class="crumb${index === parts.length - 1 ? " current" : ""}">${esc(part)}</span>`)
@@ -2838,6 +3057,12 @@ document.addEventListener("click", (event) => {
     toggleRawPayload(button);
     return;
   }
+  if (action === "open-reader-raw") {
+    event.preventDefault();
+    event.stopPropagation();
+    openReaderRaw(button);
+    return;
+  }
   if (action === "copy-raw-payload") {
     event.preventDefault();
     event.stopPropagation();
@@ -2857,6 +3082,10 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     setSessionInfoOpen(false);
     setAgentTreeDrawerOpen(false);
+    if (state.readerRawCapsuleKey) {
+      state.readerRawCapsuleKey = "";
+      renderTimelineDetailPanel(null);
+    }
   }
   const editable = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target?.tagName);
   if (editable) return;
