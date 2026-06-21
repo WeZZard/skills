@@ -5,47 +5,116 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ conversation.summary.title }} | Claude Code Session Viewer</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/css/base.css?v=20260620-stable-repeat-tree-pin" />
+    <link rel="stylesheet" href="/static/css/base.css?v=20260621-waterfall-nav-v16" />
   </head>
   <body>
     <script id="conversation-data" type="application/json">{{ conversation_json | safe }}</script>
     <div class="workbench-shell dual-workbench" data-testid="conversation-workbench">
       <header class="command-bar" data-testid="command-bar">
-        <a class="back-link" href="/">Sessions</a>
+        <div class="command-left">
+          <a class="back-link icon-label" href="/" aria-label="Open sessions dashboard">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 10.5 12 3l9 7.5" />
+              <path d="M5 10v10h14V10" />
+              <path d="M9 20v-6h6v6" />
+            </svg>
+            <span>Sessions</span>
+          </a>
+          <div class="history-actions segmented-control" role="group" aria-label="Transcript focus history">
+            <button id="returnElementBtn" class="icon-label" aria-label="Backward to previous transcript element" disabled>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+              <span>Backward</span>
+            </button>
+            <button id="forwardElementBtn" class="icon-label" aria-label="Forward to returned transcript element" disabled>
+              <span>Forward</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          </div>
+        </div>
         <div class="session-heading">
-          <nav id="breadcrumb" class="breadcrumb" aria-label="Transcript breadcrumb" data-testid="breadcrumb"></nav>
           <h1>{{ conversation.summary.title }}</h1>
-          <p class="source-line">{{ conversation.summary.directory or source.projects_dir }}</p>
+          <button id="sessionInfoButton" class="session-info-button icon-label" type="button" aria-expanded="false" aria-controls="sessionInfoPopover" aria-label="Show session information">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 11v5" />
+              <path d="M12 8h.01" />
+            </svg>
+          </button>
+          <div id="sessionInfoPopover" class="session-info-popover hidden" role="dialog" aria-label="Session information"></div>
         </div>
         <div class="command-actions" aria-label="Transcript actions">
-          <div class="layout-switch" role="group" aria-label="Conversation layout">
-            <button id="readerLayoutBtn" data-layout="reader" aria-pressed="true">Focus</button>
-            <button id="graphLayoutBtn" data-layout="graph" aria-pressed="false">Overview</button>
+          <div class="layout-switch segmented-control" role="group" aria-label="Conversation layout">
+            <button id="graphLayoutBtn" class="icon-label" data-layout="graph" aria-pressed="true">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 6h16" />
+                <path d="M4 12h10" />
+                <path d="M4 18h16" />
+                <path d="M17 10v4" />
+                <path d="M15 12h4" />
+              </svg>
+              <span>Timeline</span>
+            </button>
+            <button id="readerLayoutBtn" class="icon-label" data-layout="reader" aria-pressed="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 5h6v4H4z" />
+                <path d="M14 5h6v14h-6z" />
+                <path d="M4 13h6v6H4z" />
+              </svg>
+              <span>Waterfall</span>
+            </button>
           </div>
-          <button id="returnElementBtn" aria-label="Return to previous transcript element" disabled>Return</button>
-          <button id="forwardElementBtn" aria-label="Forward to returned transcript element" disabled>Forward</button>
-          <button id="copyLinkBtn">Copy link</button>
+          <button id="copyLinkBtn" class="icon-label">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
+              <path d="M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1" />
+            </svg>
+            <span>Copy link</span>
+          </button>
+        </div>
+        <div class="header-meta-line">
+          <span class="source-line header-source" title="{{ conversation.summary.directory or source.projects_dir }}">{{ conversation.summary.directory or source.projects_dir }}</span>
+          {% if conversation.summary.git_branch %}
+            <span class="source-branch" data-testid="branch-chip" title="Git branch">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6 3v12" />
+                <path d="M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+                <path d="M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+                <path d="M18 9a6 6 0 0 1-6 6H9" />
+              </svg>
+              <span>{{ conversation.summary.git_branch }}</span>
+            </span>
+          {% endif %}
         </div>
         <div id="linkStatus" class="link-status" aria-live="polite"></div>
       </header>
 
+      <aside id="agentTreeDrawer" class="agent-tree-drawer hidden" data-testid="agent-tree-drawer" aria-label="Agent tree">
+        <header class="agent-tree-drawer-header">
+          <h2>Agents</h2>
+          <button id="agentTreeDrawerClose" class="icon-label" type="button" aria-label="Close agent tree">Close</button>
+        </header>
+        <div id="agentTree" class="agent-tree" data-testid="subagent-tree" role="tree" aria-label="Agent invocation tree"></div>
+      </aside>
+
       <aside class="left-rail reader-rail" aria-label="Transcript browser">
-        <section class="rail-section">
-          <h2>Session</h2>
-          <div id="sessionSummary" class="flow-summary" data-testid="flow-summary"></div>
-        </section>
-        <section class="rail-section nav-tabs-section">
-          <div class="left-nav-tabs" role="tablist" aria-label="Transcript navigation">
-            <button id="messageNavTab" role="tab" aria-selected="true" data-left-tab="messages">Message Navigation</button>
-            <button id="agentTreeTab" role="tab" aria-selected="false" data-left-tab="agents">Agent Tree</button>
-          </div>
-          <div id="messageNavPanel" class="left-nav-panel" role="tabpanel" aria-labelledby="messageNavTab">
-            <div id="agentSelector" class="agent-filter" data-testid="agent-filter" role="listbox" aria-label="Agent stream selector"></div>
-            <div id="openAgentChips" class="selected-agent-strip" data-testid="selected-agent-strip" aria-label="Selected and open agents"></div>
+        <div class="left-pane-header" data-testid="left-pane-header">
+          <button id="agentPaneToggle" class="icon-label" type="button" aria-controls="agentTreeDrawer" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 3v18" />
+              <path d="M6 7h8a4 4 0 0 1 4 4v1" />
+              <path d="M6 15h6a4 4 0 0 0 4-4" />
+              <circle cx="18" cy="17" r="3" />
+            </svg>
+            <span>Agents</span>
+          </button>
+        </div>
+        <section class="rail-section nav-body-section">
+          <div id="messageNavPanel" class="left-nav-panel left-nav-scroll-panel" aria-label="Message navigation">
             <div id="messageIndex" class="nav-list message-index" data-testid="message-index"></div>
-          </div>
-          <div id="agentTreePanel" class="left-nav-panel hidden" role="tabpanel" aria-labelledby="agentTreeTab">
-            <div id="agentTree" class="agent-tree" data-testid="subagent-tree" role="tree" aria-label="Agent invocation tree"></div>
           </div>
         </section>
         <section id="graphLegendSection" class="rail-section hidden">
@@ -55,7 +124,7 @@
       </aside>
 
       <main id="transcript" class="transcript-surface" data-testid="transcript-root" aria-label="Transcript workspace">
-        <section id="readerLayout" class="reader-layout" data-testid="reader-layout" aria-label="Transcript focus view">
+        <section id="readerLayout" class="reader-layout hidden" data-testid="reader-layout" aria-label="Transcript waterfall view">
           <div id="mainContent" class="reader-main-scroll">
             <div id="readerMainStream" class="reader-main-stream"></div>
           </div>
@@ -70,19 +139,21 @@
           ></div>
           <div id="subagentPanelOverlay" class="subagent-panel-overlay" data-testid="subagent-panel-overlay" aria-label="Open subagent panels"></div>
         </section>
-        <section id="graphLayout" class="graph-layout hidden" data-testid="execution-graph-layout" aria-label="Transcript overview">
-          <div id="graphViewport" class="execution-graph-viewport" data-testid="execution-graph">
-            <div id="graphSizer" class="execution-graph-sizer"></div>
-            <div id="graphLayer" class="execution-graph-layer">
-              <svg id="graphEdges" class="execution-graph-edges" aria-hidden="true"></svg>
-              <div id="graphLanes" class="execution-graph-lanes"></div>
-              <div id="graphCapsules" class="execution-graph-capsules"></div>
+        <section id="graphLayout" class="timeline-layout" data-testid="overview-timeline-layout" aria-label="Transcript timeline view">
+          <div id="graphViewport" class="timeline-viewport" data-testid="overview-timeline">
+            <div id="timelineHeader" class="timeline-header" data-testid="timeline-header" aria-label="Pinned agent timeline header"></div>
+            <div id="graphSizer" class="timeline-sizer"></div>
+            <div id="graphLayer" class="timeline-layer">
+              <svg id="graphEdges" class="timeline-connectors" aria-hidden="true"></svg>
+              <div id="graphLanes" class="timeline-tracks"></div>
+              <div id="graphCapsules" class="timeline-blocks"></div>
             </div>
             <div id="graphSelectionStatus" class="flow-selection-status" data-testid="selected-capsule-summary" aria-live="polite"></div>
           </div>
         </section>
       </main>
     </div>
-    <script src="/static/js/conversation.js?v=20260620-stable-repeat-tree-pin"></script>
+    <div id="timelineDetailPanel" class="timeline-detail-dock hidden" data-testid="timeline-detail-dock" aria-label="Selected message details"></div>
+    <script src="/static/js/conversation.js?v=20260621-waterfall-nav-v16"></script>
   </body>
 </html>

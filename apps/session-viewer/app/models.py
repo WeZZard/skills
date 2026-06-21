@@ -112,6 +112,7 @@ class ConversationSummary(BaseModel):
     id: str
     title: str | None = None
     directory: str | None = None
+    git_branch: str | None = Field(None, alias="gitBranch")
     version: str | None = None
     project_id: str | None = Field(None, alias="projectID")
     parent_id: str | None = None

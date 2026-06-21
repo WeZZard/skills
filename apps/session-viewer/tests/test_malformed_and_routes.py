@@ -74,9 +74,16 @@ def test_attachment_event_renders_compact_summary(claude_projects: Path):
     export = load_conversation(session.id)
 
     assert export is not None
-    rendered_text = "\n".join(part.text or "" for message in export.messages for part in message.parts)
-    assert "Attachment event" in rendered_text
-    assert "Open raw JSON for the full payload." in rendered_text
+    rendered_parts = [part for message in export.messages for part in message.parts]
+    rendered_text = "\n".join(part.text or "" for part in rendered_parts)
+    attachment_part = next(part for part in rendered_parts if part.type == "attachment")
+    assert "Hook: PostToolUse/lint" in rendered_text
+    assert "stdout truncated" in rendered_text
+    assert "Open raw JSON for the full payload." not in rendered_text
+    assert attachment_part.state
+    assert attachment_part.state["kind"] == "attachment_event"
+    assert attachment_part.state["stdoutTruncated"] is True
+    assert attachment_part.state["stdoutLength"] == 2000
     assert len(rendered_text) < 900
 
 

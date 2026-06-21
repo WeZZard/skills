@@ -1,7 +1,7 @@
 const SESSION_DATA = JSON.parse(document.getElementById("conversation-data").textContent);
 
 const state = {
-  layout: "reader",
+  layout: "graph",
   currentCapsuleKey: "",
   backStack: [],
   forwardStack: [],
@@ -14,6 +14,17 @@ const state = {
   subagentPanelRackWidthOverride: null,
   subagentSeparatorResizeState: null,
   pendingPanelPinId: "",
+  timelineHeaderKey: "",
+  timelineTrackKey: "",
+  timelineBlockKey: "",
+  timelineDetailKey: "",
+  pinnedTimelineDetailKeys: [],
+  graphStatusText: "",
+  timelineHeaderRenderCount: 0,
+  timelineTrackRenderCount: 0,
+  timelineBlockRenderCount: 0,
+  timelineDetailRenderCount: 0,
+  agentTreeDrawerOpen: false,
 };
 
 const navByKey = new Map();
@@ -26,6 +37,7 @@ const toolCallByScopedId = new Map();
 const toolResultByScopedId = new Map();
 const navKeyToCapsuleKey = new Map();
 const edgesByCapsuleKey = new Map();
+const rawEventByAddress = new Map();
 
 const model = {
   tracks: [],
@@ -33,11 +45,18 @@ const model = {
   spawnEdges: [],
   width: 1200,
   height: 640,
-  laneHeight: 58,
-  headerWidth: 280,
-  capsuleWidth: 8,
-  capsuleHeight: 20,
-  capsuleStep: 11,
+  trackWidth: 166,
+  blockWidth: 118,
+  blockHeight: 26,
+  blockStepY: 40,
+  timelinePadLeft: 36,
+  timelinePadTop: 96,
+  timelinePadRight: 560,
+  timelinePadBottom: 180,
+  timelineLayoutVersion: 0,
+  timelineLayoutViewportWidth: 0,
+  timelineTrackGroupLeft: 36,
+  timelineTrackSpan: 0,
 };
 
 const GOLDEN_SECTION = 0.61803398875;
@@ -45,7 +64,10 @@ const GOLDEN_REMAINDER = 1 - GOLDEN_SECTION;
 
 const els = {
   workbench: document.querySelector(".dual-workbench"),
+  commandBar: document.querySelector(".command-bar"),
   breadcrumb: document.getElementById("breadcrumb"),
+  sessionInfoButton: document.getElementById("sessionInfoButton"),
+  sessionInfoPopover: document.getElementById("sessionInfoPopover"),
   layoutButtons: document.querySelectorAll("[data-layout]"),
   readerButton: document.getElementById("readerLayoutBtn"),
   graphButton: document.getElementById("graphLayoutBtn"),
@@ -57,6 +79,9 @@ const els = {
   agentTreePanel: document.getElementById("agentTreePanel"),
   agentSelector: document.getElementById("agentSelector"),
   openAgentChips: document.getElementById("openAgentChips"),
+  agentPaneToggle: document.getElementById("agentPaneToggle"),
+  agentTreeDrawer: document.getElementById("agentTreeDrawer"),
+  agentTreeDrawerClose: document.getElementById("agentTreeDrawerClose"),
   agentTree: document.getElementById("agentTree"),
   messageIndex: document.getElementById("messageIndex"),
   graphLegendSection: document.getElementById("graphLegendSection"),
@@ -69,25 +94,30 @@ const els = {
   agentStreamSeparator: document.getElementById("agentStreamSeparator"),
   subagentPanelOverlay: document.getElementById("subagentPanelOverlay"),
   graphViewport: document.getElementById("graphViewport"),
+  timelineHeader: document.getElementById("timelineHeader"),
   graphSizer: document.getElementById("graphSizer"),
   graphLayer: document.getElementById("graphLayer"),
   graphEdges: document.getElementById("graphEdges"),
   graphLanes: document.getElementById("graphLanes"),
   graphCapsules: document.getElementById("graphCapsules"),
   graphStatus: document.getElementById("graphSelectionStatus"),
+  timelineDetailPanel: document.getElementById("timelineDetailPanel"),
   linkStatus: document.getElementById("linkStatus"),
 };
 
 const TYPE_STYLE = {
-  system: { label: "system", className: "system", color: "#6b7280" },
-  user: { label: "user", className: "user", color: "#2f7d5a" },
-  assistant: { label: "assistant", className: "assistant", color: "#2563eb" },
-  reasoning: { label: "reasoning", className: "reasoning", color: "#7c3aed" },
-  tool: { label: "tool call", className: "tool", color: "#9a6700" },
-  tool_result: { label: "tool result", className: "tool-result", color: "#0f766e" },
-  raw_event: { label: "raw event", className: "raw-event", color: "#71717a" },
-  mixed: { label: "mixed", className: "mixed", color: "#334155" },
+  system: { label: "system", className: "system", color: "#ff3b30" },
+  user: { label: "user", className: "user", color: "#00c853" },
+  assistant: { label: "assistant", className: "assistant", color: "#0066ff" },
+  reasoning: { label: "reasoning", className: "reasoning", color: "#a100ff" },
+  tool: { label: "tool call", className: "tool", color: "#ff9500" },
+  tool_result: { label: "tool result", className: "tool-result", color: "#00bcd4" },
+  attachment: { label: "attachment", className: "attachment", color: "#64748b" },
+  raw_event: { label: "raw event", className: "raw-event", color: "#ff2d55" },
+  mixed: { label: "mixed", className: "mixed", color: "#5856d6" },
 };
+
+const ATTACHMENT_PREVIEW_CHARS = 300;
 
 function esc(value) {
   const div = document.createElement("div");
@@ -193,6 +223,7 @@ function rawText(event) {
 
 function partText(part) {
   if (!part) return "";
+  if (isAttachmentPart(part)) return attachmentSummary(part, eventAddress(part.nav));
   if (part.text) return part.text;
   if (part.state?.input) return text(part.state.input);
   if (part.state?.output) return text(part.state.output);
@@ -206,11 +237,148 @@ function messageText(message) {
   return (message.parts || []).map(partText).filter(Boolean).join("\n");
 }
 
+function isAttachmentPart(part) {
+  return part?.type === "attachment" || part?.state?.kind === "attachment_event" || part?.nav?.elementType === "attachment";
+}
+
+function hasValue(value) {
+  return value !== null && value !== undefined && value !== "";
+}
+
+function attachmentMetaRows(state) {
+  return [
+    ["Type", state.attachmentType],
+    ["Hook event", state.hookEventName],
+    ["Hook", state.hookName],
+    ["Matcher", state.matcher],
+    ["Tool", state.toolName],
+    ["Exit code", state.exitCode],
+  ].filter(([, value]) => hasValue(value));
+}
+
+function previewState(value) {
+  if (!hasValue(value)) return null;
+  const valueText = String(value).trim();
+  if (!valueText) return null;
+  return {
+    preview: valueText.slice(0, ATTACHMENT_PREVIEW_CHARS),
+    truncated: valueText.length > ATTACHMENT_PREVIEW_CHARS,
+    length: valueText.length,
+  };
+}
+
+function legacyAttachmentState(part) {
+  const state = {};
+  text(part?.text || "").split("\n").forEach((line) => {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^([^:]+):\s*(.*)$/);
+    if (!match) return;
+    const [, key, value] = match;
+    if (key === "type") state.attachmentType = value;
+    if (key === "hookName") state.hookName = value;
+    if (key === "hookEventName") state.hookEventName = value;
+    if (key === "toolName") state.toolName = value;
+    if (key === "matcher") state.matcher = value;
+    if (key === "exitCode") state.exitCode = value;
+  });
+  return state;
+}
+
+function normalizedAttachmentState(part, rawEventKey) {
+  const existing = part?.state?.kind === "attachment_event" ? { ...part.state } : {};
+  const legacy = legacyAttachmentState(part);
+  const rawEvent = rawEventByAddress.get(rawEventKey);
+  const raw = rawEvent?.raw && typeof rawEvent.raw === "object" ? rawEvent.raw : null;
+  const attachment = raw?.attachment && typeof raw.attachment === "object" ? raw.attachment : null;
+  const state = {
+    kind: "attachment_event",
+    attachmentType: attachment?.type || legacy.attachmentType || existing.attachmentType || raw?.subtype || "unknown",
+    sourceEventType: raw?.type || existing.sourceEventType || "attachment",
+    hasRawPayload: Boolean(rawEvent || existing.hasRawPayload),
+    ...legacy,
+    ...existing,
+  };
+  ["hookEventName", "hookName", "matcher", "toolName"].forEach((key) => {
+    if (attachment?.[key] && !state[key]) state[key] = String(attachment[key]);
+  });
+  if (attachment?.hookEvent && !state.hookEventName) state.hookEventName = String(attachment.hookEvent);
+  if (attachment?.exitCode !== undefined && attachment?.exitCode !== null && !hasValue(state.exitCode)) {
+    state.exitCode = attachment.exitCode;
+  }
+  const stdout = previewState(attachment?.stdout);
+  const stderr = previewState(attachment?.stderr);
+  if (stdout && !hasValue(state.stdoutPreview)) {
+    state.stdoutPreview = stdout.preview;
+    state.stdoutTruncated = stdout.truncated;
+    state.stdoutLength = stdout.length;
+  }
+  if (stderr && !hasValue(state.stderrPreview)) {
+    state.stderrPreview = stderr.preview;
+    state.stderrTruncated = stderr.truncated;
+    state.stderrLength = stderr.length;
+  }
+  return state;
+}
+
+function attachmentSummary(part, rawEventKey) {
+  const state = normalizedAttachmentState(part, rawEventKey);
+  const hookEventName = String(state.hookEventName || "");
+  const hookDetail = String(state.hookName || "");
+  const hookName = [
+    hookEventName && !(hookDetail && (hookDetail === hookEventName || hookDetail.startsWith(`${hookEventName}:`))) ? hookEventName : "",
+    hookDetail,
+  ].filter(Boolean).join("/");
+  const parts = [];
+  if (hookName) parts.push(`Hook: ${hookName}`);
+  else if (state.toolName) parts.push(`Attachment for ${state.toolName}`);
+  else parts.push(`Attachment event: ${state.attachmentType}`);
+  if (hasValue(state.exitCode)) parts.push(`exit ${state.exitCode}`);
+  if (hasValue(state.stderrPreview)) parts.push(`stderr${state.stderrTruncated ? " truncated" : ""}`);
+  if (hasValue(state.stdoutPreview)) parts.push(`stdout${state.stdoutTruncated ? " truncated" : ""}`);
+  return parts.join(" · ");
+}
+
+function renderAttachmentPreview(label, value, truncated, length) {
+  if (!hasValue(value)) return "";
+  const count = Number(length || String(value).length).toLocaleString();
+  return `
+    <section class="attachment-preview">
+      <header>
+        <strong>${esc(label)}</strong>
+        <span>${truncated ? "truncated" : "preview"} · ${esc(count)} chars</span>
+      </header>
+      <pre>${esc(value)}</pre>
+    </section>`;
+}
+
+function renderAttachmentPartBody(part, rawEventKey) {
+  const state = normalizedAttachmentState(part, rawEventKey);
+  const rows = attachmentMetaRows(state);
+  const previews = [
+    renderAttachmentPreview("stderr", state.stderrPreview, state.stderrTruncated, state.stderrLength),
+    renderAttachmentPreview("stdout", state.stdoutPreview, state.stdoutTruncated, state.stdoutLength),
+  ].join("");
+  return `
+    <div class="attachment-event" data-raw-event-key="${escAttr(rawEventKey)}">
+      <p class="attachment-summary">${esc(attachmentSummary(part, rawEventKey))}</p>
+      ${rows.length ? `<dl class="attachment-meta">${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join("")}</dl>` : ""}
+      ${previews || '<p class="attachment-empty">No stdout or stderr captured.</p>'}
+      <div class="attachment-raw hidden" data-raw-payload data-raw-event-key="${escAttr(rawEventKey)}"></div>
+    </div>`;
+}
+
+function rawPayloadTextForKey(rawEventKey) {
+  const rawEvent = rawEventByAddress.get(rawEventKey);
+  return rawEvent ? text(rawEvent.raw) : "";
+}
+
 function capsuleType(message) {
   if (!message) return "raw_event";
-  const partTypes = new Set((message.parts || []).map((part) => part.type));
+  const parts = message.parts || [];
+  const partTypes = new Set(parts.map((part) => part.type));
   if (partTypes.has("tool_result")) return "tool_result";
   if (partTypes.has("tool")) return "tool";
+  if (parts.some(isAttachmentPart)) return "attachment";
   if (partTypes.has("reasoning") && partTypes.size === 1) return "reasoning";
   if (partTypes.size > 1 && !partTypes.has("text")) return "mixed";
   return message.role || "mixed";
@@ -308,6 +476,7 @@ function buildModels() {
     (track.transcript.raw_events || []).forEach((event) => {
       const key = rememberNav(event.nav);
       if (key) navKeyToCapsuleKey.set(key, key);
+      rawEventByAddress.set(eventAddress(event.nav), event);
     });
     (track.transcript.problem_flags || []).forEach(registerProblem);
     if (track.parentTaskNav) childTrackByParentTaskKey.set(navKey(track.parentTaskNav), track);
@@ -336,11 +505,12 @@ function buildModels() {
         partTypes: parts.map((part) => part.type),
         problems,
         problemCount: problems.length,
+        rawEvent: null,
         rawOnly: false,
         x: 0,
         y: 0,
-        width: model.capsuleWidth,
-        height: model.capsuleHeight,
+        width: model.blockWidth,
+        height: model.blockHeight,
       };
       capsuleByKey.set(key, capsule);
       model.capsules.push(capsule);
@@ -377,11 +547,12 @@ function buildModels() {
         partTypes: ["raw_event"],
         problems: problemsByNavKey.get(key) || [],
         problemCount: (problemsByNavKey.get(key) || []).length,
+        rawEvent: event,
         rawOnly: true,
         x: 0,
         y: 0,
-        width: model.capsuleWidth,
-        height: model.capsuleHeight,
+        width: model.blockWidth,
+        height: model.blockHeight,
       };
       capsuleByKey.set(key, capsule);
       model.capsules.push(capsule);
@@ -425,27 +596,62 @@ function buildModels() {
   layoutGraph();
 }
 
-function layoutGraph() {
-  const lanePadTop = 26;
-  let maxCapsules = 1;
+function timelineTrackGroupLeftForViewport(viewportWidth, trackSpan) {
+  if (viewportWidth > 0 && trackSpan <= viewportWidth) {
+    return Math.max(0, (viewportWidth - trackSpan) / 2);
+  }
+  return model.timelinePadLeft;
+}
+
+function layoutGraph(viewportWidth = 0) {
+  const layoutViewportWidth = Math.max(0, Math.floor(viewportWidth || 0));
+  const trackSpan = model.tracks.length * model.trackWidth;
+  const trackGroupLeft = timelineTrackGroupLeftForViewport(layoutViewportWidth, trackSpan);
+  let maxBottom = model.timelinePadTop;
   model.tracks.forEach((track, laneIndex) => {
-    maxCapsules = Math.max(maxCapsules, track.capsuleKeys.length);
-    track.y = lanePadTop + laneIndex * model.laneHeight;
+    const parentKey = navKeyToCapsuleKey.get(navKey(track.parentTaskNav));
+    const parentCapsule = capsuleByKey.get(parentKey);
+    const startY = parentCapsule ? parentCapsule.y : model.timelinePadTop;
+    const trackLeft = trackGroupLeft + laneIndex * model.trackWidth;
+    track.x = trackLeft;
+    track.y = startY;
+    track.width = model.trackWidth;
+    track.timelineStartY = startY;
+    track.timelineEndY = startY + Math.max(1, track.capsuleKeys.length) * model.blockStepY;
     track.capsuleKeys.forEach((key, index) => {
       const capsule = capsuleByKey.get(key);
       if (!capsule) return;
-      capsule.x = model.headerWidth + index * model.capsuleStep;
-      capsule.y = track.y + 24;
-      capsule.width = model.capsuleWidth;
-      capsule.height = model.capsuleHeight;
+      capsule.x = trackLeft + (model.trackWidth - model.blockWidth) / 2;
+      capsule.y = startY + index * model.blockStepY;
+      capsule.width = model.blockWidth;
+      capsule.height = model.blockHeight;
+      maxBottom = Math.max(maxBottom, capsule.y + capsule.height);
     });
   });
-  model.width = Math.max(1200, model.headerWidth + maxCapsules * model.capsuleStep + 140);
-  model.height = Math.max(640, lanePadTop + model.tracks.length * model.laneHeight + 64);
+  const trailingPad = layoutViewportWidth > 0 && trackSpan <= layoutViewportWidth
+    ? trackGroupLeft
+    : model.timelinePadRight;
+  const nextWidth = Math.max(layoutViewportWidth || 1200, trackGroupLeft + trackSpan + trailingPad);
+  const nextHeight = Math.max(640, maxBottom + model.timelinePadBottom);
+  const layoutChanged = (
+    model.width !== nextWidth ||
+    model.height !== nextHeight ||
+    model.timelineLayoutViewportWidth !== layoutViewportWidth ||
+    model.timelineTrackGroupLeft !== trackGroupLeft ||
+    model.timelineTrackSpan !== trackSpan
+  );
+  model.width = nextWidth;
+  model.height = nextHeight;
+  model.timelineLayoutViewportWidth = layoutViewportWidth;
+  model.timelineTrackGroupLeft = trackGroupLeft;
+  model.timelineTrackSpan = trackSpan;
+  if (layoutChanged) model.timelineLayoutVersion += 1;
 }
 
 function getLayoutFromUrl() {
-  return new URLSearchParams(location.search).get("layout") === "graph" ? "graph" : "reader";
+  const layout = new URLSearchParams(location.search).get("layout");
+  if (["waterfall", "focus", "reader"].includes(layout)) return "reader";
+  return "graph";
 }
 
 function setLinkStatus(message = "") {
@@ -486,6 +692,31 @@ function updateNavigationButtons() {
   els.forwardButton.disabled = state.forwardStack.length === 0;
 }
 
+function updateCommandBarHeight() {
+  const height = els.commandBar?.getBoundingClientRect().height || 80;
+  document.documentElement.style.setProperty("--command-bar-height", `${height}px`);
+}
+
+function setSessionInfoOpen(open) {
+  if (!els.sessionInfoButton || !els.sessionInfoPopover) return;
+  els.sessionInfoButton.setAttribute("aria-expanded", String(open));
+  els.sessionInfoPopover.classList.toggle("hidden", !open);
+}
+
+function toggleSessionInfo() {
+  const open = els.sessionInfoButton?.getAttribute("aria-expanded") === "true";
+  setSessionInfoOpen(!open);
+}
+
+function setAgentTreeDrawerOpen(open) {
+  state.agentTreeDrawerOpen = Boolean(open);
+  els.agentTreeDrawer?.classList.toggle("hidden", !state.agentTreeDrawerOpen);
+  els.agentPaneToggle?.setAttribute("aria-expanded", String(state.agentTreeDrawerOpen));
+  els.workbench?.setAttribute("data-agent-tree-open", String(state.agentTreeDrawerOpen));
+  updateSubagentPanelOverlayWidth();
+  requestAnimationFrame(() => updateSubagentPanelOverlayWidth());
+}
+
 function readerMessageId(trackId, index) {
   return `msg-${domId(trackId)}-${index}`;
 }
@@ -496,16 +727,20 @@ function trackTitle(track) {
 
 function renderSessionSummary() {
   const problems = allProblems().length;
-  els.sessionSummary.innerHTML = compactHtml(`
+  const html = compactHtml(`
     <dl class="mini-stats">
+      <dt>Sessions</dt><dd>1</dd>
       <dt>Agents</dt><dd>${model.tracks.length}</dd>
       <dt>Messages</dt><dd>${model.capsules.filter((item) => !item.rawOnly).length}</dd>
       <dt>Raw-only</dt><dd>${model.capsules.filter((item) => item.rawOnly).length}</dd>
-      <dt>Problems</dt><dd>${problems}</dd>
+      <dt>Problem events</dt><dd>${problems}</dd>
     </dl>`);
+  if (els.sessionSummary) els.sessionSummary.innerHTML = html;
+  if (els.sessionInfoPopover) els.sessionInfoPopover.innerHTML = html;
 }
 
 function renderAgentSelector() {
+  if (!els.agentSelector || !els.openAgentChips) return;
   els.agentSelector.innerHTML = compactHtml(model.tracks
     .map((track) => {
       const active = track.id === state.selectedTrackId;
@@ -564,12 +799,12 @@ function renderAgentTree() {
           style="--agent-depth:${track.depth}"
         >
           <span class="agent-tree-disclosure ${hasChildren ? "expanded" : "empty"}" aria-hidden="true"></span>
-          <button class="agent-tree-select" data-action="select-track" data-track-id="${escAttr(track.id)}" aria-current="${active ? "true" : "false"}">
+          <button class="agent-tree-select" data-action="select-track" data-track-id="${escAttr(track.id)}" data-open="false" aria-current="${active ? "true" : "false"}">
             <span class="agent-option-kind">${isSubagent ? "subagent" : "main"}</span>
             <span class="agent-option-title">${esc(compact(title, 58))}</span>
             <span class="agent-option-count">${track.messages.length}</span>
           </button>
-          ${isSubagent ? `<button class="agent-tree-toggle" data-action="toggle-panel" data-track-id="${escAttr(track.id)}" data-testid="subagent-toggle" aria-pressed="${open ? "true" : "false"}" aria-label="${open ? "Unpin panel for" : "Pin panel for"} ${escAttr(title)}"><span class="agent-tree-toggle-dot" aria-hidden="true"></span><span>${open ? "Pinned" : "Pin"}</span></button>` : '<span class="agent-tree-toggle-placeholder" aria-hidden="true"></span>'}
+          ${isSubagent ? `<button class="agent-tree-toggle" data-action="toggle-panel" data-track-id="${escAttr(track.id)}" data-testid="subagent-toggle" aria-pressed="${open ? "true" : "false"}" aria-label="${open ? "Unpin panel for" : "Pin panel for"} ${escAttr(title)}" title="${open ? "Unpin panel" : "Pin panel"}"><svg class="agent-tree-pin-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5" /><path d="M5 17h14v-1.76a2 2 0 0 0-.59-1.42L16 11.41V6h1a1 1 0 0 0 1-1V2H6v3a1 1 0 0 0 1 1h1v5.41l-2.41 2.41A2 2 0 0 0 5 15.24Z" /></svg></button>` : '<span class="agent-tree-toggle-placeholder" aria-hidden="true"></span>'}
         </div>
         ${hasChildren ? `<div class="agent-tree-group" role="group" style="--agent-depth:${track.depth}">${children.map(renderNode).join("")}</div>` : ""}
       </div>`;
@@ -585,8 +820,8 @@ function setLeftNavTab(tab) {
     const selected = button.dataset.leftTab === state.leftNavTab;
     button.setAttribute("aria-selected", String(selected));
   });
-  els.messageNavPanel.classList.toggle("hidden", state.leftNavTab !== "messages");
-  els.agentTreePanel.classList.toggle("hidden", state.leftNavTab !== "agents");
+  els.messageNavPanel?.classList.toggle("hidden", state.leftNavTab !== "messages");
+  els.agentTreePanel?.classList.toggle("hidden", state.leftNavTab !== "agents");
 }
 
 function renderLeftNavigation() {
@@ -597,7 +832,7 @@ function renderLeftNavigation() {
 
 function renderMessageIndex() {
   if (state.layout === "graph") {
-    els.messageIndex.innerHTML = '<div class="nav-item muted">Overview uses lane labels and capsules for navigation.</div>';
+    els.messageIndex.innerHTML = '<div class="nav-item muted">Timeline uses tracks and message blocks for navigation.</div>';
     return;
   }
   const track = trackById.get(state.selectedTrackId) || model.tracks[0];
@@ -609,9 +844,11 @@ function renderMessageIndex() {
       const key = navKeyToCapsuleKey.get(navKey(message.nav)) || "";
       const active = key && key === state.currentCapsuleKey;
       const problems = problemListForMessage(message);
+      const problemText = problems.length === 1 ? "1 problem" : `${problems.length} problems`;
       return `
         <button class="nav-item message-index-item ${active ? "active" : ""} ${problems.length ? "has-problem" : ""}" data-action="focus-message" data-track-id="${escAttr(track.id)}" data-message-index="${index}" aria-current="${active ? "true" : "false"}">
           <span class="role-badge ${escAttr(message.role || "message")}">${esc(message.role || "message")}</span>
+          ${problems.length ? `<span class="message-index-problem" aria-label="${escAttr(problemText)}"><span class="message-index-problem-dot" aria-hidden="true"></span><span>${esc(problemText)}</span></span>` : ""}
           <span class="message-index-time">${esc(formatTime(message.time_created))}</span>
           <span class="message-preview">${esc(compact(messageText(message) || "(no content)", 110))}</span>
         </button>`;
@@ -952,14 +1189,11 @@ function renderReaderMessage(message, track, index) {
   const capsule = key ? capsuleByKey.get(key) : null;
   const problems = capsule?.problems || [];
   return `
-    <article class="reader-message ${escAttr(message.role || "message")} ${problems.length ? "has-problem" : ""} ${key === state.currentCapsuleKey ? "active" : ""}" id="${readerMessageId(track.id, index)}" data-agent-id="${escAttr(track.id)}" data-message-index="${index}" data-capsule-key="${escAttr(key)}" data-testid="transcript-message">
-      <div class="message-gutter">
-        <span class="role-dot"></span>
-        <span>${index + 1}</span>
-      </div>
+    <article class="reader-message ${escAttr(message.role || "message")} ${problems.length ? "has-problem" : ""} ${key === state.currentCapsuleKey ? "active" : ""}" id="${readerMessageId(track.id, index)}" data-action="focus-capsule" data-agent-id="${escAttr(track.id)}" data-message-index="${index}" data-capsule-key="${escAttr(key)}" data-testid="transcript-message" role="button" tabindex="0" aria-current="${key === state.currentCapsuleKey ? "true" : "false"}" aria-label="${escAttr(`${message.role || "message"} message ${index + 1}`)}">
       <div class="message-card">
         <header class="message-header">
           <div class="message-header-left">
+            <span class="role-dot" aria-hidden="true"></span>
             <span class="role-badge ${escAttr(message.role || "message")}">${esc(message.role || "message")}</span>
             <span class="message-meta">
               ${message.time_created ? `<span>${esc(formatFullTime(message.time_created))}</span>` : ""}
@@ -968,6 +1202,7 @@ function renderReaderMessage(message, track, index) {
               ${problems.length ? `<span class="problem-tag">${problems.length} problems</span>` : ""}
             </span>
           </div>
+          <span class="message-card-index" aria-label="Message ${index + 1}">#${index + 1}</span>
         </header>
         <div class="message-body">
           ${(message.parts || []).map((part, partIndex) => renderPart(part, { track, message, messageIndex: index, partIndex })).join("") || '<span class="muted">(no content)</span>'}
@@ -978,20 +1213,26 @@ function renderReaderMessage(message, track, index) {
 
 function renderPart(part, context) {
   const key = rememberNav(part.nav);
-  const style = part.type === "tool_result" ? "tool-result" : part.type === "tool" ? "tool" : part.type || "part";
+  const attachment = isAttachmentPart(part);
+  const rawEventKey = eventAddress(part.nav);
+  const style = part.type === "tool_result" ? "tool-result" : part.type === "tool" ? "tool" : attachment ? "attachment" : part.type || "part";
   const testId = part.type === "tool_result" ? "tool-result" : part.type === "tool" ? "tool-call" : "transcript-part";
   const childTrack = childTrackByParentTaskKey.get(navKey(part.nav));
   const pairedKey = navKeyToCapsuleKey.get(navKey(pairedNav(part))) || "";
-  const partBody = part.type === "tool" || part.type === "tool_result"
+  const hasRawPayload = attachment && rawEventByAddress.has(rawEventKey);
+  const partBody = attachment
+    ? renderAttachmentPartBody(part, rawEventKey)
+    : part.type === "tool" || part.type === "tool_result"
     ? `<pre>${esc(partText(part) || "(no payload)")}</pre>`
     : `<div class="part-text">${esc(partText(part) || "")}</div>`;
   return `
-    <section class="reader-part ${escAttr(style)} ${part.state?.is_error ? "error" : ""}" data-nav-key="${escAttr(key)}" data-testid="${testId}">
+    <section class="reader-part ${escAttr(style)} ${part.state?.is_error ? "error" : ""}" data-nav-key="${escAttr(key)}" data-raw-event-key="${escAttr(rawEventKey)}" data-testid="${testId}">
       <header class="part-header">
-        <strong>${esc(part.type === "tool" ? part.tool || "tool" : typeStyle(part.type).label || part.type)}</strong>
+        <strong>${esc(part.type === "tool" ? part.tool || "tool" : attachment ? "attachment" : typeStyle(part.type).label || part.type)}</strong>
         <div class="part-actions">
           ${part.nav?.toolUseId ? `<span class="tag">${esc(part.nav.toolUseId)}</span>` : ""}
           ${pairedKey ? `<button data-action="focus-capsule" data-capsule-key="${escAttr(pairedKey)}">${part.type === "tool" ? "Result" : "Call"}</button>` : ""}
+          ${hasRawPayload ? `<button type="button" data-action="toggle-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}" aria-expanded="false">View payload</button><button type="button" data-action="copy-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}">Copy JSON</button>` : ""}
         </div>
       </header>
       ${partBody}
@@ -1032,6 +1273,7 @@ function setLayout(layout, options = {}) {
     button.setAttribute("aria-pressed", String(button.dataset.layout === state.layout));
   });
   if (state.layout === "graph") {
+    setAgentTreeDrawerOpen(false);
     els.readerMainStream.innerHTML = "";
     els.subagentPanelOverlay.innerHTML = "";
     els.subagentPanelOverlay.dataset.openPanelCount = "0";
@@ -1043,12 +1285,14 @@ function setLayout(layout, options = {}) {
     renderReader();
     renderMessageIndex();
     renderReaderActiveState();
+    renderGraphStatus();
   } else if (state.layout === "reader") {
     updateSubagentPanelOverlayWidth();
+    renderGraphStatus();
   }
   if (options.history !== false) {
     const url = new URL(location.href);
-    if (state.layout === "graph") url.searchParams.set("layout", "graph");
+    if (state.layout === "reader") url.searchParams.set("layout", "waterfall");
     else url.searchParams.delete("layout");
     history.pushState(historyState(), "", url);
   }
@@ -1064,25 +1308,89 @@ function scheduleGraphRender() {
   });
 }
 
-function graphGroupSize(viewWidth, visibleLaneCount) {
-  const estimated = visibleLaneCount * Math.ceil((viewWidth + 600) / model.capsuleStep);
-  const target = 4200;
-  if (estimated <= target) return 1;
-  const needed = Math.ceil(estimated / target);
-  return 2 ** Math.ceil(Math.log2(needed));
+function timelineTrackLabel(track, index = 0) {
+  if (!track) return "Track";
+  if (track.depth === 0) return "Main";
+  const idSuffix = (track.id || "").split("/").filter(Boolean).at(-1) || "";
+  const agentSuffix = idSuffix.replace(/^agent-/, "").replace(/^subagent-/, "");
+  return agentSuffix ? `Agent ${agentSuffix.slice(0, 8)}` : `Agent ${index}`;
+}
+
+function timelineTrackMeta(track) {
+  if (!track) return "";
+  const count = track.capsuleKeys.length.toLocaleString();
+  const problemText = track.problemCount ? ` · ${track.problemCount}` : "";
+  return `${count} blocks${problemText}`;
+}
+
+function timelineTrackKind(track) {
+  return track?.depth === 0 ? "main" : "subagent";
+}
+
+function timelineBlockTypeName(type) {
+  return typeStyle(type).label.toUpperCase();
+}
+
+function timelineTrackBounds(track) {
+  return {
+    left: track.x || 0,
+    right: (track.x || 0) + model.trackWidth,
+    top: track.timelineStartY || model.timelinePadTop,
+    bottom: track.timelineEndY || model.height,
+  };
+}
+
+function renderTimelineHeader() {
+  if (!els.timelineHeader) return;
+  const key = `${model.timelineLayoutVersion}:${model.width}:${model.tracks.length}:${state.selectedTrackId}:${model.tracks.map((track) => track.problemCount).join(",")}`;
+  els.timelineHeader.style.width = `${model.width}px`;
+  if (state.timelineHeaderKey === key) return;
+  state.timelineHeaderKey = key;
+  state.timelineHeaderRenderCount += 1;
+  els.timelineHeader.innerHTML = compactHtml(model.tracks
+    .map((track, index) => {
+      const selected = track.id === state.selectedTrackId;
+      return `
+        <div class="timeline-header-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}" style="left:${track.x}px;width:${model.trackWidth}px">
+          <button class="timeline-track-label ${track.problemCount ? "has-problem" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}" data-testid="timeline-track-label" aria-selected="${selected ? "true" : "false"}" title="${escAttr(trackTitle(track))}">
+            <span class="timeline-track-kicker">${esc(timelineTrackKind(track))}</span>
+            <strong>${esc(timelineTrackLabel(track, index))}</strong>
+            <small>${esc(timelineTrackMeta(track))}</small>
+          </button>
+        </div>`;
+    })
+    .join(""));
+}
+
+function renderTimelineTracks(visibleTracks) {
+  const key = `${model.timelineLayoutVersion}:${model.width}:${model.height}:${state.selectedTrackId}:${visibleTracks.map((track) => track.id).join("|")}`;
+  if (state.timelineTrackKey === key) return;
+  state.timelineTrackKey = key;
+  state.timelineTrackRenderCount += 1;
+  els.graphLanes.innerHTML = compactHtml(visibleTracks
+    .map((track) => {
+      const selected = track.id === state.selectedTrackId;
+      return `
+      <div class="timeline-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}" data-track-id="${escAttr(track.id)}" style="left:${track.x}px;top:0px;width:${model.trackWidth}px;height:${model.height}px"></div>`;
+    })
+    .join(""));
 }
 
 function renderGraphVirtual() {
   if (state.layout !== "graph") return;
   const viewport = els.graphViewport;
+  layoutGraph(viewport.clientWidth);
   const viewLeft = viewport.scrollLeft;
   const viewTop = viewport.scrollTop;
   const viewRight = viewLeft + viewport.clientWidth;
   const viewBottom = viewTop + viewport.clientHeight;
   const overscanX = 320;
-  const overscanY = 180;
-  const visibleTracks = model.tracks.filter((track) => track.y + model.laneHeight >= viewTop - overscanY && track.y <= viewBottom + overscanY);
-  const groupSize = graphGroupSize(viewport.clientWidth, visibleTracks.length);
+  const overscanY = Math.max(360, Math.min(640, viewport.clientHeight * 0.22));
+  const verticalChunkHeight = model.blockStepY * 96;
+  const visibleTracks = model.tracks.filter((track) => {
+    const bounds = timelineTrackBounds(track);
+    return bounds.right >= viewLeft - overscanX && bounds.left <= viewRight + overscanX;
+  });
 
   els.graphSizer.style.width = `${model.width}px`;
   els.graphSizer.style.height = `${model.height}px`;
@@ -1092,42 +1400,38 @@ function renderGraphVirtual() {
   els.graphEdges.setAttribute("height", String(model.height));
   els.graphEdges.setAttribute("viewBox", `0 0 ${model.width} ${model.height}`);
 
-  els.graphLanes.innerHTML = compactHtml(visibleTracks
-    .map((track) => `
-      <div class="graph-lane-row" style="left:0px;top:${track.y}px;width:${model.width}px;height:${model.laneHeight}px">
-        <button class="graph-lane-label ${track.problemCount ? "has-problem" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}" style="left:${viewLeft + 10 + track.depth * 14}px">
-          <strong>${esc(compact(trackTitle(track), 42))}</strong>
-          <small>${esc(track.agentType)} · ${track.capsuleKeys.length} messages${track.problemCount ? ` · ${track.problemCount} problems` : ""}</small>
-        </button>
-      </div>`)
-    .join(""));
+  renderTimelineHeader();
+  renderTimelineTracks(visibleTracks);
 
-  const capsuleHtml = [];
-  const rangeStart = Math.max(0, Math.floor((viewLeft - overscanX - model.headerWidth) / model.capsuleStep));
-  const rangeEnd = Math.ceil((viewRight + overscanX - model.headerWidth) / model.capsuleStep);
-  visibleTracks.forEach((track) => {
-    const start = Math.max(0, Math.floor(rangeStart / groupSize) * groupSize);
-    const end = Math.min(track.capsuleKeys.length - 1, rangeEnd);
-    for (let index = start; index <= end; index += groupSize) {
-      const keys = track.capsuleKeys.slice(index, Math.min(index + groupSize, track.capsuleKeys.length));
-      if (!keys.length) continue;
-      const first = capsuleByKey.get(keys[0]);
-      const last = capsuleByKey.get(keys[keys.length - 1]);
-      if (!first || !last) continue;
-      if (last.x + last.width < viewLeft - overscanX || first.x > viewRight + overscanX) continue;
-      const problems = keys.reduce((sum, key) => sum + (capsuleByKey.get(key)?.problemCount || 0), 0);
-      const active = keys.includes(state.currentCapsuleKey);
-      const selected = keys.some((key) => state.selectedGraphKeys.has(key));
-      const type = groupSize === 1 ? first.type : "mixed";
-      const style = typeStyle(type);
-      const width = Math.max(model.capsuleWidth, last.x + last.width - first.x);
-      capsuleHtml.push(`
-        <button class="graph-capsule ${style.className} ${active ? "active" : ""} ${selected ? "selected" : ""} ${problems ? "has-problem" : ""}" data-action="graph-capsule" data-capsule-key="${escAttr(first.key)}" data-group-size="${keys.length}" data-testid="graph-capsule" style="left:${first.x}px;top:${first.y}px;width:${width}px;height:${first.height}px" title="${escAttr(groupSize === 1 ? `${style.label}: ${first.summary}` : `${keys.length} messages from ${trackTitle(track)}`)}" aria-label="${escAttr(groupSize === 1 ? `${style.label}: ${first.summary}` : `${keys.length} message group`)}">
-          ${problems ? '<span class="problem-marker"></span>' : ""}
-        </button>`);
-    }
-  });
-  els.graphCapsules.innerHTML = compactHtml(capsuleHtml.join(""));
+  const windowTop = Math.max(0, Math.floor((viewTop - overscanY) / verticalChunkHeight) * verticalChunkHeight);
+  const windowBottom = Math.ceil((viewBottom + overscanY) / verticalChunkHeight) * verticalChunkHeight;
+  const rangeByTrack = visibleTracks.map((track) => ({
+    track,
+    start: Math.max(0, Math.floor((windowTop - track.timelineStartY) / model.blockStepY)),
+    end: Math.min(track.capsuleKeys.length - 1, Math.ceil((windowBottom - track.timelineStartY) / model.blockStepY)),
+  }));
+  const selectionKey = `${state.currentCapsuleKey}:${[...state.selectedGraphKeys].sort().join(",")}`;
+  const blockKey = `${model.timelineLayoutVersion}:${selectionKey}:${windowTop}:${windowBottom}:${visibleTracks.map((track) => track.id).join("|")}`;
+  if (state.timelineBlockKey !== blockKey) {
+    state.timelineBlockKey = blockKey;
+    state.timelineBlockRenderCount += 1;
+    const blockHtml = [];
+    rangeByTrack.forEach(({ track, start, end }) => {
+      for (let index = start; index <= end; index += 1) {
+        const key = track.capsuleKeys[index];
+        const capsule = capsuleByKey.get(key);
+        if (!capsule) continue;
+        const active = key === state.currentCapsuleKey;
+        const selected = state.selectedGraphKeys.has(key);
+        const style = typeStyle(capsule.type);
+        blockHtml.push(`
+          <button class="timeline-block ${style.className} ${active ? "active" : ""} ${selected ? "selected" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-testid="timeline-block" style="left:${capsule.x}px;top:${capsule.y}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${style.label}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${index + 1}, ${style.label}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
+            <span class="timeline-block-label">${esc(`${timelineBlockTypeName(capsule.type)} ${index + 1}`)}</span>
+          </button>`);
+      }
+    });
+    els.graphCapsules.innerHTML = compactHtml(blockHtml.join(""));
+  }
   els.graphEdges.innerHTML = renderVisibleEdges(viewLeft - overscanX, viewTop - overscanY, viewRight + overscanX, viewBottom + overscanY);
   renderGraphStatus();
 }
@@ -1138,51 +1442,206 @@ function capsuleInView(capsule, left, top, right, bottom) {
 }
 
 function renderVisibleEdges(left, top, right, bottom) {
-  const edgeMap = new Map();
-  model.spawnEdges.forEach((edge) => edgeMap.set(`${edge.sourceKey}:${edge.targetKey}:${edge.type}`, edge));
-  state.selectedGraphKeys.forEach((key) => {
-    (edgesByCapsuleKey.get(key) || []).forEach((edge) => {
-      if (edge.type !== "sequence") edgeMap.set(`${key}:${edge.targetKey}:${edge.type}`, { ...edge, sourceKey: key });
-    });
-  });
-  if (state.currentCapsuleKey) {
-    (edgesByCapsuleKey.get(state.currentCapsuleKey) || []).forEach((edge) => {
-      if (edge.type !== "sequence") edgeMap.set(`${state.currentCapsuleKey}:${edge.targetKey}:${edge.type}`, { ...edge, sourceKey: state.currentCapsuleKey });
-    });
-  }
-  return [...edgeMap.values()]
+  const defs = `
+    <defs>
+      <marker id="timelineArrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L8,3 z" class="timeline-arrow-head"></path>
+      </marker>
+    </defs>`;
+  const paths = model.spawnEdges
     .map((edge) => {
       const source = capsuleByKey.get(edge.sourceKey);
       const target = capsuleByKey.get(edge.targetKey);
       if (!source || !target) return "";
       const selected = edge.sourceKey === state.currentCapsuleKey || edge.targetKey === state.currentCapsuleKey || state.selectedGraphKeys.has(edge.sourceKey) || state.selectedGraphKeys.has(edge.targetKey);
-      if (!selected && !capsuleInView(source, left, top, right, bottom) && !capsuleInView(target, left, top, right, bottom)) return "";
+      const edgeLeft = Math.min(source.x, target.x);
+      const edgeRight = Math.max(source.x + source.width, target.x + target.width);
+      const edgeTop = Math.min(source.y, target.y);
+      const edgeBottom = Math.max(source.y + source.height, target.y + target.height);
+      const edgeVisible = edgeRight >= left && edgeLeft <= right && edgeBottom >= top && edgeTop <= bottom;
+      if (!selected && !edgeVisible) return "";
       const sx = source.x + source.width;
       const sy = source.y + source.height / 2;
       const tx = target.x;
       const ty = target.y + target.height / 2;
-      const curve = Math.max(50, Math.min(180, Math.abs(tx - sx) / 2));
-      return `<path class="graph-edge ${escAttr(edge.type)} ${selected ? "selected" : ""}" d="M ${sx} ${sy} C ${sx + curve} ${sy - 28}, ${tx - curve} ${ty - 28}, ${tx} ${ty}" />`;
+      const curve = Math.max(32, Math.min(96, Math.abs(tx - sx) / 2));
+      return `<path class="timeline-connector ${escAttr(edge.type)} ${selected ? "selected" : ""}" d="M ${sx} ${sy} C ${sx + curve} ${sy}, ${tx - curve} ${ty}, ${tx} ${ty}" marker-end="url(#timelineArrow)" />`;
     })
     .join("");
+  return defs + paths;
+}
+
+function timelinePinnedDetailKeys() {
+  const seen = new Set();
+  const keys = state.pinnedTimelineDetailKeys.filter((key) => {
+    if (!capsuleByKey.has(key) || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (keys.length !== state.pinnedTimelineDetailKeys.length) state.pinnedTimelineDetailKeys = keys;
+  return keys;
+}
+
+function timelineDetailWindows(capsule) {
+  const pinnedKeys = timelinePinnedDetailKeys();
+  const windows = pinnedKeys
+    .map((key) => capsuleByKey.get(key))
+    .filter(Boolean)
+    .map((pinnedCapsule) => ({ mode: "pinned", capsule: pinnedCapsule }));
+  const selectedKeys = [...state.selectedGraphKeys].filter((key) => capsuleByKey.has(key) && !pinnedKeys.includes(key));
+  if (selectedKeys.length > 1) {
+    selectedKeys.forEach((key) => windows.push({ mode: "live", capsule: capsuleByKey.get(key) }));
+  } else {
+    const liveCapsule = capsule || capsuleByKey.get(selectedKeys[0]);
+    if (liveCapsule && !pinnedKeys.includes(liveCapsule.key)) {
+      windows.push({ mode: "live", capsule: liveCapsule });
+    }
+  }
+  return windows;
+}
+
+function updateTimelineDetailDockLayout(count = document.querySelectorAll("[data-testid='timeline-detail-panel']").length) {
+  if (!els.timelineDetailPanel) return;
+  const gap = 12;
+  const minPanelWidth = 320;
+  const maxPanelWidth = 480;
+  const usableWidth = Math.max(240, window.innerWidth - 48);
+  const usableHeight = Math.max(260, window.innerHeight - 132);
+  const maxColumns = Math.max(1, Math.floor((usableWidth + gap) / (minPanelWidth + gap)));
+  const columns = Math.max(1, Math.min(Math.max(count, 1), maxColumns));
+  const widthByColumns = Math.floor((usableWidth - gap * (columns - 1)) / columns);
+  const panelWidth = Math.min(maxPanelWidth, Math.max(240, widthByColumns));
+  const rows = Math.max(1, Math.ceil(Math.max(count, 1) / columns));
+  const heightByRows = Math.floor((usableHeight - gap * (rows - 1)) / rows);
+  const panelMaxHeight = Math.min(620, Math.max(240, heightByRows));
+  els.timelineDetailPanel.style.setProperty("--timeline-detail-window-width", `${panelWidth}px`);
+  els.timelineDetailPanel.style.setProperty("--timeline-detail-window-max-height", `${panelMaxHeight}px`);
+  els.timelineDetailPanel.dataset.columns = String(columns);
+  els.timelineDetailPanel.dataset.rows = String(rows);
+}
+
+function renderTimelineDetailPart(part, partIndex) {
+  const attachment = isAttachmentPart(part);
+  const rawEventKey = eventAddress(part.nav);
+  const hasRawPayload = attachment && rawEventByAddress.has(rawEventKey);
+  const body = attachment
+    ? renderAttachmentPartBody(part, rawEventKey)
+    : `<pre>${esc(partText(part) || "(empty)")}</pre>`;
+  return `
+    <article class="timeline-detail-part ${escAttr(attachment ? "attachment" : typeStyle(part.type).className || part.type || "part")} ${part.state?.is_error ? "error" : ""}" data-raw-event-key="${escAttr(rawEventKey)}">
+      <header>
+        <span>${partIndex + 1}</span>
+        <strong>${esc(part.type === "tool" ? part.tool || "tool call" : attachment ? "attachment" : typeStyle(part.type).label || part.type || "part")}</strong>
+        ${part.nav?.toolUseId ? `<code>${esc(part.nav.toolUseId)}</code>` : ""}
+        ${hasRawPayload ? `<div class="timeline-detail-part-actions"><button type="button" data-action="toggle-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}" aria-expanded="false">View payload</button><button type="button" data-action="copy-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}">Copy JSON</button></div>` : ""}
+      </header>
+      ${body}
+    </article>`;
+}
+
+function renderTimelineDetailWindow(item, index) {
+  const displayCapsule = item.capsule;
+  const pinned = item.mode === "pinned";
+  const canPin = state.layout === "graph";
+  const track = trackById.get(displayCapsule.trackId);
+  const style = typeStyle(displayCapsule.type);
+  const timestamp = formatFullTime(displayCapsule.timestamp);
+  const problems = displayCapsule.problems || [];
+  const parts = displayCapsule.message?.parts || [];
+  const rawBody = displayCapsule.rawOnly ? rawText(displayCapsule.rawEvent) : "";
+  const bodyHtml = displayCapsule.rawOnly
+    ? `<pre class="timeline-detail-body">${esc(rawBody || "(empty raw event)")}</pre>`
+    : `<div class="timeline-detail-parts">
+        ${parts.map(renderTimelineDetailPart).join("") || '<p class="muted">(no content)</p>'}
+      </div>`;
+  return `
+    <article class="timeline-detail-window ${pinned ? "pinned" : "live"}" data-testid="timeline-detail-panel" data-detail-mode="${escAttr(item.mode)}" data-detail-capsule-key="${escAttr(displayCapsule.key)}" data-detail-index="${index}">
+      <div class="timeline-detail-titlebar">
+        <strong>${pinned ? "Pinned message" : "Message detail"}</strong>
+        <div class="timeline-detail-actions">
+          <button type="button" class="timeline-detail-close" data-action="close-timeline-detail" aria-label="Close timeline detail">&times;</button>
+          ${canPin ? `<button type="button" class="timeline-detail-pin ${pinned ? "active" : ""}" data-action="toggle-timeline-detail-pin" data-testid="timeline-detail-pin" aria-pressed="${pinned ? "true" : "false"}" aria-label="${pinned ? "Unpin message detail" : "Pin message detail"}" title="${pinned ? "Unpin" : "Pin"}">${pinned ? "Pinned" : "Pin"}</button>` : ""}
+        </div>
+      </div>
+      <header class="timeline-detail-header">
+        <div>
+          <span class="timeline-detail-type ${escAttr(style.className)}">${esc(style.label)}</span>
+          <h2>${esc(compact(displayCapsule.summary || displayCapsule.label, 120))}</h2>
+        </div>
+      </header>
+      <dl class="timeline-detail-meta">
+        <dt>Agent</dt><dd>${esc(timelineTrackLabel(track))}</dd>
+        <dt>Block</dt><dd>${displayCapsule.messageIndex + 1}</dd>
+        ${timestamp ? `<dt>Time</dt><dd>${esc(timestamp)}</dd>` : ""}
+        ${displayCapsule.nav?.lineNumber ? `<dt>Line</dt><dd>${displayCapsule.nav.lineNumber}</dd>` : ""}
+        ${displayCapsule.nav?.agentPath ? `<dt>Path</dt><dd>${esc(displayCapsule.nav.agentPath)}</dd>` : ""}
+        ${problems.length ? `<dt>Problems</dt><dd>${problems.length}</dd>` : ""}
+      </dl>
+      ${problems.length ? `<div class="timeline-detail-problems">${problems.map((problem) => `<div><strong>${esc(problem.kind || "problem")}</strong><span>${esc(problem.message || problem.reason || problem.id || "")}</span></div>`).join("")}</div>` : ""}
+      ${bodyHtml}
+    </article>`;
+}
+
+function renderTimelineDetailPanel(capsule) {
+  if (!els.timelineDetailPanel) {
+    state.timelineDetailKey = "";
+    state.pinnedTimelineDetailKeys = [];
+    return;
+  }
+  const windows = state.layout === "graph" ? timelineDetailWindows(capsule) : [];
+  updateTimelineDetailDockLayout(windows.length);
+  if (!windows.length) {
+    if (state.timelineDetailKey !== "" || !els.timelineDetailPanel.classList.contains("hidden")) {
+      state.timelineDetailKey = "";
+      els.timelineDetailPanel.classList.add("hidden");
+      els.timelineDetailPanel.dataset.pinned = "false";
+      els.timelineDetailPanel.dataset.detailCapsuleKey = "";
+      els.timelineDetailPanel.innerHTML = "";
+    }
+    return;
+  }
+  const detailKey = windows.map((item) => `${item.mode}:${item.capsule.key}:${item.capsule.problemCount}`).join("|");
+  if (state.timelineDetailKey === detailKey) return;
+  state.timelineDetailKey = detailKey;
+  state.timelineDetailRenderCount += 1;
+  els.timelineDetailPanel.classList.remove("hidden");
+  els.timelineDetailPanel.dataset.pinned = String(windows.some((item) => item.mode === "pinned"));
+  els.timelineDetailPanel.dataset.detailCapsuleKey = windows[0]?.capsule.key || "";
+  els.timelineDetailPanel.innerHTML = compactHtml(windows.map(renderTimelineDetailWindow).join(""));
 }
 
 function renderGraphStatus() {
   if (state.selectedGraphKeys.size > 1) {
-    els.graphStatus.textContent = `${state.selectedGraphKeys.size} transcript elements selected`;
+    const textContent = `${state.selectedGraphKeys.size} transcript elements selected`;
+    if (state.graphStatusText !== textContent) {
+      state.graphStatusText = textContent;
+      els.graphStatus.textContent = textContent;
+    }
+    renderTimelineDetailPanel(null);
     return;
   }
   const capsule = selectedCapsule();
-  els.graphStatus.textContent = capsule
+  const textContent = capsule
     ? `${typeStyle(capsule.type).label} · ${capsule.nav?.agentPath || "main"} · ${capsule.summary}${capsule.problemCount ? ` · ${capsule.problemCount} problems` : ""}`
     : "";
+  if (state.graphStatusText !== textContent) {
+    state.graphStatusText = textContent;
+    els.graphStatus.textContent = textContent;
+  }
+  renderTimelineDetailPanel(capsule);
 }
 
 function scrollGraphCapsuleIntoView(capsule, instant = false) {
   if (!capsule) return;
+  const viewport = els.graphViewport;
+  layoutGraph(viewport.clientWidth);
+  const maxLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+  const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+  const targetLeft = capsule.x + capsule.width / 2 - viewport.clientWidth / 2;
+  const targetTop = capsule.y + capsule.height / 2 - viewport.clientHeight / 2;
   els.graphViewport.scrollTo({
-    left: Math.max(0, capsule.x - els.graphViewport.clientWidth * 0.45),
-    top: Math.max(0, capsule.y - els.graphViewport.clientHeight * 0.45),
+    left: Math.min(maxLeft, Math.max(0, targetLeft)),
+    top: Math.min(maxTop, Math.max(0, targetTop)),
     behavior: instant ? "auto" : "smooth",
   });
 }
@@ -1243,12 +1702,58 @@ function toggleGraphSelection(key, event) {
   focusCapsule(key);
 }
 
+function removePinnedTimelineDetailKey(key) {
+  state.pinnedTimelineDetailKeys = state.pinnedTimelineDetailKeys.filter((pinnedKey) => pinnedKey !== key);
+}
+
+function toggleTimelineDetailPin(button) {
+  const detailWindow = button?.closest("[data-testid='timeline-detail-panel']");
+  const detailKey = detailWindow?.dataset.detailCapsuleKey || "";
+  const targetKey = detailKey || state.currentCapsuleKey;
+  if (!targetKey || !capsuleByKey.has(targetKey)) return;
+  if (state.pinnedTimelineDetailKeys.includes(targetKey)) removePinnedTimelineDetailKey(targetKey);
+  else state.pinnedTimelineDetailKeys.push(targetKey);
+  state.timelineDetailKey = "";
+  renderGraphStatus();
+}
+
+function closeTimelineDetail(button) {
+  const detailWindow = button?.closest("[data-testid='timeline-detail-panel']");
+  const detailKey = detailWindow?.dataset.detailCapsuleKey || "";
+  const mode = detailWindow?.dataset.detailMode || "";
+  if (mode === "pinned" && detailKey) {
+    removePinnedTimelineDetailKey(detailKey);
+    if (state.currentCapsuleKey === detailKey) {
+      state.currentCapsuleKey = "";
+      state.selectedGraphKeys.delete(detailKey);
+    }
+  } else if (detailKey) {
+    state.selectedGraphKeys.delete(detailKey);
+    if (state.currentCapsuleKey === detailKey) state.currentCapsuleKey = "";
+  } else {
+    state.selectedGraphKeys.clear();
+    state.currentCapsuleKey = "";
+  }
+  state.timelineDetailKey = "";
+  renderGraphStatus();
+  renderReaderActiveState();
+  renderBreadcrumb();
+  scheduleGraphRender();
+  updateNavigationButtons();
+}
+
 function renderReaderActiveState() {
-  document.querySelectorAll(".reader-message.active").forEach((node) => node.classList.remove("active"));
+  document.querySelectorAll(".reader-message.active").forEach((node) => {
+    node.classList.remove("active");
+    node.setAttribute("aria-current", "false");
+  });
   const capsule = selectedCapsule();
   if (!capsule) return;
   const element = document.getElementById(readerMessageId(capsule.trackId, capsule.messageIndex));
-  if (element) element.classList.add("active");
+  if (element) {
+    element.classList.add("active");
+    element.setAttribute("aria-current", "true");
+  }
 }
 
 function focusMessage(trackId, index) {
@@ -1272,7 +1777,8 @@ function selectTrack(trackId, options = {}) {
   }
   renderLeftNavigation();
   if (openChanged) renderPanels({ pinTrackId: trackId, instant: options.instant });
-  if (track.firstCapsuleKey && options.focus !== false && !wasSelected) {
+  const canFocusTrack = track.depth === 0 || shouldOpen || wasOpen;
+  if (track.firstCapsuleKey && options.focus !== false && !wasSelected && canFocusTrack) {
     focusCapsule(track.firstCapsuleKey, { scroll: true });
   } else {
     renderReaderActiveState();
@@ -1310,11 +1816,12 @@ function togglePanel(trackId) {
 }
 
 function renderBreadcrumb() {
+  if (!els.breadcrumb) return;
   const capsule = selectedCapsule();
   const nav = currentNav();
   const parts = ["Sessions", SESSION_DATA.summary?.title || "Session"];
-  if (state.layout === "graph") parts.push("Overview");
-  else parts.push("Focus");
+  if (state.layout === "graph") parts.push("Timeline");
+  else parts.push("Waterfall");
   if (nav?.agentPath) parts.push(...nav.agentPath.split("/"));
   if (capsule) parts.push(typeStyle(capsule.type).label);
   els.breadcrumb.innerHTML = compactHtml(parts
@@ -1396,14 +1903,40 @@ function restoreHashTarget() {
   return true;
 }
 
-function copyText(value) {
+function copyText(value, message = "Copied link") {
   navigator.clipboard?.writeText(value);
-  setLinkStatus("Copied link");
+  setLinkStatus(message);
   if (state.linkStatusTimer) clearTimeout(state.linkStatusTimer);
   state.linkStatusTimer = setTimeout(() => {
     setLinkStatus("");
     state.linkStatusTimer = null;
   }, 1600);
+}
+
+function rawPayloadContainerForButton(button) {
+  const scope = button.closest(".reader-part, .timeline-detail-part");
+  return scope?.querySelector("[data-raw-payload]") || null;
+}
+
+function toggleRawPayload(button) {
+  const rawEventKey = button.dataset.rawEventKey || button.closest("[data-raw-event-key]")?.dataset.rawEventKey || "";
+  const target = rawPayloadContainerForButton(button);
+  if (!rawEventKey || !target) return;
+  const opening = target.classList.contains("hidden");
+  if (opening && !target.dataset.loaded) {
+    const payload = rawPayloadTextForKey(rawEventKey);
+    target.innerHTML = `<header>Raw JSON</header><pre>${esc(payload || "(raw payload unavailable)")}</pre>`;
+    target.dataset.loaded = "true";
+  }
+  target.classList.toggle("hidden", !opening);
+  button.setAttribute("aria-expanded", String(opening));
+  button.textContent = opening ? "Hide payload" : "View payload";
+}
+
+function copyRawPayload(button) {
+  const rawEventKey = button.dataset.rawEventKey || button.closest("[data-raw-event-key]")?.dataset.rawEventKey || "";
+  const payload = rawPayloadTextForKey(rawEventKey);
+  if (payload) copyText(payload, "Copied raw JSON");
 }
 
 function layoutMetrics() {
@@ -1447,6 +1980,128 @@ function layoutMetrics() {
   };
 }
 
+function timelineMetrics() {
+  const viewportRect = els.graphViewport.getBoundingClientRect();
+  const headerRect = els.timelineHeader.getBoundingClientRect();
+  const detailDockRect = els.timelineDetailPanel?.getBoundingClientRect() || { left: 0, right: 0, width: 0, height: 0 };
+  const mainTrack = model.tracks[0] || null;
+  const trackGroupRight = model.timelineTrackGroupLeft + model.timelineTrackSpan;
+  const trackGroupCenter = model.timelineTrackGroupLeft + model.timelineTrackSpan / 2;
+  const currentBlock = state.currentCapsuleKey
+    ? [...document.querySelectorAll("[data-testid='timeline-block']")].find((element) => element.dataset.capsuleKey === state.currentCapsuleKey)
+    : null;
+  const currentBlockRect = currentBlock?.getBoundingClientRect();
+  const currentBlockCenterDelta = currentBlockRect
+    ? {
+      x: currentBlockRect.left + currentBlockRect.width / 2 - (viewportRect.left + viewportRect.width / 2),
+      y: currentBlockRect.top + currentBlockRect.height / 2 - (viewportRect.top + viewportRect.height / 2),
+    }
+    : null;
+  const blocks = [...document.querySelectorAll("[data-testid='timeline-block']")].map((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      left: Math.round(rect.left),
+      top: Math.round(rect.top),
+      color: window.getComputedStyle(element).backgroundColor,
+      key: element.dataset.capsuleKey || "",
+    };
+  });
+  const labels = [...document.querySelectorAll("[data-testid='timeline-track-label']")].map((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    return {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      left: Math.round(rect.left),
+      top: Math.round(rect.top),
+      zIndex: Number.parseInt(style.zIndex, 10) || 0,
+      text: element.innerText.replace(/\s+/g, " ").trim(),
+    };
+  });
+  const viewportStyle = window.getComputedStyle(els.graphViewport);
+  const headerStyle = window.getComputedStyle(els.timelineHeader);
+  const blockStyle = blocks.length ? window.getComputedStyle(document.querySelector("[data-testid='timeline-block']")) : null;
+  const detailWindows = [...document.querySelectorAll("[data-testid='timeline-detail-panel']")].map((element) => {
+    const rect = element.getBoundingClientRect();
+    const pin = element.querySelector("[data-testid='timeline-detail-pin']");
+    return {
+      key: element.dataset.detailCapsuleKey || "",
+      mode: element.dataset.detailMode || "",
+      pinned: element.dataset.detailMode === "pinned",
+      pinPressed: pin?.getAttribute("aria-pressed") || "",
+      left: rect.left,
+      top: rect.top,
+      right: rect.right,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+  return {
+    viewportWidth: viewportRect.width,
+    viewportHeight: viewportRect.height,
+    viewportScrollLeft: els.graphViewport.scrollLeft,
+    viewportScrollTop: els.graphViewport.scrollTop,
+    scrollWidth: els.graphViewport.scrollWidth,
+    trackWidth: model.trackWidth,
+    trackSpan: model.timelineTrackSpan,
+    trackGroupLeft: model.timelineTrackGroupLeft,
+    trackGroupRight,
+    trackGroupCenter,
+    trackGroupCenterDelta: trackGroupCenter - (els.graphViewport.scrollLeft + viewportRect.width / 2),
+    trackGroupFitsViewport: model.timelineTrackSpan <= viewportRect.width,
+    mainTrackLeft: mainTrack?.x || 0,
+    mainTrackRight: mainTrack ? mainTrack.x + model.trackWidth : 0,
+    mainTrackVisibleInitially: mainTrack
+      ? mainTrack.x + model.trackWidth > els.graphViewport.scrollLeft && mainTrack.x < els.graphViewport.scrollLeft + viewportRect.width
+      : false,
+    renderedBlocks: blocks.length,
+    renderedConnectors: document.querySelectorAll(".timeline-connector.spawn").length,
+    renderedHeaderLabels: labels.length,
+    uniqueBlockWidths: [...new Set(blocks.map((block) => block.width))],
+    uniqueBlockHeights: [...new Set(blocks.map((block) => block.height))],
+    uniqueBlockColors: [...new Set(blocks.map((block) => block.color))],
+    uniqueHeaderHeights: [...new Set(labels.map((label) => label.height))],
+    uniqueHeaderTops: [...new Set(labels.map((label) => label.top))],
+    maxHeaderTextLength: labels.reduce((max, label) => Math.max(max, label.text.length), 0),
+    headerPosition: headerStyle.position,
+    headerZIndex: Number.parseInt(headerStyle.zIndex, 10) || 0,
+    blockZIndex: blockStyle ? Number.parseInt(blockStyle.zIndex, 10) || 0 : 0,
+    backgroundImage: viewportStyle.backgroundImage,
+    renderCounts: {
+      header: state.timelineHeaderRenderCount,
+      tracks: state.timelineTrackRenderCount,
+      blocks: state.timelineBlockRenderCount,
+      detail: state.timelineDetailRenderCount,
+    },
+    detailVisible: Boolean(els.timelineDetailPanel && !els.timelineDetailPanel.classList.contains("hidden") && detailWindows.length > 0),
+    detailPinned: detailWindows.some((windowItem) => windowItem.pinned),
+    detailWindowCount: detailWindows.length,
+    detailWindows,
+    detailDockColumns: Number(els.timelineDetailPanel?.dataset.columns || 0),
+    detailDockRows: Number(els.timelineDetailPanel?.dataset.rows || 0),
+    pinnedDetailKey: state.pinnedTimelineDetailKeys[0] || "",
+    pinnedDetailKeys: [...state.pinnedTimelineDetailKeys],
+    detailCapsuleKey: detailWindows[0]?.key || "",
+    currentBlockCenterDelta,
+    detailRect: {
+      left: detailDockRect.left,
+      top: detailDockRect.top,
+      right: detailDockRect.right,
+      bottom: detailDockRect.bottom,
+      width: detailDockRect.width,
+      height: detailDockRect.height,
+    },
+    headerRect: {
+      top: headerRect.top,
+      left: headerRect.left,
+      width: headerRect.width,
+    },
+  };
+}
+
 function exposeDebugState() {
   window.SESSION_VIEWER = {
     tracks: model.tracks,
@@ -1475,17 +2130,21 @@ function exposeDebugState() {
       capsuleKey: state.currentCapsuleKey,
       selectedTrackId: state.selectedTrackId,
       selected: [...state.selectedGraphKeys],
+      pinnedDetails: [...state.pinnedTimelineDetailKeys],
       backCount: state.backStack.length,
       forwardCount: state.forwardStack.length,
       leftNavTab: state.leftNavTab,
       openPanels: [...state.openPanelIds],
+      agentTreeDrawerOpen: state.agentTreeDrawerOpen,
     }),
     layoutMetrics,
+    timelineMetrics,
   };
 }
 
 function initialize() {
   buildModels();
+  updateCommandBarHeight();
   state.layout = getLayoutFromUrl();
   state.selectedTrackId = model.tracks[0]?.id || "main";
   bindSubagentSeparatorResize();
@@ -1513,15 +2172,26 @@ els.leftTabs.forEach((button) => {
 
 els.graphViewport.addEventListener("scroll", scheduleGraphRender, { passive: true });
 window.addEventListener("resize", () => {
+  updateCommandBarHeight();
   scheduleGraphRender();
+  updateTimelineDetailDockLayout();
   updateSubagentPanelOverlayWidth();
 });
 
 els.returnButton.addEventListener("click", returnToPrevious);
 els.forwardButton.addEventListener("click", forwardToReturned);
 document.getElementById("copyLinkBtn").addEventListener("click", () => copyText(window.location.href));
+els.sessionInfoButton?.addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  toggleSessionInfo();
+});
+els.sessionInfoPopover?.addEventListener("click", (event) => event.stopPropagation());
+els.agentPaneToggle?.addEventListener("click", () => setAgentTreeDrawerOpen(!state.agentTreeDrawerOpen));
+els.agentTreeDrawerClose?.addEventListener("click", () => setAgentTreeDrawerOpen(false));
 
 document.addEventListener("click", (event) => {
+  if (els.sessionInfoButton?.getAttribute("aria-expanded") === "true") setSessionInfoOpen(false);
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
@@ -1531,18 +2201,52 @@ document.addEventListener("click", (event) => {
     closePanel(button.dataset.trackId);
     return;
   }
+  if (action === "close-timeline-detail") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeTimelineDetail(button);
+    return;
+  }
+  if (action === "toggle-timeline-detail-pin") {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleTimelineDetailPin(button);
+    return;
+  }
+  if (action === "toggle-raw-payload") {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleRawPayload(button);
+    return;
+  }
+  if (action === "copy-raw-payload") {
+    event.preventDefault();
+    event.stopPropagation();
+    copyRawPayload(button);
+    return;
+  }
   event.preventDefault();
-  if (action === "select-track") selectTrack(button.dataset.trackId);
+  if (action === "select-track") selectTrack(button.dataset.trackId, { open: button.dataset.open !== "false" });
   if (action === "toggle-panel") togglePanel(button.dataset.trackId);
   if (action === "open-panel") selectTrack(button.dataset.trackId, { open: true });
   if (action === "focus-message") focusMessage(button.dataset.trackId, Number(button.dataset.messageIndex));
   if (action === "focus-capsule") focusCapsule(button.dataset.capsuleKey);
-  if (action === "graph-capsule") toggleGraphSelection(button.dataset.capsuleKey, event);
+  if (action === "timeline-block") toggleGraphSelection(button.dataset.capsuleKey, event);
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    setSessionInfoOpen(false);
+    setAgentTreeDrawerOpen(false);
+  }
   const editable = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target?.tagName);
   if (editable) return;
+  const readerMessage = event.target?.closest?.(".reader-message[data-action='focus-capsule']");
+  if (readerMessage && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    focusCapsule(readerMessage.dataset.capsuleKey);
+    return;
+  }
   if (event.key === "Enter" && state.currentCapsuleKey && state.layout === "graph") scrollGraphCapsuleIntoView(selectedCapsule());
 });
 

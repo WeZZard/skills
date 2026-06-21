@@ -46,18 +46,19 @@ The reference page exposed 146 visible interactive elements in the initial Studi
 The Claude Code session viewer intentionally adopts the reference behaviors that support transcript browsing, isolation, and structural inspection:
 
 - Top command bar navigation remains present and stable.
-- Focus and Overview layout switch remains present.
-- Return and Forward preserve in-app transcript focus history.
+- Timeline and Waterfall layout switch remains present, with Timeline as the default.
+- Backward and Forward preserve in-app transcript focus history.
+- The session header shows the Sessions home control, project path, session title, and git branch without a breadcrumb/navigation stack.
 - Message Navigation tab provides horizontal agent selection, selected/open-agent chips, and a message list.
 - Agent Tree tab provides hierarchical agent invocation browsing.
 - Message rows focus transcript elements.
-- Focus removes per-message Inspect/Raw controls and keeps the top-level Copy link.
+- Waterfall removes per-message Inspect/Raw controls and keeps the top-level Copy link.
 - Part controls expose paired Call/Result navigation without raw JSON controls.
 - Task/spawn references open subagent panels and jump to the child flow.
 - Subagent connector controls navigate parent, first message, and result when available.
 - Agent Tree toggles open and close subagent panels and reflects selected/open state.
-- Focus uses golden-section sizing and independent subagent scrolling.
-- Overview uses HTML/SVG capsules, supports capsule selection and multiselect, and exposes spawn edges.
+- Waterfall uses golden-section sizing and independent subagent scrolling.
+- Timeline uses HTML/SVG capsules, supports capsule selection and multiselect, exposes spawn edges, and removes both the left rail and the message detail inspector.
 
 Reference behaviors not adopted for the Claude Code viewer remain out of scope for this plan:
 
@@ -82,15 +83,15 @@ The verifier builds a temporary Claude Code fixture, starts the viewer on a free
 
 Required gates:
 
-- Top-right navigation: Focus, Overview, Return, Forward, and Copy link exist; obsolete Previous/Next/First problem/timestamp controls do not.
-- Overview: graph layout remains reachable and renders DOM/SVG capsules without canvas.
+- Header navigation: Sessions, Backward, Forward, project path under the session title, git branch, Timeline, Waterfall, and Copy link exist; obsolete breadcrumb stack, Previous/Next/First problem/timestamp controls and the extra Mode button do not.
+- Timeline: default layout renders DOM/SVG message blocks without canvas, the left navigation rail, or a message detail dock.
 - Message Navigation: horizontal agent list, selected-agent strip, and message index are present and interactive.
 - Agent Tree: hierarchy is present and can toggle subagent panels.
-- Return/Forward: focus history restores backward and forward.
-- Focus inspector: no inspector DOM or Inspect/Raw controls are present.
-- Focus sizing: main stream max width follows the golden section and divider resizing clamps at the golden-remainder minimum.
-- Focus scrolling: main and subagent streams scroll independently.
+- Backward/Forward: focus history restores backward and forward.
+- Waterfall inspector: no inspector DOM or Inspect/Raw controls are present.
+- Waterfall sizing: main stream max width follows the golden section and divider resizing clamps at the golden-remainder minimum.
+- Waterfall scrolling: main and subagent streams scroll independently.
 - Part navigation: paired Call/Result controls work when present.
 - Subagent flow: task reference opens a panel, Jump to first focuses child message, and connector controls navigate related transcript elements.
 - Copy link: top-level copy action provides observable copied feedback.
-- Preservation: after the interaction sequence, top navigation and Overview remain functional.
+- Preservation: after the interaction sequence, top navigation and Timeline remain functional.

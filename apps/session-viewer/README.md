@@ -32,7 +32,7 @@ The UI exposes stable transcript-element selectors such as
 
 `scripts/validate_browser.py` builds a temporary Claude fixture, starts the
 viewer on a free local port, and verifies dashboard/conversation rendering,
-Focus and Overview layouts, left navigation tabs, Return/Forward
-focus restoration, golden-section Focus sizing, Agent Tree subagent toggles,
-independent subagent scrolling, overview spawn edges, large-session DOM
+Timeline as the default layout, Waterfall navigation tabs, Backward/Forward
+focus restoration, golden-section Waterfall sizing, Agent Tree subagent toggles,
+independent subagent scrolling, timeline spawn edges, large-session DOM
 budgets, and Studio/desktop/mobile overflow.

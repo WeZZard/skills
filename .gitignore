@@ -69,3 +69,6 @@ website/screenshots/
 
 # Handoff (local agent handoff dir)
 .handoff/
+
+# Plans (local planning artifacts)
+.plan/

@@ -10,7 +10,18 @@ from typing import Any
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-from validate_browser import build_large_fixture, focus_layout_metrics, free_port, launch_verified_browser, start_server, wait_for_server
+from validate_browser import (
+    assert_agent_sidebar_inserted,
+    assert_message_index_item_presentation,
+    assert_timeline_detail_top_right,
+    build_large_fixture,
+    focus_layout_metrics,
+    free_port,
+    launch_verified_browser,
+    select_problem_track_from_agent_sidebar,
+    start_server,
+    wait_for_server,
+)
 
 
 VIEWPORT = {"width": 5120, "height": 2880}
@@ -30,15 +41,20 @@ def state(page: Page) -> dict[str, Any]:
                 forwardCount: window.SESSION_VIEWER?.current().forwardCount || 0,
                 leftNavTab: window.SESSION_VIEWER?.current().leftNavTab || '',
                 readerVisible: !!q('[data-testid="reader-layout"]:not(.hidden)'),
-                graphVisible: !!q('[data-testid="execution-graph-layout"]:not(.hidden)'),
+                graphVisible: !!q('[data-testid="overview-timeline-layout"]:not(.hidden)'),
                 hasInspector: !!q('[data-testid="raw-json-panel"]'),
                 agentOptions: qa('[data-testid="agent-filter-option"]').length,
+                agentDrawerVisible: !!q('[data-testid="agent-tree-drawer"]:not(.hidden)'),
+                agentDrawerExpanded: q('#agentPaneToggle')?.getAttribute('aria-expanded') || '',
+                infoPopoverVisible: !!q('#sessionInfoPopover:not(.hidden)'),
                 treeNodes: qa('[data-testid="subagent-node"]').length,
                 treeToggles: qa('[data-testid="subagent-toggle"]').length,
                 selectedChips: qa('.selected-agent-chip').length,
                 openPanels: qa('.subagent-panel').length,
                 activeMessages: qa('.reader-message.active').length,
-                graphCapsules: qa('[data-testid="graph-capsule"]').length,
+                graphCapsules: qa('[data-testid="timeline-block"]').length,
+                detailPanels: qa('[data-testid="timeline-detail-panel"]').length,
+                detailPins: qa('[data-testid="timeline-detail-pin"]').length,
                 linkStatus: q('#linkStatus')?.textContent || '',
                 commandText: q('[data-testid="command-bar"]')?.innerText.replace(/\\s+/g, ' ').trim() || '',
             };
@@ -112,7 +128,7 @@ def click_and_record(history: list[dict[str, Any]], page: Page, action: str, sel
 
 def validate_reference_plan(page: Page, url: str) -> dict[str, Any]:
     history: list[dict[str, Any]] = []
-    page.goto(url, wait_until="networkidle")
+    page.goto(f"{url}?layout=waterfall", wait_until="networkidle")
     expect(page.get_by_test_id("reader-layout")).to_be_visible(timeout=20_000)
     expect(page.get_by_test_id("raw-json-panel")).to_have_count(0)
     expect(page.locator("button", has_text="Inspect")).to_have_count(0)
@@ -124,80 +140,121 @@ def validate_reference_plan(page: Page, url: str) -> dict[str, Any]:
 
     for selector in ["#readerLayoutBtn", "#graphLayoutBtn", "#returnElementBtn", "#forwardElementBtn", "#copyLinkBtn"]:
         expect(page.locator(selector)).to_be_visible()
-    expect(page.locator("#readerLayoutBtn")).to_have_text("Focus")
-    expect(page.locator("#graphLayoutBtn")).to_have_text("Overview")
+    expect(page.locator("#readerLayoutBtn")).to_contain_text("Waterfall")
+    expect(page.locator("#graphLayoutBtn")).to_contain_text("Timeline")
+    expect(page.locator("#modeToggleBtn")).to_have_count(0)
+    expect(page.locator("#returnElementBtn")).to_have_text("Backward")
+    expect(page.locator("#returnElementBtn")).to_have_attribute("aria-label", "Backward to previous transcript element")
+    expect(page.locator("#forwardElementBtn")).to_have_text("Forward")
+    expect(page.locator(".header-source")).to_have_text("/tmp/project")
+    expect(page.get_by_test_id("branch-chip")).to_contain_text("main")
+    expect(page.get_by_test_id("breadcrumb")).to_have_count(0)
     for selector in ["#prevElementBtn", "#nextElementBtn", "#firstProblemBtn", "#timestampJumpInput", "#timestampJumpBtn"]:
         expect(page.locator(selector)).to_have_count(0)
     expect(page.locator("#returnElementBtn")).to_be_disabled()
     expect(page.locator("#forwardElementBtn")).to_be_disabled()
-    record(history, page, "Verify preserved top-right navigation", "[data-testid='command-bar']")
+    expect(page.locator("#messageNavTab")).to_have_count(0)
+    expect(page.locator("#agentTreeTab")).to_have_count(0)
+    expect(page.get_by_test_id("flow-summary")).to_have_count(0)
+    expect(page.get_by_test_id("agent-filter")).to_have_count(0)
+    expect(page.get_by_test_id("selected-agent-strip")).to_have_count(0)
+    expect(page.locator(".selected-agent-chip")).to_have_count(0)
+    expect(page.get_by_test_id("left-pane-header")).to_be_visible()
+    expect(page.locator("#agentPaneToggle")).to_be_visible()
+    expect(page.locator("#agentPaneToggle")).to_have_attribute("aria-expanded", "false")
+    expect(page.get_by_test_id("agent-tree-drawer")).to_be_hidden()
+    expect(page.locator("#sessionInfoButton")).to_be_visible()
+    expect(page.locator("#sessionInfoPopover")).to_be_hidden()
+    title_info_metrics = page.evaluate(
+        """() => {
+            const title = document.querySelector('.session-heading h1').getBoundingClientRect();
+            const info = document.querySelector('#sessionInfoButton').getBoundingClientRect();
+            return {
+                titleCenterDelta: Math.abs(title.left + title.width / 2 - innerWidth / 2),
+                infoRightOfTitle: info.left >= title.right,
+                infoGap: info.left - title.right,
+                titleInfoCenterDelta: Math.abs((title.top + title.height / 2) - (info.top + info.height / 2)),
+                buttonFontSize: getComputedStyle(document.querySelector('#copyLinkBtn')).fontSize,
+                buttonRadius: getComputedStyle(document.querySelector('#copyLinkBtn')).borderRadius,
+            };
+        }"""
+    )
+    assert title_info_metrics["titleCenterDelta"] <= 2, title_info_metrics
+    assert title_info_metrics["infoRightOfTitle"], title_info_metrics
+    assert 0 <= title_info_metrics["infoGap"] <= 8, title_info_metrics
+    assert title_info_metrics["titleInfoCenterDelta"] <= 1, title_info_metrics
+    assert title_info_metrics["buttonFontSize"] == "12px", title_info_metrics
+    assert title_info_metrics["buttonRadius"] == "999px", title_info_metrics
+    page.locator("#sessionInfoButton").click()
+    expect(page.locator("#sessionInfoPopover")).to_be_visible()
+    summary_text = page.locator("#sessionInfoPopover").inner_text()
+    assert "Sessions" in summary_text and "Agents" in summary_text and "Problem events" in summary_text, summary_text
+    page.keyboard.press("Escape")
+    expect(page.locator("#sessionInfoPopover")).to_be_hidden()
+    expect(page.get_by_test_id("timeline-detail-dock")).to_be_hidden()
+    expect(page.get_by_test_id("timeline-detail-panel")).to_have_count(0)
+    expect(page.get_by_test_id("timeline-detail-pin")).to_have_count(0)
+    record(history, page, "Verify header navigation and session info popover", "[data-testid='command-bar']")
 
     click_and_record(history, page, "Copy current link", "#copyLinkBtn")
     expect(page.locator("#linkStatus")).to_contain_text("Copied")
 
-    expect(page.get_by_test_id("agent-filter")).to_be_visible()
-    expect(page.get_by_test_id("selected-agent-strip")).to_be_visible()
-    expect(page.locator(".selected-agent-chip")).to_have_count(0)
     expect(page.get_by_test_id("message-index")).to_be_visible()
-    assert page.locator("[data-testid='agent-filter-option']").count() == 65
-    assert page.get_by_test_id("agent-filter").evaluate("node => node.scrollWidth > node.clientWidth")
-    record(history, page, "Verify Message Navigation tab structure", "[data-testid='agent-filter']")
-
-    repeated_records = []
-    same_subagent = page.get_by_test_id("agent-filter-option").nth(1)
-    same_subagent.click()
-    page.wait_for_timeout(650)
-    baseline = page.evaluate(
-        """() => {
-            const rack = document.querySelector('.subagent-panel-rack');
-            const panel = document.querySelector('.subagent-panel');
-            const panelRect = panel?.getBoundingClientRect();
+    assert_message_index_item_presentation(page)
+    sticky_metrics = page.evaluate(
+        """async () => {
+            const header = document.querySelector('[data-testid="left-pane-header"]');
+            const body = document.querySelector('.nav-body-section');
+            const beforeTop = header.getBoundingClientRect().top;
+            body.scrollTop = Math.min(900, body.scrollHeight - body.clientHeight);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            await new Promise((resolve) => requestAnimationFrame(resolve));
             return {
-                openPanels: document.querySelectorAll('.subagent-panel').length,
-                panelLeft: panelRect?.left || 0,
-                panelRight: panelRect?.right || 0,
-                rackScrollLeft: rack?.scrollLeft || 0,
-                selectedTrackId: window.SESSION_VIEWER.current().selectedTrackId,
-                openPanelIds: window.SESSION_VIEWER.current().openPanels,
+                beforeTop,
+                afterTop: header.getBoundingClientRect().top,
+                scrollTop: body.scrollTop,
+                scrollable: body.scrollHeight > body.clientHeight,
             };
         }"""
     )
-    repeated_records.append(baseline)
-    for _ in range(5):
-        before_repeat = state(page)
-        same_subagent.click()
-        page.wait_for_timeout(260)
-        record(history, page, "Repeatedly click same subagent", "[data-testid='agent-filter-option']:nth-child(2)", before_repeat)
-        repeated_records.append(
-            page.evaluate(
-                """() => {
-                    const rack = document.querySelector('.subagent-panel-rack');
-                    const panel = document.querySelector('.subagent-panel');
-                    const panelRect = panel?.getBoundingClientRect();
-                    return {
-                        openPanels: document.querySelectorAll('.subagent-panel').length,
-                        panelLeft: panelRect?.left || 0,
-                        panelRight: panelRect?.right || 0,
-                        rackScrollLeft: rack?.scrollLeft || 0,
-                        selectedTrackId: window.SESSION_VIEWER.current().selectedTrackId,
-                        openPanelIds: window.SESSION_VIEWER.current().openPanels,
-                    };
-                }"""
-            )
-        )
-    for item in repeated_records[1:]:
-        assert item["openPanels"] == 1, repeated_records
-        assert item["openPanelIds"] == baseline["openPanelIds"], repeated_records
-        assert abs(item["panelLeft"] - baseline["panelLeft"]) <= 0.75, repeated_records
-        assert abs(item["panelRight"] - baseline["panelRight"]) <= 0.75, repeated_records
-        assert abs(item["rackScrollLeft"] - baseline["rackScrollLeft"]) <= 0.75, repeated_records
-    click_and_record(history, page, "Close repeated-click subagent", ".selected-agent-chip-close")
-    expect(page.locator(".subagent-panel")).to_have_count(0)
+    assert sticky_metrics["scrollable"] and sticky_metrics["scrollTop"] > 0, sticky_metrics
+    assert abs(sticky_metrics["afterTop"] - sticky_metrics["beforeTop"]) <= 1.5, sticky_metrics
+    record(history, page, "Verify single-button Waterfall navigation header", "[data-testid='left-pane-header']")
 
-    click_and_record(history, page, "Select first subagent in horizontal agent list", "[data-testid='agent-filter-option']:nth-child(2)")
+    card_before_key = page.evaluate("window.SESSION_VIEWER.current().capsuleKey")
+    page.get_by_test_id("transcript-message").nth(1).click()
+    page.wait_for_timeout(200)
+    card_after_key = page.evaluate("window.SESSION_VIEWER.current().capsuleKey")
+    assert card_after_key != card_before_key, (card_before_key, card_after_key)
+    expect(page.get_by_test_id("timeline-detail-dock")).to_be_hidden()
+    expect(page.get_by_test_id("timeline-detail-panel")).to_have_count(0)
+    expect(page.get_by_test_id("timeline-detail-pin")).to_have_count(0)
+    record(history, page, "Click Waterfall message card without opening detail window", "[data-testid='transcript-message']")
+
+    click_and_record(history, page, "Open agent tree drawer", "#agentPaneToggle")
+    expect(page.get_by_test_id("agent-tree-drawer")).to_be_visible()
+    expect(page.locator("#agentPaneToggle")).to_have_attribute("aria-expanded", "true")
+    assert_agent_sidebar_inserted(page)
+    assert_message_index_item_presentation(page)
+    select_problem_track_from_agent_sidebar(page)
+    assert_message_index_item_presentation(page, require_problem=True)
+    expect(page.get_by_test_id("subagent-node")).to_have_count(65)
+    expect(page.get_by_test_id("subagent-toggle")).to_have_count(64)
+    before_tree_select = state(page)
+    page.get_by_test_id("subagent-node").nth(1).locator(".agent-tree-select").click()
+    page.wait_for_timeout(250)
+    record(history, page, "Select subagent in tree without opening panel", "[data-testid='subagent-node']:nth-child(2) .agent-tree-select", before_tree_select)
+    expect(page.locator(".subagent-panel")).to_have_count(0)
+    expect(page.locator("[role='treeitem'][aria-selected='true']")).to_have_count(1)
+
+    click_and_record(history, page, "Pin first subagent from Agent Tree drawer", "[data-testid='subagent-toggle']")
     expect(page.locator(".subagent-panel")).to_have_count(1)
-    expect(page.locator(".selected-agent-chip")).to_have_count(1)
+    expect(page.get_by_test_id("subagent-toggle").first).to_have_attribute("aria-pressed", "true")
+    expect(page.get_by_test_id("subagent-toggle").first).to_have_text("")
     expect(page.locator("#agentStreamSeparator")).to_be_visible()
+    page.locator("#agentTreeDrawerClose").click()
+    expect(page.get_by_test_id("agent-tree-drawer")).to_be_hidden()
+    expect(page.locator("#agentPaneToggle")).to_have_attribute("aria-expanded", "false")
     before_metrics = focus_layout_metrics(page)
     before_width = round(before_metrics["rackWidth"])
     assert before_metrics["mainContentWidth"] < initial_metrics["mainContentWidth"], (
@@ -225,28 +282,6 @@ def validate_reference_plan(page: Page, url: str) -> dict[str, Any]:
     assert abs(clamped_metrics["rackWidth"] - max_metrics["rackWidth"]) <= 1.5, (max_metrics, clamped_metrics)
     record(history, page, "Resize subagent panel rack with vertical divider", "#agentStreamSeparator")
 
-    click_and_record(history, page, "Close subagent from selected-agent strip", ".selected-agent-chip-close")
-    expect(page.locator(".subagent-panel")).to_have_count(0)
-    closed_metrics = focus_layout_metrics(page)
-    assert closed_metrics["rackWidth"] == 0, closed_metrics
-    assert abs(closed_metrics["mainStreamWidth"] - initial_metrics["mainStreamWidth"]) <= 1.5, (
-        initial_metrics,
-        closed_metrics,
-    )
-    assert abs(closed_metrics["mainStreamLeft"] - initial_metrics["mainStreamLeft"]) <= 1.5, (
-        initial_metrics,
-        closed_metrics,
-    )
-
-    page.locator("#agentTreeTab").click()
-    expect(page.locator("#agentTreeTab")).to_have_attribute("aria-selected", "true")
-    expect(page.get_by_test_id("subagent-node")).to_have_count(65)
-    expect(page.get_by_test_id("subagent-toggle")).to_have_count(64)
-    click_and_record(history, page, "Open subagent from Agent Tree toggle", "[data-testid='subagent-toggle']")
-    expect(page.locator(".subagent-panel")).to_have_count(1)
-    expect(page.get_by_test_id("subagent-toggle").first).to_have_attribute("aria-pressed", "true")
-    expect(page.get_by_test_id("subagent-toggle").first).to_contain_text("Pinned")
-    expect(page.locator("[role='treeitem'][aria-selected='true']")).to_have_count(1)
     page.evaluate(
         """() => {
             const main = document.getElementById('mainContent');
@@ -273,10 +308,23 @@ def validate_reference_plan(page: Page, url: str) -> dict[str, Any]:
     assert scrolls["afterMainSet"]["panel"] == 0, scrolls
     assert scrolls["afterPanelSet"]["main"] == scrolls["afterMainSet"]["main"], scrolls
     record(history, page, "Verify independent subagent scroll", ".subagent-panel")
+    page.locator("#agentPaneToggle").click()
+    expect(page.get_by_test_id("agent-tree-drawer")).to_be_visible()
     click_and_record(history, page, "Close subagent from Agent Tree toggle", "[data-testid='subagent-toggle']")
     expect(page.locator(".subagent-panel")).to_have_count(0)
-    expect(page.get_by_test_id("subagent-toggle").first).to_contain_text("Pin")
-    page.locator("#messageNavTab").click()
+    expect(page.get_by_test_id("subagent-toggle").first).to_have_text("")
+    page.locator("#agentTreeDrawerClose").click()
+    expect(page.get_by_test_id("agent-tree-drawer")).to_be_hidden()
+    closed_metrics = focus_layout_metrics(page)
+    assert closed_metrics["rackWidth"] == 0, closed_metrics
+    assert abs(closed_metrics["mainStreamWidth"] - initial_metrics["mainStreamWidth"]) <= 1.5, (
+        initial_metrics,
+        closed_metrics,
+    )
+    assert abs(closed_metrics["mainStreamLeft"] - initial_metrics["mainStreamLeft"]) <= 1.5, (
+        initial_metrics,
+        closed_metrics,
+    )
 
     before_key = page.evaluate("window.SESSION_VIEWER.current().capsuleKey")
     click_and_record(history, page, "Focus message from message index", "[data-testid='message-index'] [data-action='focus-message']:nth-child(2)")
@@ -285,7 +333,7 @@ def validate_reference_plan(page: Page, url: str) -> dict[str, Any]:
     expect(page.locator("#returnElementBtn")).to_be_enabled()
     page.locator("#returnElementBtn").click()
     page.wait_for_function("(key) => window.SESSION_VIEWER.current().capsuleKey === key", arg=before_key)
-    record(history, page, "Return to previous transcript focus", "#returnElementBtn")
+    record(history, page, "Backward to previous transcript focus", "#returnElementBtn")
     expect(page.locator("#forwardElementBtn")).to_be_enabled()
     page.locator("#forwardElementBtn").click()
     page.wait_for_function("(key) => window.SESSION_VIEWER.current().capsuleKey === key", arg=after_key)
@@ -387,21 +435,31 @@ def validate_reference_plan(page: Page, url: str) -> dict[str, Any]:
     if page.locator(".agent-connector-node.result").count():
         click_and_record(history, page, "Use connector result control", ".agent-connector-node.result")
 
-    click_and_record(history, page, "Switch to Overview", "#graphLayoutBtn")
-    expect(page.get_by_test_id("execution-graph-layout")).to_be_visible()
+    click_and_record(history, page, "Switch to Timeline", "#graphLayoutBtn")
+    expect(page.get_by_test_id("overview-timeline-layout")).to_be_visible()
+    expect(page.locator(".left-rail")).to_be_hidden()
     expect(page.locator("canvas")).to_have_count(0)
-    page.wait_for_function("document.querySelectorAll('[data-testid=graph-capsule]').length > 0")
-    assert page.locator("[data-testid='graph-capsule']").count() < 5000
-    page.locator("[data-testid='graph-capsule']").nth(0).click()
-    page.locator("[data-testid='graph-capsule']").nth(1).click(modifiers=["Meta"])
+    expect(page.locator("[data-testid='graph-capsule']")).to_have_count(0)
+    page.wait_for_function("document.querySelectorAll('[data-testid=timeline-block]').length > 0")
+    assert page.locator("[data-testid='timeline-block']").count() < 5000
+    metrics = page.evaluate("window.SESSION_VIEWER.timelineMetrics()")
+    assert metrics["uniqueBlockWidths"] == [118], metrics
+    assert metrics["uniqueBlockHeights"] == [26], metrics
+    page.locator("[data-testid='timeline-block']").nth(0).click()
+    expect(page.get_by_test_id("timeline-detail-dock")).to_be_visible()
+    expect(page.get_by_test_id("timeline-detail-panel")).to_have_count(1)
+    assert_timeline_detail_top_right(page, expected_count=1)
+    page.locator("[data-testid='timeline-block']").nth(1).click(modifiers=["Meta"])
     expect(page.get_by_test_id("selected-capsule-summary")).to_contain_text("2 transcript elements selected")
-    record(history, page, "Multiselect graph capsules", "[data-testid='graph-capsule']")
+    expect(page.get_by_test_id("timeline-detail-panel")).to_have_count(2)
+    assert_timeline_detail_top_right(page, expected_count=2)
+    record(history, page, "Multiselect timeline blocks", "[data-testid='timeline-block']")
 
     assert page.evaluate("window.SESSION_VIEWER.spawnEdges.length") > 0
-    assert page.locator(".graph-edge.spawn").count() > 0
-    record(history, page, "Verify visible graph spawn edges at native resolution", ".graph-edge.spawn")
+    assert page.locator(".timeline-connector.spawn").count() > 0
+    record(history, page, "Verify visible timeline spawn connectors at native resolution", ".timeline-connector.spawn")
 
-    click_and_record(history, page, "Return to Focus after Overview use", "#readerLayoutBtn")
+    click_and_record(history, page, "Return to Waterfall after Timeline use", "#readerLayoutBtn")
     expect(page.get_by_test_id("reader-layout")).to_be_visible()
     expect(page.locator("#graphLayoutBtn")).to_be_visible()
     expect(page.locator("#returnElementBtn")).to_be_visible()

@@ -12,6 +12,11 @@ from app.models import GenericPart, Message, NavAddress, ParserDiagnostic, RawEv
 
 
 ERROR_WORD_RE = re.compile(r"\b(Error:|Failed|permission denied|not found)\b", re.I)
+LOCAL_COMMAND_TITLE_RE = re.compile(
+    r"^\s*<(?:local-command-caveat|bash-input|bash-stdout|bash-stderr)\b",
+    re.I,
+)
+ATTACHMENT_PREVIEW_CHARS = 300
 
 
 @dataclass
@@ -23,6 +28,7 @@ class ParsedTranscript:
     agent_id: str | None = None
     agent_type: str | None = None
     cwd: str | None = None
+    git_branch: str | None = None
     model: str | None = None
     title: str | None = None
     messages: list[Message] = field(default_factory=list)
@@ -99,25 +105,89 @@ def _text_from_content(value: Any) -> str:
     return str(value)
 
 
+def title_candidate_from_text(text: str, raw: dict[str, Any] | None = None) -> str | None:
+    stripped = text.strip()
+    if not stripped:
+        return None
+    if raw and raw.get("isMeta"):
+        return None
+    if LOCAL_COMMAND_TITLE_RE.match(stripped):
+        return None
+    return stripped.splitlines()[0][:120]
+
+
+def explicit_title_from_event(raw: dict[str, Any]) -> str | None:
+    if raw.get("type") == "ai-title" and isinstance(raw.get("aiTitle"), str):
+        return title_candidate_from_text(raw["aiTitle"])
+    if raw.get("type") == "last-prompt" and isinstance(raw.get("lastPrompt"), str):
+        return title_candidate_from_text(raw["lastPrompt"])
+    return None
+
+
+def _preview_state(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return {
+        "preview": text[:ATTACHMENT_PREVIEW_CHARS],
+        "truncated": len(text) > ATTACHMENT_PREVIEW_CHARS,
+        "length": len(text),
+    }
+
+
+def _attachment_event_state(raw: dict[str, Any]) -> dict[str, Any]:
+    attachment = raw.get("attachment") if isinstance(raw.get("attachment"), dict) else {}
+    state: dict[str, Any] = {
+        "kind": "attachment_event",
+        "attachmentType": attachment.get("type") or raw.get("subtype") or "unknown",
+        "sourceEventType": raw.get("type") or "attachment",
+        "hasRawPayload": True,
+    }
+    for key in ("hookEventName", "hookName", "matcher", "toolName"):
+        if attachment.get(key):
+            state[key] = str(attachment[key])
+    if attachment.get("exitCode") is not None:
+        state["exitCode"] = attachment["exitCode"]
+    stdout = _preview_state(attachment.get("stdout"))
+    stderr = _preview_state(attachment.get("stderr"))
+    if stdout:
+        state["stdoutPreview"] = stdout["preview"]
+        state["stdoutTruncated"] = stdout["truncated"]
+        state["stdoutLength"] = stdout["length"]
+    if stderr:
+        state["stderrPreview"] = stderr["preview"]
+        state["stderrTruncated"] = stderr["truncated"]
+        state["stderrLength"] = stderr["length"]
+    return state
+
+
+def _attachment_event_summary(raw: dict[str, Any]) -> str:
+    state = _attachment_event_state(raw)
+    hook_name = "/".join(
+        str(state[key]) for key in ("hookEventName", "hookName") if state.get(key)
+    )
+    if hook_name:
+        parts = [f"Hook: {hook_name}"]
+    elif state.get("toolName"):
+        parts = [f"Attachment for {state['toolName']}"]
+    else:
+        parts = [f"Attachment event: {state['attachmentType']}"]
+    if state.get("exitCode") is not None:
+        parts.append(f"exit {state['exitCode']}")
+    if state.get("stderrPreview"):
+        suffix = " truncated" if state.get("stderrTruncated") else ""
+        parts.append(f"stderr{suffix}")
+    if state.get("stdoutPreview"):
+        suffix = " truncated" if state.get("stdoutTruncated") else ""
+        parts.append(f"stdout{suffix}")
+    return " · ".join(parts)
+
+
 def _compact_event_text(raw: dict[str, Any], event_type: str) -> str:
     if event_type == "attachment":
-        attachment = raw.get("attachment") if isinstance(raw.get("attachment"), dict) else {}
-        summary = [
-            "Attachment event",
-            f"type: {attachment.get('type') or raw.get('subtype') or 'unknown'}",
-        ]
-        for key in ("hookEventName", "hookName", "matcher", "toolName"):
-            if attachment.get(key):
-                summary.append(f"{key}: {attachment[key]}")
-        if attachment.get("exitCode") is not None:
-            summary.append(f"exitCode: {attachment['exitCode']}")
-        if attachment.get("stderr"):
-            summary.append(f"stderr: {str(attachment['stderr'])[:300]}")
-        if attachment.get("stdout"):
-            stdout = str(attachment["stdout"]).strip()
-            summary.append(f"stdout: {stdout[:300]}{'...' if len(stdout) > 300 else ''}")
-        summary.append("Open raw JSON for the full payload.")
-        return "\n".join(summary)
+        return _attachment_event_summary(raw)
 
     if event_type == "system":
         subtype = raw.get("subtype")
@@ -154,6 +224,7 @@ def parse_jsonl_file(
     tool_parts: dict[str, GenericPart] = {}
     tool_use_navs: dict[str, NavAddress] = {}
     tool_result_seen_navs: dict[str, NavAddress] = {}
+    has_ai_title = False
 
     if not path.exists():
         nav = _nav(
@@ -246,8 +317,17 @@ def parse_jsonl_file(
 
         parsed.raw_events.append(RawEvent(id=f"{path}:{line_number}", nav=event_nav, raw=raw))
         parsed.nav_index.append(event_nav)
+        explicit_title = explicit_title_from_event(raw)
+        if explicit_title and raw.get("type") == "ai-title":
+            parsed.title = explicit_title
+            has_ai_title = True
+        elif explicit_title and not has_ai_title and parsed.title is None:
+            parsed.title = explicit_title
         parsed.agent_id = parsed.agent_id or raw.get("agentId")
         parsed.cwd = parsed.cwd or raw.get("cwd")
+        branch = raw.get("gitBranch") or raw.get("branch")
+        if parsed.git_branch is None and isinstance(branch, str) and branch.strip():
+            parsed.git_branch = branch.strip()
         event_type = raw.get("type") or "unknown"
         timestamp = parse_timestamp(raw.get("timestamp"))
         version = raw.get("version")
@@ -319,8 +399,9 @@ def parse_jsonl_file(
                         nav=part_nav,
                     )
                 )
-                if parsed.title is None and role == "user" and text.strip():
-                    parsed.title = text.strip().splitlines()[0][:120]
+                title_candidate = title_candidate_from_text(text, raw)
+                if parsed.title is None and role == "user" and title_candidate:
+                    parsed.title = title_candidate
             elif ctype == "thinking":
                 msg.parts.append(
                     GenericPart(
@@ -442,6 +523,7 @@ def parse_jsonl_file(
 
         if not msg.parts and event_type in {"system", "attachment"}:
             text = _compact_event_text(raw, str(event_type))
+            state = _attachment_event_state(raw) if event_type == "attachment" else None
             part_nav = _nav(
                 session_id=session_id,
                 path=path,
@@ -456,8 +538,9 @@ def parse_jsonl_file(
             msg.parts.append(
                 GenericPart(
                     id=f"{msg.id}:raw",
-                    type="text",
+                    type="attachment" if event_type == "attachment" else "text",
                     text=text,
+                    state=state,
                     time_created=timestamp,
                     nav=part_nav,
                 )

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.claude_parser import ParsedTranscript, parse_jsonl_file
+from app.claude_parser import ParsedTranscript, explicit_title_from_event, parse_jsonl_file, title_candidate_from_text
 from app.config import resolve_projects_dir, source_info
 from app.models import (
     ConversationExport,
@@ -45,7 +45,7 @@ def _session_file(projects_dir: Path, ref: SessionRef) -> Path:
     return _project_directory(projects_dir, ref.project_key) / f"{ref.session_id}.jsonl"
 
 
-def _read_first_json(path: Path, max_lines: int = 80) -> list[dict[str, Any]]:
+def _read_first_json(path: Path, max_lines: int = 240) -> list[dict[str, Any]]:
     events = []
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
@@ -59,6 +59,22 @@ def _read_first_json(path: Path, max_lines: int = 80) -> list[dict[str, Any]]:
     return events
 
 
+def _latest_ai_title(path: Path) -> str | None:
+    title = None
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    raw = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(raw, dict) and raw.get("type") == "ai-title":
+                    title = explicit_title_from_event(raw) or title
+    except OSError:
+        return None
+    return title
+
+
 def _summary_from_file(projects_dir: Path, path: Path) -> ConversationSummary:
     project_key = path.parent.name
     session_uuid = path.stem
@@ -66,13 +82,21 @@ def _summary_from_file(projects_dir: Path, path: Path) -> ConversationSummary:
     events = _read_first_json(path)
     timestamps = []
     title = None
+    explicit_title = None
     model = "Unknown"
     directory = None
+    git_branch = None
     version = None
     count = 0
     for raw in events:
         count += 1
+        raw_explicit_title = explicit_title_from_event(raw)
+        if raw_explicit_title and (raw.get("type") == "ai-title" or explicit_title is None):
+            explicit_title = raw_explicit_title
         directory = directory or raw.get("cwd")
+        branch = raw.get("gitBranch") or raw.get("branch")
+        if git_branch is None and isinstance(branch, str) and branch.strip():
+            git_branch = branch.strip()
         version = version or raw.get("version")
         timestamp = raw.get("timestamp")
         if timestamp:
@@ -82,19 +106,24 @@ def _summary_from_file(projects_dir: Path, path: Path) -> ConversationSummary:
             if isinstance(message.get("model"), str):
                 model = message["model"]
             content = message.get("content")
+            if title is None and message.get("role") == "user" and isinstance(content, str):
+                title = title_candidate_from_text(content, raw)
             if title is None and message.get("role") == "user" and isinstance(content, list):
                 for item in content:
                     if isinstance(item, dict) and item.get("type") == "text" and item.get("text"):
-                        title = item["text"].strip().splitlines()[0][:120]
-                        break
+                        title = title_candidate_from_text(item["text"], raw)
+                        if title:
+                            break
     subagent_dir = path.parent / session_uuid / "subagents"
     subagent_count = len(list(subagent_dir.glob("agent-*.jsonl"))) if subagent_dir.exists() else 0
     subagent_count += len(list(subagent_dir.glob("workflows/*/agent-*.jsonl"))) if subagent_dir.exists() else 0
     updated = int(path.stat().st_mtime * 1000)
+    latest_ai_title = _latest_ai_title(path)
     return ConversationSummary(
         id=ref.opaque_id,
-        title=title or session_uuid,
+        title=latest_ai_title or explicit_title or title or session_uuid,
         directory=directory or _display_project_key(project_key),
+        gitBranch=git_branch,
         version=version,
         time_updated=updated,
         model=model,
@@ -166,6 +195,7 @@ def _make_export(parsed: ParsedTranscript, *, opaque_id: str, task_link: dict[st
         id=opaque_id if parsed.scope == "main" else f"{opaque_id}:{parsed.agent_path}",
         title=parsed.title,
         directory=parsed.cwd,
+        gitBranch=parsed.git_branch,
         version=None,
         time_created=min(times) if times else None,
         time_updated=max(times) if times else None,

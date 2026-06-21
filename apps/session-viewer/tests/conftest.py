@@ -34,6 +34,7 @@ def user_event(uuid: str, parent: str | None, session: str, text: str, *, ts: st
         "agentId": agent_id,
         "timestamp": ts,
         "cwd": "/tmp/project",
+        "gitBranch": "main",
         "message": {"role": "user", "content": [{"type": "text", "text": text}]},
     }
 
@@ -48,6 +49,7 @@ def assistant_tool(uuid: str, parent: str | None, session: str, tool_id: str, na
         "agentId": agent_id,
         "timestamp": "2026-01-01T00:00:01.000Z",
         "cwd": "/tmp/project",
+        "gitBranch": "main",
         "message": {
             "role": "assistant",
             "model": "claude-test",
@@ -74,6 +76,7 @@ def tool_result(uuid: str, parent: str | None, session: str, tool_id: str, text:
         "agentId": sidechain_agent,
         "timestamp": "2026-01-01T00:00:02.000Z",
         "cwd": "/tmp/project",
+        "gitBranch": "main",
         "message": {
             "role": "user",
             "content": [
