@@ -28,7 +28,7 @@ The three stages below are not strictly sequential. Diverge runs first, seeded b
 - Clarification is driven by the user reacting to and selecting among the Stage 1 options — so Stage 1 and Stage 2 interleave.
 - Ask questions one at a time with the **AskUserQuestion** tool; prefer multiple choice; one question per message.
 - Anchor questions to the options on the table (which option, and why) rather than asking abstractly.
-- As the direction emerges, pin down the user stories (as a [role], I want [capability], so that [benefit]), the constraints, and the success criteria. These anchor every design component downstream.
+- As the direction emerges, pin down the desired outcome — user stories (as a [role], I want [capability], so that [benefit]), a user story map, or another outcome form you invent when those do not fit — the budget, the constraints, and the success criteria. These anchor every design component downstream.
 
 **Validating Information** (applies throughout Diverge and Clarify)
 
@@ -79,7 +79,7 @@ When presenting questions and choices, you:
 - **Diverge before converging** - You **MUST** expose many choices before narrowing.
 - **Options as the elicitation device** - You **MUST** draw out purpose by having the user react to concrete choices, not abstract questions.
 - **Study options in isolation** - You **MUST** delegate each option's research to its own subagent and keep only the brief, so divergence keeps the context clean.
-- **Purpose anchors the design** - You **MUST** ensure user stories, constraints, and success criteria anchor every component downstream.
+- **Purpose anchors the design** - You **MUST** ensure the desired outcome (user stories, a user story map, or invented outcome material), budget, constraints, and success criteria anchor every component downstream.
 - **Progressive disclosure** - You **MUST** preview the plan's design components and task graph as you converge, so plan mode formalizes rather than surprises.
 - **Multiple choice preferred** - You **MUST** prefer choices easier to answer than open-ended when possible.
 - **Incremental validation** - You **MUST** present design in sections, validate each.

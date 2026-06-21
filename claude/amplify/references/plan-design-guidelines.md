@@ -4,6 +4,33 @@
 
 ## Plan Design Principles
 
+### Work Backward from the Outcome
+
+You **MUST** design the plan by working backward from the desired outcome to the
+current state, not forward from the current state.
+
+1. You **MUST** anchor the design on the desired outcome. The outcome takes
+   whatever form best describes the result this plan delivers — **User Stories**,
+   a **User Story Map**, or another outcome description you invent per the
+   **Component Invention Guidelines**. You **MUST NOT** assume any single form,
+   including user stories, is mandatory; not all feature work is best described by
+   user stories, and a detailed-execution plan may anchor on an invented outcome
+   description and rely on the task graph for execution rigor.
+2. You **MUST** derive each step by asking "what must already be true for this to
+   be reachable?", chaining backward until you reach the current state and the
+   resources already available.
+3. You **MUST** honor the budget and the constraints established during
+   brainstorming. When a path cannot fit the budget or violates a constraint, you
+   **MUST** revise the outcome or the path rather than plan a path that cannot be
+   afforded.
+4. You **MUST** surface where the path requires human credit — paid money or
+   credits, security-sensitive access, or subjective sign-off. You **MUST NOT**
+   re-specify how these are gated here; the gating is owned by
+   `write-plan/SKILL.md` (**Appendix C** and **Agent Autonomy Request**). The
+   principle's job is only to make those points visible.
+
+## Component Composition Guidelines
+
 **MUST:**
 
 1. You **MUST** use the following component templates to generate relevant contents in the **Design** section in a session plan file.
@@ -12,7 +39,6 @@
 4. You **MUST** pick only necessary components to describe the plan design.
 5. You **MUST** treat each component as one mutually exclusive design concern and pick a set of components that is collectively exhaustive over the design concerns this plan touches, so the selection is **MECE** (Mutually Exclusive, Collectively Exhaustive).
 6. You **MUST** invent components to describe contents in the plan but cannot described by the existing components in this guidelines. The component lists in this guideline is an open list.
-7. You **MUST** align the communication style of any invented components with that of the existing components in these guidelines.
 
 **MUST NOT:**
 
@@ -27,6 +53,7 @@
 1. You **MUST** use before/after comparisons to help the user to understand a change whenever possible.
 2. You **MUST** find the most commonly used expression style in the industry to express an idea whenever possible.
 3. You **MUST** visualize the contents when visual contents can help accelerating human understanding.
+4. You **MUST** align the communication style of any invented components with that of the existing components in **Plan Design Guidelines**.
 
 </COMPONENT_INVENTION_GUIDELINES>
 
