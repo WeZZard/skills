@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -138,8 +137,12 @@ def _display_project_key(project_key: str) -> str:
     return project_key
 
 
-def list_sessions(query: str | None = None, directory: str | None = None) -> list[ConversationSummary]:
-    projects_dir = resolve_projects_dir()
+def list_sessions(
+    query: str | None = None,
+    directory: str | None = None,
+    source_path: str | Path | None = None,
+) -> list[ConversationSummary]:
+    projects_dir = resolve_projects_dir(source_path)
     if not projects_dir.is_dir():
         return []
     summaries: list[ConversationSummary] = []
@@ -158,8 +161,8 @@ def list_sessions(query: str | None = None, directory: str | None = None) -> lis
     return sorted(summaries, key=lambda s: s.time_updated or 0, reverse=True)
 
 
-def list_directories() -> list[str]:
-    return sorted({s.directory for s in list_sessions() if s.directory})
+def list_directories(source_path: str | Path | None = None) -> list[str]:
+    return sorted({s.directory for s in list_sessions(source_path=source_path) if s.directory})
 
 
 def _load_meta_type(path: Path) -> str | None:
@@ -350,8 +353,11 @@ def _assign_workflow_siblings(export: ConversationExport) -> None:
             child.next_sibling_nav = _first_nav(next_child) if next_child else None
 
 
-def load_conversation(opaque_id: str) -> ConversationExport | None:
-    projects_dir = resolve_projects_dir()
+def load_conversation(
+    opaque_id: str,
+    source_path: str | Path | None = None,
+) -> ConversationExport | None:
+    projects_dir = resolve_projects_dir(source_path)
     try:
         ref = decode_session_ref(opaque_id)
     except Exception:
@@ -404,8 +410,5 @@ def load_conversation(opaque_id: str) -> ConversationExport | None:
     return root
 
 
-def get_source_info() -> dict[str, str | bool]:
-    info = source_info()
-    info["projects_dir_env"] = bool(os.environ.get("CLAUDE_PROJECTS_DIR"))
-    info["claude_home_env"] = bool(os.environ.get("CLAUDE_CODE_HOME"))
-    return info
+def get_source_info(source_path: str | Path | None = None) -> dict[str, Any]:
+    return source_info(source_path)

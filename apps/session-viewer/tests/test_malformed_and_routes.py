@@ -166,13 +166,16 @@ def test_tool_relationship_diagnostics(claude_projects: Path):
     assert any(flag.kind == "parser_diagnostic" for flag in export.problem_flags)
 
 
-def test_dashboard_and_api_routes(populated_projects: Path):
+def test_dashboard_and_api_routes(populated_projects: Path, opencode_data_dir: Path):
     client = TestClient(app)
 
     dashboard = client.get("/")
     assert dashboard.status_code == 200
-    assert "Claude Code Sessions" in dashboard.text
+    assert "Claude Code sessions" in dashboard.text
+    assert "OpenCode sessions" in dashboard.text
     assert "Debug Amplify run" in dashboard.text
+    assert "claude_q" in dashboard.text
+    assert "opencode_q" in dashboard.text
 
     sessions = client.get("/api/sessions")
     assert sessions.status_code == 200
@@ -188,6 +191,50 @@ def test_dashboard_and_api_routes(populated_projects: Path):
     data = api.json()
     assert data["summary"]["title"] == "Debug Amplify run"
     assert data["subagent_transcripts"]
+
+    agent_conversation = client.get(f"/conversation/claude/{session_id}")
+    assert agent_conversation.status_code == 200
+    assert "conversation-data" in agent_conversation.text
+
+    agent_api = client.get(f"/api/conversation/claude/{session_id}")
+    assert agent_api.status_code == 200
+    assert agent_api.json()["summary"]["title"] == "Debug Amplify run"
+
+    opencode_sessions = client.get(
+        "/api/sessions",
+        params={"agent": "opencode", "opencode_data_dir": str(opencode_data_dir)},
+    )
+    assert opencode_sessions.status_code == 200
+    opencode_session_id = opencode_sessions.json()[0]["id"]
+
+    opencode_dashboard = client.get(
+        "/",
+        params={
+            "tab": "opencode",
+            "opencode_data_dir": str(opencode_data_dir),
+            "opencode_q": "smoke",
+            "claude_q": "Debug",
+        },
+    )
+    assert opencode_dashboard.status_code == 200
+    assert "OpenCode smoke session" in opencode_dashboard.text
+    assert f"/conversation/opencode/{opencode_session_id}" in opencode_dashboard.text
+    assert "name=\"claude_q\" value=\"Debug\"" in opencode_dashboard.text
+
+    opencode_conversation = client.get(
+        f"/conversation/opencode/{opencode_session_id}",
+        params={"opencode_data_dir": str(opencode_data_dir)},
+    )
+    assert opencode_conversation.status_code == 200
+    assert "conversation-data" in opencode_conversation.text
+    assert "data-testid=\"transcript-root\"" in opencode_conversation.text
+
+    opencode_api = client.get(
+        f"/api/conversation/opencode/{opencode_session_id}",
+        params={"opencode_data_dir": str(opencode_data_dir)},
+    )
+    assert opencode_api.status_code == 200
+    assert opencode_api.json()["summary"]["title"] == "OpenCode smoke session"
 
 
 def test_missing_source_empty_state(tmp_path: Path, monkeypatch):

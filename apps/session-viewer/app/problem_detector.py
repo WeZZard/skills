@@ -42,6 +42,23 @@ def flags_from_raw_event(event: RawEvent) -> list[ProblemFlag]:
         flags.append(_flag("interrupted_request", "Request interrupted by user", event.nav))
 
     if isinstance(raw, dict):
+        if raw.get("table") == "part" and isinstance(raw.get("row"), dict):
+            row = raw["row"]
+            data = raw.get("data")
+            if not isinstance(data, dict):
+                try:
+                    data = json.loads(row.get("data") or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    data = {}
+            if isinstance(data, dict) and data.get("type") == "tool":
+                state = data.get("state") if isinstance(data.get("state"), dict) else {}
+                status = str(state.get("status") or data.get("status") or "").lower()
+                if status in {"error", "failed"}:
+                    flags.append(_flag("tool_result_error", "OpenCode tool state is failed/error", event.nav, path="/row/data/state/status", severity="error"))
+                for key in ("error", "output"):
+                    if FAILURE_RE.search(_raw_text(state.get(key))):
+                        flags.append(_flag("command_failure", f"OpenCode tool {key} contains failure text", event.nav, path=f"/row/data/state/{key}"))
+
         tool_use_result = raw.get("toolUseResult")
         if tool_use_result is not None and FAILURE_RE.search(_raw_text(tool_use_result)):
             flags.append(_flag("tool_use_result_error", "toolUseResult contains failure text", event.nav, path="/toolUseResult"))

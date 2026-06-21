@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import time
 
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -73,8 +76,12 @@ STORY_MANIFEST: dict[str, dict[str, Any]] = {
         "requiredEvidence": ["dom_assertion"],
     },
     "ui.top_navigation": {
-        "description": "Header navigation removes unnecessary controls and keeps Sessions, Backward/Forward, path, branch, Timeline/Waterfall, and Copy link.",
-        "requiredEvidence": ["dom_assertion"],
+        "description": "Header navigation removes unnecessary controls and keeps Sessions, Backward/Forward, path, branch, Timeline/Waterfall, and Copy link centered in the header.",
+        "requiredEvidence": ["dom_assertion", "geometry"],
+    },
+    "ui.layering": {
+        "description": "Window-level overlays from the header and message detail dock render above and clear container-scoped timeline content.",
+        "requiredEvidence": ["dom_assertion", "geometry"],
     },
     "nav.return_forward": {
         "description": "Backward and Forward restore in-app transcript focus in both directions.",
@@ -87,6 +94,50 @@ STORY_MANIFEST: dict[str, dict[str, Any]] = {
     "perf.large_session": {
         "description": "Large timeline sessions render with bounded DOM and no browser health failures.",
         "requiredEvidence": ["performance", "console_network", "dom_assertion"],
+    },
+    "dashboard.tabs": {
+        "description": "Dashboard exposes Claude Code and OpenCode tabs with one active session list.",
+        "requiredEvidence": ["dom_assertion", "interaction"],
+    },
+    "dashboard.independent_controls": {
+        "description": "Claude and OpenCode dashboard controls keep independent URL-scoped values.",
+        "requiredEvidence": ["interaction"],
+    },
+    "source.claude_config": {
+        "description": "Claude source selection reads from the selected config/projects source.",
+        "requiredEvidence": ["dom_assertion"],
+    },
+    "source.opencode_data": {
+        "description": "OpenCode source selection reads from the selected data directory containing opencode.db.",
+        "requiredEvidence": ["dom_assertion"],
+    },
+    "source.url_scoped": {
+        "description": "Source choices are carried by the URL and are not persisted in browser storage.",
+        "requiredEvidence": ["dom_assertion"],
+    },
+    "source.invalid_state": {
+        "description": "Invalid source paths show clear non-crashing source states instead of falling back silently.",
+        "requiredEvidence": ["dom_assertion"],
+    },
+    "opencode.readable_transcript": {
+        "description": "OpenCode text, reasoning, tools, patches, files, compaction, and steps render readably.",
+        "requiredEvidence": ["dom_assertion", "interaction"],
+    },
+    "conversation.shared_layout": {
+        "description": "Claude and OpenCode sessions share the same Timeline/Waterfall conversation workbench.",
+        "requiredEvidence": ["dom_assertion"],
+    },
+    "nav.deep_links_back": {
+        "description": "Agent-qualified conversation links and Sessions navigation preserve source scope.",
+        "requiredEvidence": ["interaction"],
+    },
+    "compat.api_cli": {
+        "description": "Agent-aware APIs work while legacy Claude APIs remain compatible.",
+        "requiredEvidence": ["dom_assertion"],
+    },
+    "audit.studio_native": {
+        "description": "New dashboard and OpenCode stories emit browser evidence at Apple Studio Display native resolution.",
+        "requiredEvidence": ["screenshot", "geometry"],
     },
 }
 
@@ -368,9 +419,191 @@ def build_limited_fixture(projects_dir: Path) -> str:
     return session
 
 
-def start_server(projects_dir: Path, port: int) -> subprocess.Popen[bytes]:
+def build_opencode_fixture(data_dir: Path) -> str:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    db_path = data_dir / "opencode.db"
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.executescript(
+            """
+            create table session (
+                id text primary key,
+                project_id text,
+                parent_id text,
+                slug text,
+                directory text,
+                title text,
+                version text,
+                time_created integer,
+                time_updated integer,
+                path text,
+                agent text,
+                model text,
+                cost real,
+                input_tokens integer,
+                output_tokens integer
+            );
+            create table message (
+                id text primary key,
+                session_id text not null,
+                time_created integer,
+                time_updated integer,
+                data text
+            );
+            create table part (
+                id text primary key,
+                message_id text not null,
+                session_id text not null,
+                time_created integer,
+                time_updated integer,
+                data text
+            );
+            """
+        )
+        session_id = "ses_browser_opencode"
+        connection.execute(
+            """
+            insert into session (
+                id, project_id, slug, directory, title, version, time_created,
+                time_updated, path, agent, model, input_tokens, output_tokens
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                "proj_browser",
+                "opencode-browser-smoke",
+                "/tmp/opencode-project",
+                "OpenCode browser smoke",
+                "1.17.9",
+                1760000100000,
+                1760000109000,
+                "/tmp/opencode-project",
+                "build",
+                json.dumps({"id": "gpt-5.5", "providerID": "openai"}),
+                128,
+                256,
+            ),
+        )
+        connection.execute(
+            """
+            insert into session (
+                id, project_id, parent_id, slug, directory, title, version,
+                time_created, time_updated, path, agent, model, input_tokens, output_tokens
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "ses_browser_opencode_child",
+                "proj_browser",
+                session_id,
+                "opencode-browser-child",
+                "/tmp/opencode-project",
+                "OpenCode browser child",
+                "1.17.9",
+                1760000102500,
+                1760000105000,
+                "/tmp/opencode-project",
+                "reviewer",
+                json.dumps({"id": "gpt-5.5", "providerID": "openai"}),
+                32,
+                64,
+            ),
+        )
+        messages = [
+            (
+                "oc_msg_user",
+                session_id,
+                1760000100001,
+                1760000100001,
+                {"role": "user", "agent": "build", "modelID": "gpt-5.5", "providerID": "openai"},
+            ),
+            (
+                "oc_msg_assistant",
+                session_id,
+                1760000101000,
+                1760000108000,
+                {"role": "assistant", "agent": "build", "modelID": "gpt-5.5", "providerID": "openai", "finish": "stop"},
+            ),
+            (
+                "oc_msg_child",
+                "ses_browser_opencode_child",
+                1760000103000,
+                1760000104000,
+                {"role": "assistant", "agent": "reviewer", "modelID": "gpt-5.5", "providerID": "openai", "finish": "stop"},
+            ),
+        ]
+        connection.executemany(
+            "insert into message (id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?)",
+            [(mid, sid, created, updated, json.dumps(data)) for mid, sid, created, updated, data in messages],
+        )
+        parts = [
+            ("oc_user_text", "oc_msg_user", 1760000100001, {"type": "text", "text": "OpenCode browser smoke prompt"}),
+            ("oc_reasoning", "oc_msg_assistant", 1760000101000, {"type": "reasoning", "text": "Inspect the OpenCode database."}),
+            (
+                "oc_tool",
+                "oc_msg_assistant",
+                1760000102000,
+                {
+                    "type": "tool",
+                    "tool": "read",
+                    "callID": "call_read_browser",
+                    "state": {
+                        "status": "completed",
+                        "input": {"filePath": "app/main.py"},
+                        "output": "FastAPI route output",
+                        "title": "Read app/main.py",
+                    },
+                },
+            ),
+            (
+                "oc_task",
+                "oc_msg_assistant",
+                1760000102400,
+                {
+                    "type": "tool",
+                    "tool": "task",
+                    "callID": "call_task_browser",
+                    "state": {
+                        "status": "completed",
+                        "input": {"description": "OpenCode child browser review"},
+                        "output": "child complete",
+                        "title": "Run reviewer",
+                    },
+                },
+            ),
+            (
+                "oc_patch",
+                "oc_msg_assistant",
+                1760000103000,
+                {"type": "patch", "patch": "--- a/app/main.py\n+++ b/app/main.py\n@@\n+OpenCode support"},
+            ),
+            (
+                "oc_file",
+                "oc_msg_assistant",
+                1760000104000,
+                {"type": "file", "path": "app/main.py", "content": "from fastapi import FastAPI"},
+            ),
+            ("oc_compaction", "oc_msg_assistant", 1760000105000, {"type": "compaction", "summary": "Compacted OpenCode context"}),
+            ("oc_step_start", "oc_msg_assistant", 1760000106000, {"type": "step-start", "title": "OpenCode parse"}),
+            ("oc_step_finish", "oc_msg_assistant", 1760000107000, {"type": "step-finish", "title": "OpenCode parse", "status": "completed"}),
+            ("oc_child_text", "oc_msg_child", 1760000103100, {"type": "text", "text": "OpenCode child browser transcript"}),
+        ]
+        connection.executemany(
+            "insert into part (id, message_id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?, ?)",
+            [(pid, mid, session_id, created, created, json.dumps(data)) for pid, mid, created, data in parts],
+        )
+        connection.commit()
+        return session_id
+    finally:
+        connection.close()
+
+
+def start_server(projects_dir: Path, port: int, opencode_data_dir: Path | None = None) -> subprocess.Popen[bytes]:
     env = os.environ.copy()
     env["CLAUDE_PROJECTS_DIR"] = str(projects_dir)
+    if opencode_data_dir is not None:
+        env["OPENCODE_DATA_DIR"] = str(opencode_data_dir)
     return subprocess.Popen(
         ["uv", "run", "python", "-m", "app", "--host", "127.0.0.1", "--port", str(port)],
         cwd=Path(__file__).resolve().parents[1],
@@ -497,15 +730,29 @@ def assert_timeline_detail_top_right(page: Page, expected_count: int | None = No
             const dockRect = dock ? rect(dock) : null;
             const viewportRect = viewport ? rect(viewport) : null;
             const windowRects = windows.map(rect);
+            const dockStyles = dock ? getComputedStyle(dock) : null;
+            const dockPaddingRight = dockStyles ? Number.parseFloat(dockStyles.paddingRight) || 0 : 0;
+            const dockPaddingBottom = dockStyles ? Number.parseFloat(dockStyles.paddingBottom) || 0 : 0;
+            const dockTopOffset = dockStyles ? Number.parseFloat(dockStyles.getPropertyValue('--timeline-detail-top-offset')) || 0 : 0;
+            const timelineLabelBottom = Math.max(
+                ...Array.from(document.querySelectorAll('[data-testid="timeline-track-label"]')).map((node) => rect(node).bottom)
+            );
             return {
                 visible: Boolean(dock && !dock.classList.contains('hidden') && windows.length),
                 count: windows.length,
                 dock: dockRect,
                 viewport: viewportRect,
                 windows: windowRects,
-                firstAnchoredRight: dockRect && windowRects[0] ? Math.abs(windowRects[0].right - dockRect.right) : null,
-                topDelta: dockRect && viewportRect ? Math.abs(dockRect.top - (viewportRect.top + 24)) : null,
-                rightDelta: dockRect && viewportRect ? Math.abs(dockRect.right - (viewportRect.right - 24)) : null,
+                dockPaddingRight,
+                dockPaddingBottom,
+                dockTopOffset,
+                firstAnchoredRight: dockRect && windowRects[0] ? Math.abs(windowRects[0].right - (dockRect.right - dockPaddingRight)) : null,
+                topDelta: dockRect && viewportRect ? Math.abs(dockRect.top - (viewportRect.top + dockTopOffset)) : null,
+                timelineHeaderClearance: dockRect ? dockRect.top - timelineLabelBottom : null,
+                dockRightDelta: dockRect && viewportRect ? Math.abs(dockRect.right - viewportRect.right) : null,
+                windowRightDelta: windowRects[0] && viewportRect ? Math.abs(windowRects[0].right - (viewportRect.right - 24)) : null,
+                shadowBleedRight: dockRect && windowRects[0] ? dockRect.right - windowRects[0].right : null,
+                shadowBleedBottom: dockRect && windowRects[0] ? dockRect.bottom - windowRects[0].bottom : null,
                 secondIsLeftOfFirst: windowRects.length < 2 ? true : windowRects[1].right <= windowRects[0].left + 1,
                 secondSameRow: windowRects.length < 2 ? true : Math.abs(windowRects[1].top - windowRects[0].top) <= 1.5,
             };
@@ -515,8 +762,12 @@ def assert_timeline_detail_top_right(page: Page, expected_count: int | None = No
     if expected_count is not None:
         assert placement["count"] == expected_count, placement
     assert placement["topDelta"] <= 3, placement
-    assert placement["rightDelta"] <= 3, placement
+    assert placement["timelineHeaderClearance"] >= 12, placement
+    assert placement["dockRightDelta"] >= 80, placement
+    assert placement["windowRightDelta"] <= 3, placement
     assert placement["firstAnchoredRight"] <= 3, placement
+    assert placement["shadowBleedRight"] >= 80, placement
+    assert placement["shadowBleedBottom"] >= 80, placement
     assert placement["secondIsLeftOfFirst"], placement
     if placement["count"] == 2:
         assert placement["secondSameRow"], placement
@@ -644,27 +895,262 @@ def select_problem_track_from_agent_sidebar(page: Page) -> dict[str, Any]:
     return result
 
 
-def validate_dashboard(page: Page, base_url: str) -> None:
-    page.goto(base_url)
-    expect(page.get_by_role("heading", name="Claude Code Sessions")).to_be_visible()
+def dashboard_url(base_url: str, **params: str) -> str:
+    query = urlencode({key: value for key, value in params.items() if value})
+    return f"{base_url}?{query}" if query else base_url
+
+
+def validate_dashboard(
+    page: Page,
+    base_url: str,
+    *,
+    projects_dir: Path,
+    opencode_data_dir: Path,
+    viewport: str = "setup",
+    screenshot_dir: Path | None = None,
+) -> None:
+    page.goto(dashboard_url(base_url, claude_home=str(projects_dir), opencode_data_dir=str(opencode_data_dir)))
+    expect(page.get_by_role("heading", name="Session Viewer")).to_be_visible()
+    expect(page.get_by_test_id("tab-claude")).to_be_visible()
+    expect(page.get_by_test_id("tab-opencode")).to_be_visible()
+    expect(page.get_by_test_id("tab-claude")).to_have_attribute("aria-selected", "true")
+    expect(page.get_by_test_id("claude-panel")).to_be_visible()
+    expect(page.get_by_test_id("opencode-panel")).to_be_hidden()
     expect(page.get_by_test_id("session-search")).to_be_visible()
+    expect(page.get_by_test_id("directory-filter")).to_be_visible()
+    expect(page.get_by_test_id("claude-source-path")).to_have_value(str(projects_dir))
     expect(page.get_by_test_id("session-row")).to_have_count(1)
+    record(
+        page,
+        "dashboard.tabs",
+        kind="dom_assertion",
+        flow="dashboard.initial_tabs",
+        viewport=viewport,
+        selector="[data-testid='tab-claude'], [data-testid='tab-opencode']",
+        assertion="Claude and OpenCode tabs are visible and Claude is active by default",
+    )
+    record(
+        page,
+        "source.claude_config",
+        kind="dom_assertion",
+        flow="dashboard.claude_source",
+        viewport=viewport,
+        selector="[data-testid='claude-source-path']",
+        assertion="Claude source path accepts the direct projects directory fixture and lists Claude sessions",
+    )
+
     page.get_by_test_id("session-search").fill("stress")
-    page.locator(".session-search button[type='submit']").click()
+    page.get_by_test_id("directory-filter").fill("/tmp/project")
+    page.get_by_test_id("claude-search-button").click()
     expect(page.get_by_test_id("session-row")).to_have_count(1)
-    page.get_by_test_id("session-search").fill("definitely-no-matching-session")
-    page.locator(".session-search button[type='submit']").click()
-    expect(page.get_by_test_id("session-empty-state")).to_be_visible()
-    page.goto(base_url)
-    expect(page.get_by_test_id("session-row")).to_have_count(1)
+    assert "claude_q=stress" in page.url, page.url
+    assert "claude_directory=%2Ftmp%2Fproject" in page.url, page.url
     record(
         page,
         "ui.no_conversation_search",
         kind="interaction",
         flow="dashboard.search_retained",
+        viewport=viewport,
         selector="[data-testid='session-search']",
-        assertion="dashboard search input and submit button filter and clear session results",
+        assertion="dashboard search input and submit button filter and preserve session results",
     )
+
+    page.get_by_test_id("tab-opencode").click()
+    expect(page.get_by_test_id("tab-opencode")).to_have_attribute("aria-selected", "true")
+    expect(page.get_by_test_id("opencode-panel")).to_be_visible()
+    expect(page.get_by_test_id("claude-panel")).to_be_hidden()
+    expect(page.get_by_test_id("opencode-source-path")).to_have_value(str(opencode_data_dir))
+    expect(page.get_by_test_id("session-row")).to_have_count(1)
+    expect(page.get_by_text("OpenCode browser smoke")).to_be_visible()
+    record(
+        page,
+        "dashboard.tabs",
+        kind="interaction",
+        flow="dashboard.switch_to_opencode",
+        viewport=viewport,
+        selector="[data-testid='tab-opencode']",
+        assertion="switching to the OpenCode tab shows OpenCode sessions and hides the Claude panel",
+    )
+    record(
+        page,
+        "source.opencode_data",
+        kind="dom_assertion",
+        flow="dashboard.opencode_source",
+        viewport=viewport,
+        selector="[data-testid='opencode-source-path']",
+        assertion="OpenCode source path points at a directory containing opencode.db and lists OpenCode sessions",
+    )
+
+    page.get_by_test_id("opencode-session-search").fill("browser")
+    page.get_by_test_id("opencode-directory-filter").fill("opencode-project")
+    page.get_by_test_id("opencode-search-button").click()
+    expect(page.get_by_test_id("session-row")).to_have_count(1)
+    assert "opencode_q=browser" in page.url, page.url
+    assert "claude_q=stress" in page.url, page.url
+    record(
+        page,
+        "dashboard.independent_controls",
+        kind="interaction",
+        flow="dashboard.independent_search",
+        viewport=viewport,
+        selector="[data-testid='opencode-session-search']",
+        assertion="OpenCode search submission preserves Claude query parameters and scopes results to the active tab",
+    )
+
+    page.reload(wait_until="networkidle")
+    expect(page.get_by_test_id("opencode-source-path")).to_have_value(str(opencode_data_dir))
+    storage_keys = page.evaluate("Object.keys(localStorage).filter((key) => key.toLowerCase().includes('source') || key.toLowerCase().includes('opencode') || key.toLowerCase().includes('claude'))")
+    assert storage_keys == [], storage_keys
+    record(
+        page,
+        "source.url_scoped",
+        kind="dom_assertion",
+        flow="dashboard.url_scoped_sources",
+        viewport=viewport,
+        selector="location.href",
+        assertion="source values survive reload through URL parameters and do not create source-specific localStorage keys",
+    )
+
+    page.goto(dashboard_url(base_url, tab="opencode", opencode_data_dir=str(opencode_data_dir / "missing")))
+    expect(page.get_by_test_id("source-empty-state")).to_be_visible()
+    expect(page.get_by_text("No readable OpenCode database")).to_be_visible()
+    page.goto(dashboard_url(base_url, tab="claude", claude_home=str(projects_dir / "missing")))
+    expect(page.get_by_test_id("source-empty-state")).to_be_visible()
+    expect(page.get_by_text("No readable Claude projects directory")).to_be_visible()
+    record(
+        page,
+        "source.invalid_state",
+        kind="dom_assertion",
+        flow="dashboard.invalid_sources",
+        viewport=viewport,
+        selector="[data-testid='source-empty-state']",
+        assertion="invalid Claude and OpenCode source paths render explicit empty states without using default fallbacks",
+    )
+
+    if viewport == "studio-native" and screenshot_dir is not None:
+        page.goto(dashboard_url(base_url, claude_home=str(projects_dir), opencode_data_dir=str(opencode_data_dir)), wait_until="networkidle")
+        assert_no_horizontal_overflow(page)
+        screenshot = screenshot_dir / "studio-native-dashboard.png"
+        page.screenshot(path=screenshot, full_page=False)
+        assert screenshot.stat().st_size > 1000
+        record(
+            page,
+            "audit.studio_native",
+            kind="screenshot",
+            flow="dashboard.studio_native_screenshot",
+            viewport=viewport,
+            selector="screenshot",
+            assertion="dashboard screenshot captured at Studio Display native viewport",
+            artifact=str(screenshot),
+        )
+        record(
+            page,
+            "audit.studio_native",
+            kind="geometry",
+            flow="dashboard.studio_native_geometry",
+            viewport=viewport,
+            selector="document",
+            assertion="dashboard has no document-level horizontal overflow at Studio Display native viewport",
+        )
+
+
+def validate_opencode_conversation(
+    page: Page,
+    url: str,
+    *,
+    viewport: str,
+    screenshot_dir: Path,
+) -> None:
+    page.goto(url, wait_until="networkidle")
+    expect(page.get_by_test_id("conversation-workbench")).to_be_visible(timeout=20_000)
+    expect(page.get_by_test_id("overview-timeline-layout")).to_be_visible()
+    assert page.get_by_test_id("timeline-block").count() > 0
+    back_href = page.locator(".back-link").get_attribute("href") or ""
+    assert "tab=opencode" in back_href and "opencode_data_dir=" in back_href, back_href
+    assert_no_horizontal_overflow(page)
+    record(
+        page,
+        "conversation.shared_layout",
+        kind="dom_assertion",
+        flow="opencode.timeline_shared_workbench",
+        viewport=viewport,
+        selector="[data-testid='conversation-workbench']",
+        assertion="OpenCode conversation opens in the same Timeline workbench used by Claude sessions",
+    )
+    record(
+        page,
+        "nav.deep_links_back",
+        kind="interaction",
+        flow="opencode.source_scoped_back_link",
+        viewport=viewport,
+        selector=".back-link",
+        assertion="OpenCode conversation Sessions link preserves tab and data-dir query parameters",
+    )
+
+    page.locator("#readerLayoutBtn").click()
+    expect(page.get_by_test_id("reader-layout")).to_be_visible()
+    expect(page.locator(".reader-part .part-text", has_text="OpenCode browser smoke prompt").first).to_be_visible()
+    expect(page.get_by_test_id("tool-call").first).to_be_visible()
+    expect(page.get_by_test_id("tool-result").first).to_be_visible()
+    labels = page.locator(".reader-part .part-header strong").all_inner_texts()
+    normalized = {label.strip().lower() for label in labels}
+    expected_labels = {
+        "reasoning",
+        "read",
+        "tool result",
+        "patch",
+        "file",
+        "compaction",
+        "step start",
+        "step finish",
+    }
+    assert expected_labels <= normalized, normalized
+    record(
+        page,
+        "opencode.readable_transcript",
+        kind="dom_assertion",
+        flow="opencode.waterfall_parts",
+        viewport=viewport,
+        selector=".reader-part",
+        assertion="OpenCode text, reasoning, tool, result, patch, file, compaction, and step parts render with readable labels",
+    )
+
+    page.locator("#graphLayoutBtn").click()
+    expect(page.get_by_test_id("overview-timeline-layout")).to_be_visible()
+    page.get_by_test_id("timeline-block").first.click()
+    expect(page.get_by_test_id("timeline-detail-panel")).to_be_visible()
+    record(
+        page,
+        "opencode.readable_transcript",
+        kind="interaction",
+        flow="opencode.timeline_detail",
+        viewport=viewport,
+        selector="[data-testid='timeline-block']",
+        assertion="OpenCode timeline blocks open the shared detail panel for the same normalized messages",
+    )
+
+    page.locator("#readerLayoutBtn").click()
+    expect(page.get_by_test_id("reader-layout")).to_be_visible()
+    page.locator("#agentPaneToggle").click()
+    expect(page.get_by_test_id("agent-tree-drawer")).to_be_visible()
+    assert page.get_by_test_id("subagent-toggle").count() >= 1
+    page.get_by_test_id("subagent-toggle").first.click()
+    expect(page.locator(".subagent-panel")).to_have_count(1)
+    expect(page.locator(".subagent-panel")).to_contain_text("OpenCode browser child")
+    record(
+        page,
+        "opencode.readable_transcript",
+        kind="interaction",
+        flow="opencode.subagent_panel",
+        viewport=viewport,
+        selector="[data-testid='subagent-toggle']",
+        assertion="OpenCode child sessions linked by parent_id appear in the Agents drawer and open as subagent panels",
+    )
+
+    if viewport == "studio-native":
+        screenshot = screenshot_dir / "studio-native-opencode-conversation.png"
+        page.screenshot(path=screenshot, full_page=False)
+        assert screenshot.stat().st_size > 1000
 
 
 def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -> None:
@@ -716,16 +1202,65 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
             const header = document.querySelector('[data-testid="command-bar"]').getBoundingClientRect();
             const title = document.querySelector('.session-heading h1').getBoundingClientRect();
             const info = document.querySelector('#sessionInfoButton').getBoundingClientRect();
+            const meta = document.querySelector('.header-meta-line').getBoundingClientRect();
+            const headerStyle = getComputedStyle(document.querySelector('[data-testid="command-bar"]'));
             return {
                 titleCenterDelta: title.left + title.width / 2 - (header.left + header.width / 2),
                 infoAfterTitle: info.left >= title.right,
                 infoGap: info.left - title.right,
+                titleMetaGap: meta.top - title.bottom,
+                headerRowGap: Number.parseFloat(headerStyle.rowGap) || 0,
             };
         }"""
     )
     assert abs(title_geometry["titleCenterDelta"]) <= 2, title_geometry
     assert title_geometry["infoAfterTitle"], title_geometry
     assert 0 <= title_geometry["infoGap"] <= 8, title_geometry
+    if viewport != "mobile":
+        assert title_geometry["headerRowGap"] >= 12, title_geometry
+        assert title_geometry["titleMetaGap"] >= 10, title_geometry
+        header_button_geometry = page.evaluate(
+            """() => {
+                const header = document.querySelector('[data-testid="command-bar"]').getBoundingClientRect();
+                const selectors = {
+                    sessions: '.back-link',
+                    backward: '#returnElementBtn',
+                    forward: '#forwardElementBtn',
+                    timeline: '#graphLayoutBtn',
+                    waterfall: '#readerLayoutBtn',
+                    copyLink: '#copyLinkBtn',
+                };
+                const headerCenterY = header.top + header.height / 2;
+                const centers = Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
+                    const rect = document.querySelector(selector).getBoundingClientRect();
+                    return [name, rect.top + rect.height / 2];
+                }));
+                const values = Object.values(centers);
+                return {
+                    headerCenterY,
+                    centers,
+                    deltas: Object.fromEntries(Object.entries(centers).map(([name, center]) => [name, center - headerCenterY])),
+                    maxButtonCenterSpread: Math.max(...values) - Math.min(...values),
+                    maxHeaderCenterDelta: Math.max(...values.map((center) => Math.abs(center - headerCenterY))),
+                };
+            }"""
+        )
+        assert header_button_geometry["maxButtonCenterSpread"] <= 2.5, header_button_geometry
+        assert header_button_geometry["maxHeaderCenterDelta"] <= 4, header_button_geometry
+        record(
+            page,
+            "ui.top_navigation",
+            kind="geometry",
+            flow="top_nav.header_geometry",
+            viewport=viewport,
+            selector="[data-testid='command-bar']",
+            assertion=(
+                "Sessions, Backward, Forward, Timeline, Waterfall, and Copy link controls "
+                f"share a header center line within {header_button_geometry['maxButtonCenterSpread']:.1f}px; "
+                f"title/project gap is {title_geometry['titleMetaGap']:.1f}px with "
+                f"{title_geometry['headerRowGap']:.1f}px grid row gap"
+            ),
+        )
     page.keyboard.press("Escape")
     expect(page.locator("#sessionInfoPopover")).to_be_hidden()
     expect(page.get_by_test_id("timeline-detail-dock")).to_be_hidden()
@@ -1106,6 +1641,101 @@ def validate_limited_timeline_alignment(page: Page, url: str, viewport: str) -> 
     )
 
 
+def assert_window_layering(page: Page, viewport: str) -> None:
+    page.locator("#sessionInfoButton").click()
+    expect(page.locator("#sessionInfoPopover")).to_be_visible()
+    layering = page.evaluate(
+        """() => {
+            const number = (value) => Number.parseInt(value, 10) || 0;
+            const rect = (node) => {
+                const box = node.getBoundingClientRect();
+                return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, width: box.width, height: box.height };
+            };
+            const command = document.querySelector('[data-testid="command-bar"]');
+            const popover = document.querySelector('#sessionInfoPopover');
+            const timelineHeader = document.querySelector('[data-testid="timeline-header"]');
+            const timelineLabel = document.querySelector('[data-testid="timeline-track-label"]');
+            const timelineBlock = document.querySelector('[data-testid="timeline-block"]');
+            const detailDock = document.querySelector('[data-testid="timeline-detail-dock"]');
+            const detailWindow = document.querySelector('[data-testid="timeline-detail-panel"]');
+            const popoverValues = Array.from(popover.querySelectorAll('.mini-stats dd'));
+            const popoverRect = rect(popover);
+            const detailDockRect = rect(detailDock);
+            const detailWindowRect = rect(detailWindow);
+            const detailDockStyles = getComputedStyle(detailDock);
+            const timelineLabelBottom = Math.max(
+                ...Array.from(document.querySelectorAll('[data-testid="timeline-track-label"]')).map((node) => rect(node).bottom)
+            );
+            const topElement = document.elementFromPoint(
+                popoverRect.left + popoverRect.width / 2,
+                Math.min(popoverRect.bottom - 4, popoverRect.top + popoverRect.height / 2)
+            );
+            return {
+                commandZ: number(getComputedStyle(command).zIndex),
+                popoverZ: number(getComputedStyle(popover).zIndex),
+                timelineHeaderZ: number(getComputedStyle(timelineHeader).zIndex),
+                timelineLabelZ: number(getComputedStyle(timelineLabel).zIndex),
+                timelineBlockZ: number(getComputedStyle(timelineBlock).zIndex),
+                detailDockZ: number(getComputedStyle(detailDock).zIndex),
+                popoverFontSize: getComputedStyle(popover).fontSize,
+                popoverLineHeight: getComputedStyle(popover).lineHeight,
+                popoverValueAlignments: popoverValues.map((value) => getComputedStyle(value).textAlign),
+                popoverTopMost: Boolean(topElement?.closest('#sessionInfoPopover')),
+                detailDockPaddingRight: Number.parseFloat(detailDockStyles.paddingRight) || 0,
+                detailDockPaddingBottom: Number.parseFloat(detailDockStyles.paddingBottom) || 0,
+                detailShadowBleedRight: detailDockRect.right - detailWindowRect.right,
+                detailShadowBleedBottom: detailDockRect.bottom - detailWindowRect.bottom,
+                detailTimelineHeaderClearance: detailDockRect.top - timelineLabelBottom,
+                popover: popoverRect,
+                command: rect(command),
+                timelineLabel: rect(timelineLabel),
+                detailDock: detailDockRect,
+                detailWindow: detailWindowRect,
+            };
+        }"""
+    )
+    assert layering["timelineHeaderZ"] > layering["timelineBlockZ"], layering
+    assert layering["timelineLabelZ"] > layering["timelineHeaderZ"], layering
+    assert layering["commandZ"] > layering["timelineLabelZ"], layering
+    assert layering["detailDockZ"] > layering["timelineLabelZ"], layering
+    assert layering["popoverZ"] > layering["detailDockZ"], layering
+    assert layering["popoverTopMost"], layering
+    assert float(layering["popoverFontSize"].removesuffix("px")) <= 11.0, layering
+    assert layering["popoverValueAlignments"] and set(layering["popoverValueAlignments"]) == {"right"}, layering
+    assert layering["detailShadowBleedRight"] >= 80, layering
+    assert layering["detailShadowBleedBottom"] >= 80, layering
+    assert layering["detailTimelineHeaderClearance"] >= 12, layering
+    record(
+        page,
+        "ui.layering",
+        kind="dom_assertion",
+        flow="timeline.window_layers",
+        viewport=viewport,
+        selector="#sessionInfoPopover",
+        assertion=(
+            "session info popover and message detail dock use window-level z-indexes above "
+            "timeline header labels and blocks"
+        ),
+    )
+    record(
+        page,
+        "ui.layering",
+        kind="geometry",
+        flow="timeline.popover_topmost",
+        viewport=viewport,
+        selector="document.elementFromPoint",
+        assertion=(
+            f"popover is topmost at its center with font-size {layering['popoverFontSize']} "
+            "and right-aligned numeric values; detail dock reserves "
+            f"{layering['detailShadowBleedRight']:.0f}px right and "
+            f"{layering['detailShadowBleedBottom']:.0f}px bottom shadow bleed with "
+            f"{layering['detailTimelineHeaderClearance']:.0f}px timeline-header clearance"
+        ),
+    )
+    page.keyboard.press("Escape")
+    expect(page.locator("#sessionInfoPopover")).to_be_hidden()
+
+
 def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) -> None:
     graph_url = url
     page.goto(graph_url, wait_until="networkidle")
@@ -1140,6 +1770,20 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     assert not metrics["trackGroupFitsViewport"], metrics
     assert metrics["viewportScrollLeft"] <= 1, metrics
     assert metrics["mainTrackVisibleInitially"], metrics
+    main_timeline_label = page.evaluate(
+        """() => {
+            const label = document.querySelector('.timeline-header-track.main [data-testid="timeline-track-label"]');
+            return {
+                text: label?.innerText.replace(/\\s+/g, ' ').trim() || '',
+                title: label?.getAttribute('title') || '',
+                hasKicker: Boolean(label?.querySelector('.timeline-track-kicker')),
+            };
+        }"""
+    )
+    assert main_timeline_label["text"], main_timeline_label
+    assert not main_timeline_label["hasKicker"], main_timeline_label
+    assert len(re.findall(r"\bmain\b", main_timeline_label["text"], flags=re.IGNORECASE)) == 1, main_timeline_label
+    assert len(re.findall(r"\bmain\b", main_timeline_label["title"], flags=re.IGNORECASE)) == 1, main_timeline_label
     block_label_sample = page.evaluate(
         """() => Array.from(document.querySelectorAll('[data-testid="timeline-block"]'))
             .slice(0, 120)
@@ -1150,10 +1794,13 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     dom_count = page.evaluate("document.querySelectorAll('*').length")
     assert dom_count < 9000, f"timeline page DOM too large: {dom_count}"
     assert_no_horizontal_overflow(page)
+    if viewport in {"studio-native", "desktop"}:
+        assert_window_layering(page, viewport)
 
     record(page, "graph.dom_svg", kind="dom_assertion", flow="timeline.open", viewport=viewport, selector="[data-testid='overview-timeline']", assertion=f"default Timeline rendered {counts['messages']} logical messages without canvas and without the left rail")
     record(page, "perf.large_session", kind="dom_assertion", flow="timeline.dom_budget", viewport=viewport, selector="[data-testid='timeline-block']", assertion=f"virtual timeline rendered {rendered_blocks} visible blocks")
     record(page, "overview.header_stability", kind="dom_assertion", flow="timeline.header_dom", viewport=viewport, selector="[data-testid='timeline-header']", assertion="sticky header has equal-height labels above timeline blocks and no grid-line background")
+    record(page, "overview.header_stability", kind="dom_assertion", flow="timeline.main_track_label", viewport=viewport, selector=".timeline-header-track.main [data-testid='timeline-track-label']", assertion=f"main timeline header label shows the main agent name once without a duplicate kicker: {main_timeline_label['text']!r}")
     record(page, "overview.scroll_blocks", kind="dom_assertion", flow="timeline.block_labels", viewport=viewport, selector="[data-testid='timeline-block']", assertion="timeline blocks use full message type labels such as USER")
     record(
         page,
@@ -1374,15 +2021,26 @@ def main() -> int:
     try:
         projects_dir = temp_root / "claude-home" / "projects"
         limited_projects_dir = temp_root / "limited-home" / "projects"
+        opencode_data_dir = temp_root / "opencode-data"
         build_large_fixture(projects_dir)
         build_limited_fixture(limited_projects_dir)
+        build_opencode_fixture(opencode_data_dir)
         port = free_port()
         base_url = f"http://127.0.0.1:{port}"
-        server = start_server(projects_dir, port)
+        server = start_server(projects_dir, port, opencode_data_dir)
         wait_for_server(base_url)
         sessions = httpx.get(f"{base_url}/api/sessions", timeout=10).json()
         assert len(sessions) == 1
         url = f"{base_url}/conversation/{sessions[0]['id']}"
+        opencode_sessions = httpx.get(f"{base_url}/api/sessions?agent=opencode", timeout=10).json()
+        assert len(opencode_sessions) == 1
+        opencode_url = (
+            f"{base_url}/conversation/opencode/{opencode_sessions[0]['id']}?"
+            + urlencode({"tab": "opencode", "opencode_data_dir": str(opencode_data_dir)})
+        )
+        assert httpx.get(f"{base_url}/api/conversation/{sessions[0]['id']}", timeout=10).status_code == 200
+        assert httpx.get(f"{base_url}/api/conversation/claude/{sessions[0]['id']}", timeout=10).status_code == 200
+        assert httpx.get(f"{base_url}/api/conversation/opencode/{opencode_sessions[0]['id']}", timeout=10).status_code == 200
 
         console_errors: list[str] = []
         network_failures: list[str] = []
@@ -1402,10 +2060,36 @@ def main() -> int:
             page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
             page.on("pageerror", lambda exc: console_errors.append(str(exc)))
             page.on("requestfailed", lambda request: network_failures.append(request.url))
-            validate_dashboard(page, base_url)
+            validate_dashboard(page, base_url, projects_dir=projects_dir, opencode_data_dir=opencode_data_dir)
+            record(
+                page,
+                "compat.api_cli",
+                kind="dom_assertion",
+                flow="api.compatibility",
+                selector="/api/conversation",
+                assertion="legacy Claude, agent-aware Claude, and agent-aware OpenCode conversation APIs returned HTTP 200",
+            )
             for viewport, width, height, dpr in VIEWPORTS:
                 page.set_viewport_size({"width": width, "height": height})
                 page.emulate_media(color_scheme="light")
+                if viewport == "studio-native":
+                    validate_dashboard(
+                        page,
+                        base_url,
+                        projects_dir=projects_dir,
+                        opencode_data_dir=opencode_data_dir,
+                        viewport=viewport,
+                        screenshot_dir=screenshots,
+                    )
+                    record(
+                        page,
+                        "compat.api_cli",
+                        kind="dom_assertion",
+                        flow="api.compatibility_studio",
+                        viewport=viewport,
+                        selector="/api/conversation",
+                        assertion="API compatibility checks completed before Studio Display browser verification",
+                    )
                 validate_reader(page, url, viewport, screenshots)
                 validate_graph(page, url, viewport, screenshots)
                 if viewport == "studio-native":
@@ -1425,6 +2109,12 @@ def main() -> int:
                         selector="Performance.getMetrics",
                         assertion=f"Nodes={nodes}, JSHeapUsedSize={heap}",
                         source="cdp",
+                    )
+                    validate_opencode_conversation(
+                        page,
+                        opencode_url,
+                        viewport=viewport,
+                        screenshot_dir=screenshots,
                     )
             limited_port = free_port()
             limited_base_url = f"http://127.0.0.1:{limited_port}"

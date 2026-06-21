@@ -3,12 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.claude_store import list_sessions, load_conversation
-from app.config import resolve_projects_dir
+from app.config import resolve_claude_home, resolve_projects_dir
 from tests.conftest import assistant_tool, tool_result, user_event, write_jsonl
 
 
 def test_projects_dir_env_precedence(claude_projects: Path):
     assert resolve_projects_dir() == claude_projects
+
+
+def test_claude_config_dir_precedes_legacy_home(tmp_path: Path, monkeypatch):
+    config_dir = tmp_path / "official-config"
+    legacy_home = tmp_path / "legacy-home"
+    monkeypatch.delenv("CLAUDE_PROJECTS_DIR", raising=False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    monkeypatch.setenv("CLAUDE_CODE_HOME", str(legacy_home))
+
+    assert resolve_claude_home() == config_dir
+    assert resolve_projects_dir() == config_dir / "projects"
 
 
 def test_lists_sessions(populated_projects: Path):

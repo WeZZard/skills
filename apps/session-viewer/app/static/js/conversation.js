@@ -112,6 +112,11 @@ const TYPE_STYLE = {
   reasoning: { label: "reasoning", className: "reasoning", color: "#a100ff" },
   tool: { label: "tool call", className: "tool", color: "#ff9500" },
   tool_result: { label: "tool result", className: "tool-result", color: "#00bcd4" },
+  patch: { label: "patch", className: "patch", color: "#7c3aed" },
+  file: { label: "file", className: "file", color: "#0f766e" },
+  compaction: { label: "compaction", className: "compaction", color: "#475569" },
+  "step-start": { label: "step start", className: "step-start", color: "#2563eb" },
+  "step-finish": { label: "step finish", className: "step-finish", color: "#16a34a" },
   attachment: { label: "attachment", className: "attachment", color: "#64748b" },
   raw_event: { label: "raw event", className: "raw-event", color: "#ff2d55" },
   mixed: { label: "mixed", className: "mixed", color: "#5856d6" },
@@ -1350,10 +1355,11 @@ function renderTimelineHeader() {
   els.timelineHeader.innerHTML = compactHtml(model.tracks
     .map((track, index) => {
       const selected = track.id === state.selectedTrackId;
+      const showKicker = track.depth > 0;
       return `
         <div class="timeline-header-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}" style="left:${track.x}px;width:${model.trackWidth}px">
-          <button class="timeline-track-label ${track.problemCount ? "has-problem" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}" data-testid="timeline-track-label" aria-selected="${selected ? "true" : "false"}" title="${escAttr(trackTitle(track))}">
-            <span class="timeline-track-kicker">${esc(timelineTrackKind(track))}</span>
+          <button class="timeline-track-label ${showKicker ? "" : "no-kicker"} ${track.problemCount ? "has-problem" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}" data-testid="timeline-track-label" aria-selected="${selected ? "true" : "false"}" title="${escAttr(timelineTrackLabel(track, index))}">
+            ${showKicker ? `<span class="timeline-track-kicker">${esc(timelineTrackKind(track))}</span>` : ""}
             <strong>${esc(timelineTrackLabel(track, index))}</strong>
             <small>${esc(timelineTrackMeta(track))}</small>
           </button>

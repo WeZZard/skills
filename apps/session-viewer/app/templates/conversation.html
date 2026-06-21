@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>{{ conversation.summary.title }} | Claude Code Session Viewer</title>
+    <title>{{ conversation.summary.title }} | Session Viewer</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/css/base.css?v=20260621-waterfall-nav-v16" />
+    <link rel="stylesheet" href="/static/css/base.css?v=20260621-main-label-spacing-v1" />
   </head>
   <body>
     <script id="conversation-data" type="application/json">{{ conversation_json | safe }}</script>
     <div class="workbench-shell dual-workbench" data-testid="conversation-workbench">
       <header class="command-bar" data-testid="command-bar">
         <div class="command-left">
-          <a class="back-link icon-label" href="/" aria-label="Open sessions dashboard">
+          <a class="back-link icon-label" href="{{ back_href or '/' }}" aria-label="Open sessions dashboard">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 10.5 12 3l9 7.5" />
               <path d="M5 10v10h14V10" />
@@ -76,7 +76,7 @@
           </button>
         </div>
         <div class="header-meta-line">
-          <span class="source-line header-source" title="{{ conversation.summary.directory or source.projects_dir }}">{{ conversation.summary.directory or source.projects_dir }}</span>
+          <span class="source-line header-source" title="{{ conversation.summary.directory or source.display_path }}">{{ conversation.summary.directory or source.display_path }}</span>
           {% if conversation.summary.git_branch %}
             <span class="source-branch" data-testid="branch-chip" title="Git branch">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -154,6 +154,6 @@
       </main>
     </div>
     <div id="timelineDetailPanel" class="timeline-detail-dock hidden" data-testid="timeline-detail-dock" aria-label="Selected message details"></div>
-    <script src="/static/js/conversation.js?v=20260621-waterfall-nav-v16"></script>
+    <script src="/static/js/conversation.js?v=20260621-main-label-spacing-v1"></script>
   </body>
 </html>
