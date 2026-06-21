@@ -941,6 +941,16 @@ function renderMessageKindStack(kind) {
     </span>`;
 }
 
+function renderMessageHeaderNavKind(kind) {
+  const contentKinds = titleBarContentKinds(kind);
+  return `
+    <span class="message-header-nav-kind" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
+      <span>${esc(kind.line.label)}</span>
+      <span aria-hidden="true">/</span>
+      <span>${esc(contentKinds.map((item) => item.label).join(" + "))}</span>
+    </span>`;
+}
+
 function renderTimelineDetailKindStack(kind) {
   return `
     <div class="timeline-detail-kind-stack" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}">
@@ -1874,6 +1884,7 @@ function renderReaderMessage(message, track, index) {
             </span>
           </div>
           <div class="message-header-actions">
+            ${renderMessageHeaderNavKind(kind)}
             <button type="button" class="message-raw-button" data-action="open-reader-raw">Raw</button>
             <span class="message-card-index" aria-label="Message ${index + 1}">#${index + 1}</span>
           </div>

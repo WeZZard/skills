@@ -1765,6 +1765,9 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
                 content: (card.dataset.contentKinds || '').split(',').filter(Boolean),
                 headerText: card.querySelector('.message-header')?.innerText.replace(/\\s+/g, ' ').trim() || '',
                 titleBarContent: (card.querySelector('.message-kind-stack')?.dataset.contentKinds || '').split(',').filter(Boolean),
+                headerNavText: card.querySelector('.message-header-actions .message-header-nav-kind')?.textContent.replace(/\\s+/g, ' ').trim() || '',
+                headerNavLine: card.querySelector('.message-header-actions .message-header-nav-kind')?.dataset.lineKind || '',
+                headerNavContent: (card.querySelector('.message-header-actions .message-header-nav-kind')?.dataset.contentKinds || '').split(',').filter(Boolean),
             }));
             const titleStacks = cards.map((card) => {
                 const stack = card.querySelector('.message-kind-stack');
@@ -1833,6 +1836,26 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
                 titleBarBadgeStylesMatch,
                 titleBarBadgesUseOriginalShape,
                 rawButtonCount: document.querySelectorAll('.reader-message .message-raw-button').length,
+                headerNavCount: document.querySelectorAll('.reader-message .message-header-actions .message-header-nav-kind').length,
+                headerNavAllUseTwoLevels: cardKinds.every((item) => (
+                    item.headerNavLine
+                    && item.headerNavContent.length
+                    && item.headerNavText.includes('/')
+                    && item.headerNavText.toLowerCase().includes(item.headerNavLine)
+                    && item.headerNavContent.every((kind) => item.headerNavText.toLowerCase().includes(kind.toLowerCase()))
+                )),
+                headerNavHasAttachmentSubtype: cardKinds.some((item) => (
+                    item.line === 'attachment'
+                    && item.headerNavLine === 'attachment'
+                    && item.headerNavContent.includes('Deferred Tools Delta')
+                    && item.headerNavText.includes('Deferred Tools Delta')
+                )),
+                headerNavHasAssistantToolCall: cardKinds.some((item) => (
+                    item.line === 'assistant'
+                    && item.headerNavLine === 'assistant'
+                    && item.headerNavContent.includes('tool call')
+                    && item.headerNavText.includes('tool call')
+                )),
                 cardCount: cards.length,
                 toolFieldLabels,
                 toolPreFontSize: fontSize(toolPre),
@@ -1855,10 +1878,15 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     assert waterfall_kind_detail["titleBarBadgeStylesMatch"], waterfall_kind_detail
     assert waterfall_kind_detail["titleBarBadgesUseOriginalShape"], waterfall_kind_detail
     assert waterfall_kind_detail["rawButtonCount"] == waterfall_kind_detail["cardCount"], waterfall_kind_detail
+    assert waterfall_kind_detail["headerNavCount"] == waterfall_kind_detail["cardCount"], waterfall_kind_detail
+    assert waterfall_kind_detail["headerNavAllUseTwoLevels"], waterfall_kind_detail
+    assert waterfall_kind_detail["headerNavHasAttachmentSubtype"], waterfall_kind_detail
+    assert waterfall_kind_detail["headerNavHasAssistantToolCall"], waterfall_kind_detail
     assert {"Command", "Description", "Subagent Type"} <= set(waterfall_kind_detail["toolFieldLabels"]), waterfall_kind_detail
     assert len(waterfall_kind_detail["attachmentSubtypes"]) >= len(EXPECTED_ATTACHMENT_TYPES), waterfall_kind_detail
     assert waterfall_kind_detail["toolPreFontSize"] == 11, waterfall_kind_detail
     assert waterfall_kind_detail["toolResultPreFontSize"] == 11, waterfall_kind_detail
+    assert waterfall_kind_detail["normalTextFontSize"] == 13, waterfall_kind_detail
     assert waterfall_kind_detail["normalTextFontSize"] > waterfall_kind_detail["toolPreFontSize"], waterfall_kind_detail
     assert waterfall_kind_detail["toolPreLineHeight"] > waterfall_kind_detail["toolPreFontSize"], waterfall_kind_detail
     assert waterfall_kind_detail["headerOverflowCount"] == 0, waterfall_kind_detail
@@ -1971,20 +1999,30 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
             const card = message.querySelector('.message-card');
             const header = message.querySelector('.message-header');
             const index = message.querySelector('.message-card-index');
+            const actions = message.querySelector('.message-header-actions');
+            const navKind = message.querySelector('.message-header-nav-kind');
             const messageRect = message.getBoundingClientRect();
             const cardRect = card.getBoundingClientRect();
             const headerRect = header.getBoundingClientRect();
             const indexRect = index.getBoundingClientRect();
+            const actionsRect = actions.getBoundingClientRect();
+            const navKindRect = navKind.getBoundingClientRect();
             return {
                 leadingGap: Math.round(cardRect.left - messageRect.left),
                 indexIsRightAligned: indexRect.left > headerRect.left + headerRect.width * 0.75,
                 indexRightDelta: Math.round(headerRect.right - indexRect.right),
+                navKindText: navKind.textContent.replace(/\\s+/g, ' ').trim(),
+                navKindInsideActions: navKindRect.left >= actionsRect.left && navKindRect.right <= actionsRect.right,
+                actionsRightDelta: Math.round(headerRect.right - actionsRect.right),
             };
         }"""
     )
     assert card_index_geometry["leadingGap"] == 0, card_index_geometry
     assert card_index_geometry["indexIsRightAligned"], card_index_geometry
     assert card_index_geometry["indexRightDelta"] >= 0, card_index_geometry
+    assert "/" in card_index_geometry["navKindText"], card_index_geometry
+    assert card_index_geometry["navKindInsideActions"], card_index_geometry
+    assert 0 <= card_index_geometry["actionsRightDelta"] <= 14, card_index_geometry
     card_before_key = page.evaluate("window.SESSION_VIEWER.current().capsuleKey")
     page.get_by_test_id("transcript-message").nth(1).click()
     page.wait_for_timeout(200)
