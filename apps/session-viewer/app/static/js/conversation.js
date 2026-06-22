@@ -1168,6 +1168,11 @@ function kindClass(value) {
   return key;
 }
 
+function portfolioBadgeClass(value) {
+  const className = kindClass(value);
+  return className === "raw-event" ? "raw_event raw-event" : className;
+}
+
 function kindForLineType(value) {
   const key = String(value || "raw_event").replace(/-/g, "_");
   if (key === "user") return { key: "user", label: "user", compact: "USER" };
@@ -1307,32 +1312,35 @@ function titleBarContentKinds(kind) {
 function renderMessageKindStack(kind) {
   const contentKinds = titleBarContentKinds(kind);
   return `
-    <span class="message-kind-stack" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
-      <span class="role-badge message-line-kind ${escAttr(kindClass(kind.line.key))}">${esc(kind.line.label)}</span>
-      <span class="message-content-kinds">
-        ${contentKinds.map((item) => `<span class="message-content-kind ${escAttr(kindClass(item.key))}">${esc(item.label)}</span>`).join("")}
-      </span>
+    <span class="portfolio-kind-stack message-kind-stack" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
+      <span class="portfolio-kind-badge message-line-kind ${escAttr(portfolioBadgeClass(kind.line.key))}">${esc(kind.line.label)}</span>
+      ${contentKinds.map((item) => `
+        <span class="portfolio-kind-separator" aria-hidden="true">/</span>
+        <span class="portfolio-subtype-badge message-content-kind ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${esc(item.label)}</span>
+      `).join("")}
     </span>`;
 }
 
 function renderMessageIndexKind(kind) {
   const contentKinds = titleBarContentKinds(kind);
   return `
-    <span class="message-index-kind" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
-      <span class="message-index-line-kind ${escAttr(kindClass(kind.line.key))}">${esc(kind.line.label)}</span>
-      ${contentKinds.length ? `
-        <span class="message-index-kind-separator" aria-hidden="true">/</span>
-        <span class="message-index-content-kinds">
-          ${contentKinds.map((item) => `<span class="message-index-content-kind ${escAttr(kindClass(item.key))}">${esc(item.label)}</span>`).join("")}
-        </span>` : ""}
+    <span class="portfolio-nav-kind message-index-kind" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
+      <span class="portfolio-kind-badge message-index-line-kind ${escAttr(portfolioBadgeClass(kind.line.key))}">${esc(kind.line.label)}</span>
+      ${contentKinds.map((item) => `
+        <span class="portfolio-kind-separator message-index-kind-separator" aria-hidden="true">/</span>
+        <span class="portfolio-subtype-badge message-index-content-kind ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${esc(item.label)}</span>
+      `).join("")}
     </span>`;
 }
 
 function renderTimelineDetailKindStack(kind) {
   return `
-    <div class="timeline-detail-kind-stack" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}">
-      <span class="timeline-detail-type ${escAttr(kindClass(kind.line.key))}">${esc(kind.line.label)}</span>
-      ${kind.contentKinds.map((item) => `<span class="timeline-detail-content-type ${escAttr(kindClass(item.key))}">${esc(item.label)}</span>`).join("")}
+    <div class="portfolio-kind-stack timeline-detail-kind-stack" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}">
+      <span class="portfolio-kind-badge timeline-detail-type ${escAttr(portfolioBadgeClass(kind.line.key))}">${esc(kind.line.label)}</span>
+      ${kind.contentKinds.map((item) => `
+        <span class="portfolio-kind-separator" aria-hidden="true">/</span>
+        <span class="portfolio-subtype-badge timeline-detail-content-type ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${esc(item.label)}</span>
+      `).join("")}
     </div>`;
 }
 
@@ -1413,6 +1421,102 @@ function renderSystemSection(section, rawEventKey) {
       </section>`;
   }
   return "";
+}
+
+function renderPortfolioFormText(label, value, options = {}) {
+  const valueText = text(yesNo(value));
+  const multiline = options.multiline !== false;
+  return `
+    <section class="portfolio-form-row${multiline ? " multiline" : ""}">
+      <header><strong>${esc(label)}</strong></header>
+      <pre>${esc(valueText || options.emptyText || "None")}</pre>
+    </section>`;
+}
+
+function renderPortfolioFormTable(label, columns, rows, options = {}) {
+  const normalizedRows = (rows || []).map((row) => row.map((value) => text(yesNo(value))));
+  return `
+    <section class="portfolio-form-block portfolio-form-table">
+      <header>
+        <strong>${esc(label)}</strong>
+        <span>${esc(options.countLabel || `${normalizedRows.length.toLocaleString()} items`)}</span>
+      </header>
+      ${normalizedRows.length ? `
+        <div class="portfolio-table-scroll">
+          <table>
+            <thead><tr>${columns.map((column) => `<th>${esc(column)}</th>`).join("")}</tr></thead>
+            <tbody>
+              ${normalizedRows.map((row) => `<tr>${row.map((value) => `<td>${esc(value)}</td>`).join("")}</tr>`).join("")}
+            </tbody>
+          </table>
+        </div>` : `<p class="portfolio-empty-value">${esc(options.emptyText || "None")}</p>`}
+    </section>`;
+}
+
+function renderPortfolioDisplaySection(section) {
+  if (!section) return "";
+  if (section.kind === "list") {
+    const items = (section.items || []).filter(Boolean);
+    return renderPortfolioFormTable(
+      section.label,
+      ["Item"],
+      items.map((item) => [item]),
+      { countLabel: `${items.length.toLocaleString()} items`, emptyText: section.emptyText || "None" },
+    );
+  }
+  if (section.kind === "table") {
+    const rows = section.rows || [];
+    return renderPortfolioFormTable(
+      section.label,
+      section.columns || ["Item"],
+      rows,
+      { countLabel: `${rows.length.toLocaleString()} items`, emptyText: section.emptyText || "None" },
+    );
+  }
+  if (section.kind === "text") {
+    const fullText = section.text || "";
+    return renderPortfolioFormText(section.label, fullText || section.emptyText || "None", { multiline: true });
+  }
+  if (section.kind === "status") {
+    const lines = section.lines || [];
+    return renderPortfolioFormTable(
+      section.label,
+      ["Item"],
+      lines.map((line) => [line]),
+      { countLabel: `${lines.length.toLocaleString()} items`, emptyText: "None" },
+    );
+  }
+  return "";
+}
+
+function renderPortfolioDisplayBody(display, options = {}) {
+  const blocks = [];
+  if (display.summary && options.includeSummary !== false) {
+    blocks.push(renderPortfolioFormText("Details", display.summary, { multiline: false }));
+  }
+  (display.rows || []).forEach(([label, value]) => {
+    blocks.push(renderPortfolioFormText(label, value, { multiline: String(text(value)).length > 80 }));
+  });
+  (display.sections || []).forEach((section) => {
+    const html = renderPortfolioDisplaySection(section);
+    if (html) blocks.push(html);
+  });
+  if (!blocks.length) {
+    blocks.push(`<p class="portfolio-empty-value">${esc(options.emptyText || "No derived content fields are present in this sample.")}</p>`);
+  }
+  return `<div class="portfolio-detail-form timeline-detail-form">${blocks.join("")}</div>`;
+}
+
+function renderPortfolioAttachmentPartBody(part, rawEventKey) {
+  return renderPortfolioDisplayBody(attachmentDisplayModel(part, rawEventKey));
+}
+
+function renderPortfolioSystemPartBody(part, rawEventKey) {
+  return renderPortfolioDisplayBody(systemDisplayModel(part, rawEventKey));
+}
+
+function renderPortfolioRawEventBody(rawEvent) {
+  return renderPortfolioDisplayBody(rawEventDisplayModel(rawEvent));
 }
 
 function renderAttachmentMetaRows(rows) {
@@ -2036,10 +2140,14 @@ function renderMessageIndex() {
       const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
       const contentKinds = titleBarContentKinds(kind);
       return `
-        <button class="nav-item message-index-item ${active ? "active" : ""} ${problems.length ? "has-problem" : ""}" data-action="focus-capsule" data-track-id="${escAttr(track.id)}" data-message-index="${capsule.messageIndex}" data-capsule-key="${escAttr(key)}" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}" aria-current="${active ? "true" : "false"}">
-          ${renderMessageIndexKind(kind)}
-          ${problems.length ? `<span class="message-index-problem" aria-label="${escAttr(problemText)}"><span class="message-index-problem-dot" aria-hidden="true"></span><span>${esc(problemText)}</span></span>` : ""}
-          <span class="message-index-time">${esc(formatTime(capsule.timestamp))}</span>
+        <button class="nav-item portfolio-navigation-item message-index-item ${active ? "active selected" : ""} ${problems.length ? "has-problem" : ""}" data-action="focus-capsule" data-track-id="${escAttr(track.id)}" data-message-index="${capsule.messageIndex}" data-capsule-key="${escAttr(key)}" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}" aria-current="${active ? "true" : "false"}">
+          <span class="portfolio-nav-line message-index-nav-line">
+            ${renderMessageIndexKind(kind)}
+            <span class="message-index-nav-meta">
+              ${problems.length ? `<span class="message-index-problem" aria-label="${escAttr(problemText)}"><span class="message-index-problem-dot" aria-hidden="true"></span><span>${esc(problemText)}</span></span>` : ""}
+              <span class="portfolio-nav-time message-index-time">${esc(formatTime(capsule.timestamp))}</span>
+            </span>
+          </span>
           <span class="message-preview">${esc(compact(capsule.summary || "(no content)", 110))}</span>
         </button>`;
     })
@@ -2387,18 +2495,17 @@ function renderReaderRawEvent(capsule, track) {
   return `
     <article class="reader-message ${escAttr(kindClass(kind.line.key))} raw-event ${problems.length ? "has-problem" : ""} ${capsule.key === state.currentCapsuleKey ? "active" : ""}" id="${readerMessageId(track.id, index)}" data-action="focus-capsule" data-agent-id="${escAttr(track.id)}" data-message-index="${index}" data-capsule-key="${escAttr(capsule.key)}" data-testid="transcript-message" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" role="button" tabindex="0" aria-current="${capsule.key === state.currentCapsuleKey ? "true" : "false"}" aria-label="${escAttr(`${kind.fullLabel} block ${index + 1}`)}">
       <div class="message-card">
-        <header class="message-header">
+        <header class="portfolio-card-header message-header">
           <div class="message-header-left">
-            <span class="role-dot" aria-hidden="true"></span>
             ${renderMessageKindStack(kind)}
             <span class="message-meta">
-              ${capsule.timestamp ? `<span>${esc(formatFullTime(capsule.timestamp))}</span>` : ""}
               <span>${esc(capsule.nav?.agentPath || "main")}</span>
               ${problems.length ? `<span class="problem-tag">${problems.length} problems</span>` : ""}
             </span>
           </div>
-          <div class="message-header-actions">
-            <button type="button" class="message-raw-button" data-action="open-reader-raw">Raw</button>
+          <div class="portfolio-card-header-actions message-header-actions">
+            ${capsule.timestamp ? `<span class="portfolio-card-time">${esc(formatTime(capsule.timestamp))}</span>` : ""}
+            <button type="button" class="portfolio-mini-button message-raw-button" data-action="open-reader-raw">Raw</button>
             <span class="message-card-index" aria-label="Block ${index + 1}">#${index + 1}</span>
           </div>
         </header>
@@ -2420,19 +2527,18 @@ function renderReaderMessage(message, track, index) {
   return `
     <article class="reader-message ${escAttr(kindClass(kind.line.key))} ${problems.length ? "has-problem" : ""} ${key === state.currentCapsuleKey ? "active" : ""}" id="${readerMessageId(track.id, index)}" data-action="focus-capsule" data-agent-id="${escAttr(track.id)}" data-message-index="${index}" data-capsule-key="${escAttr(key)}" data-testid="transcript-message" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" role="button" tabindex="0" aria-current="${key === state.currentCapsuleKey ? "true" : "false"}" aria-label="${escAttr(`${kind.fullLabel} message ${index + 1}`)}">
       <div class="message-card">
-        <header class="message-header">
+        <header class="portfolio-card-header message-header">
           <div class="message-header-left">
-            <span class="role-dot" aria-hidden="true"></span>
             ${renderMessageKindStack(kind)}
             <span class="message-meta">
-              ${message.time_created ? `<span>${esc(formatFullTime(message.time_created))}</span>` : ""}
               ${message.modelID ? `<span>${esc(message.modelID)}</span>` : ""}
               ${message.agent ? `<span>${esc(message.agent)}</span>` : ""}
               ${problems.length ? `<span class="problem-tag">${problems.length} problems</span>` : ""}
             </span>
           </div>
-          <div class="message-header-actions">
-            <button type="button" class="message-raw-button" data-action="open-reader-raw">Raw</button>
+          <div class="portfolio-card-header-actions message-header-actions">
+            ${message.time_created ? `<span class="portfolio-card-time">${esc(formatTime(message.time_created))}</span>` : ""}
+            <button type="button" class="portfolio-mini-button message-raw-button" data-action="open-reader-raw">Raw</button>
             <span class="message-card-index" aria-label="Message ${index + 1}">#${index + 1}</span>
           </div>
         </header>
@@ -2700,9 +2806,10 @@ function renderGraphVirtual() {
         const selected = state.selectedGraphKeys.has(key);
         const style = typeStyle(capsule.type);
         const kind = capsule.kindModel || rawEventKindModel(capsule.rawEvent);
+        const noSubtype = kind.contentKinds.length ? "" : "no-subtype";
         blockHtml.push(`
-          <button class="timeline-block ${style.className} ${active ? "active" : ""} ${selected ? "selected" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-testid="timeline-block" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" style="left:${capsule.x}px;top:${capsule.y}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${kind.fullLabel}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${index + 1}, ${kind.fullLabel}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
-            <span class="timeline-block-label">${esc(timelineBlockKindLabel(capsule, index))}</span>
+          <button class="portfolio-timeline-block timeline-block ${style.className} ${noSubtype} ${active ? "active" : ""} ${selected ? "selected" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-testid="timeline-block" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" style="left:${capsule.x}px;top:${capsule.y}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${kind.fullLabel}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${index + 1}, ${kind.fullLabel}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
+            <span class="portfolio-timeline-block-label timeline-block-label" data-full-label="${escAttr(timelineBlockKindLabel(capsule, index))}">${esc(timelineBlockKindLabel(capsule, index))}</span>
           </button>`);
       }
     });
@@ -2803,21 +2910,27 @@ function renderTimelineDetailPart(part, partIndex) {
   const lineKind = kindForLineType(rawEventByAddress.get(rawEventKey)?.raw?.type || "");
   const partKind = partContentKind(part, lineKind);
   const partHeaderLabel = attachment || system ? "Details" : part.type === "tool" ? part.tool || partKind.label : partKind.label;
-  const body = attachment
-    ? renderAttachmentPartBody(part, rawEventKey, { showRawPayload: false })
-    : system
-    ? renderSystemPartBody(part, rawEventKey)
-    : `<pre>${esc(partText(part) || "(empty)")}</pre>`;
-  return `
-    <article class="timeline-detail-part ${escAttr(attachment ? "attachment" : system ? "system" : typeStyle(part.type).className || part.type || "part")} ${part.state?.is_error ? "error" : ""}" data-raw-event-key="${escAttr(rawEventKey)}">
-      <header>
-        <span>${partIndex + 1}</span>
-        <strong>${esc(partHeaderLabel)}</strong>
-        ${part.type === "tool" && part.tool ? `<code>${esc(partKind.label)}</code>` : ""}
-        ${part.nav?.toolUseId ? `<code>${esc(part.nav.toolUseId)}</code>` : ""}
-      </header>
-      ${body}
-    </article>`;
+  if (attachment) return renderPortfolioAttachmentPartBody(part, rawEventKey);
+  if (system) return renderPortfolioSystemPartBody(part, rawEventKey);
+  if (part.type === "tool") {
+    const rows = [["Tool", part.tool || partKind.label]];
+    if (part.nav?.toolUseId) rows.push(["Tool Use ID", part.nav.toolUseId]);
+    return renderPortfolioDisplayBody({
+      summary: "",
+      rows,
+      sections: [textAttachmentSection("input", "Input", part.state?.input || part.state || {}, { keepEmpty: true })],
+    }, { includeSummary: false });
+  }
+  if (part.type === "tool_result") {
+    const rows = [];
+    if (part.nav?.toolUseId) rows.push(["Tool Use ID", part.nav.toolUseId]);
+    return renderPortfolioDisplayBody({
+      summary: "",
+      rows,
+      sections: [textAttachmentSection("output", "Output", partText(part) || "(no payload)", { keepEmpty: true })],
+    }, { includeSummary: false });
+  }
+  return renderPortfolioFormText(partHeaderLabel || `Part ${partIndex + 1}`, partText(part) || "(empty)", { multiline: true });
 }
 
 function timelineDetailProblemText(problem) {
@@ -2879,7 +2992,7 @@ function renderTimelineDetailRaw(displayCapsule, parts) {
     : rawEvents.length
       ? rawEvents.map((event) => event.raw)
       : fallback;
-  return `<div class="timeline-detail-raw"><pre class="timeline-detail-raw-code"><code>${esc(formatRawJsonlValue(rawValue) || "(raw JSONL unavailable)")}</code></pre></div>`;
+  return `<pre class="portfolio-detail-raw timeline-detail-raw-code"><code>${esc(formatRawJsonlValue(rawValue) || "(raw JSONL unavailable)")}</code></pre>`;
 }
 
 function pinIconSvg() {
@@ -2890,7 +3003,8 @@ function renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems
   const commonFailures = timelineDetailCommonFailures(problems, parts);
   const problemSummary = problems.length === 1 ? "1 problem" : problems.length ? `${problems.length} problems` : "None";
   return `
-    <dl class="timeline-detail-meta">
+    <div class="portfolio-detail-form timeline-detail-form">
+    <dl class="portfolio-meta timeline-detail-meta">
       <dt>Line type</dt><dd>${esc(kind?.line?.label || displayCapsule.lineType || "Unknown")}</dd>
       <dt>Content types</dt><dd>${esc(kind?.contentLabel || (displayCapsule.contentTypes || []).join(", ") || "Unknown")}</dd>
       <dt>Agent</dt><dd>${esc(timelineTrackLabel(track))}</dd>
@@ -2901,7 +3015,13 @@ function renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems
       <dt>Problems</dt><dd>${esc(problemSummary)}</dd>
       <dt>Common failures</dt><dd>${commonFailures.length ? commonFailures.map(esc).join("<br>") : "None"}</dd>
     </dl>
-    ${problems.length ? `<div class="timeline-detail-problems">${problems.map((problem) => `<div><strong>${esc(problem.kind || "problem")}</strong><span>${esc(problem.message || problem.reason || problem.id || "")}</span></div>`).join("")}</div>` : ""}`;
+    ${problems.length ? renderPortfolioFormTable(
+      "Problems",
+      ["Kind", "Message"],
+      problems.map((problem) => [problem.kind || "problem", problem.message || problem.reason || problem.id || ""]),
+      { countLabel: `${problems.length.toLocaleString()} items` },
+    ) : ""}
+    </div>`;
 }
 
 function renderTimelineDetailWindow(item, index) {
@@ -2920,36 +3040,36 @@ function renderTimelineDetailWindow(item, index) {
     ? `<strong>${esc(item.title || "Raw JSON")}</strong>`
     : renderTimelineDetailKindStack(kind);
   const bodyHtml = displayCapsule.rawOnly
-    ? renderRawEventBody(displayCapsule.rawEvent)
-    : `<div class="timeline-detail-parts">
+    ? renderPortfolioRawEventBody(displayCapsule.rawEvent)
+    : `<div class="portfolio-detail-form timeline-detail-form timeline-detail-parts">
         ${parts.map(renderTimelineDetailPart).join("") || '<p class="muted">(no content)</p>'}
       </div>`;
   const metadataHtml = renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems, parts, kind);
   const rawHtml = renderTimelineDetailRaw(displayCapsule, parts);
   return `
-    <article class="timeline-detail-window ${pinned ? "pinned" : "live"}" data-testid="timeline-detail-panel" data-detail-mode="${escAttr(item.mode)}" data-detail-capsule-key="${escAttr(displayCapsule.key)}" data-detail-index="${index}" data-detail-tab="${escAttr(initialTab)}">
-      <div class="timeline-detail-titlebar" data-detail-section="titlebar">
+    <article class="portfolio-detail-window timeline-detail-window ${pinned ? "pinned" : "live"}" data-testid="timeline-detail-panel" data-detail-mode="${escAttr(item.mode)}" data-detail-capsule-key="${escAttr(displayCapsule.key)}" data-detail-index="${index}" data-detail-tab="${escAttr(initialTab)}">
+      <header class="portfolio-detail-titlebar timeline-detail-titlebar" data-detail-section="titlebar">
         ${titlebarContent}
         <div class="timeline-detail-actions">
           ${canPin ? `<button type="button" class="timeline-detail-pin ${pinned ? "active" : ""}" data-action="toggle-timeline-detail-pin" data-testid="timeline-detail-pin" aria-pressed="${pinned ? "true" : "false"}" aria-label="${pinned ? "Unpin message detail" : "Pin message detail"}" title="${pinned ? "Unpin" : "Pin"}">${pinIconSvg()}</button>` : ""}
           <button type="button" class="timeline-detail-close" data-action="close-timeline-detail" aria-label="Close timeline detail">&times;</button>
         </div>
-      </div>
-      <section class="timeline-detail-switch-section" data-detail-section="switches">
-        <div class="timeline-detail-tablist" role="tablist" aria-label="Message detail sections">
-          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="contents" id="${detailId}-contents-tab" aria-controls="${detailId}-contents-panel" aria-selected="${initialTab === "contents" ? "true" : "false"}" ${initialTab === "contents" ? "" : 'tabindex="-1"'}>Contents</button>
-          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="metadata" id="${detailId}-metadata-tab" aria-controls="${detailId}-metadata-panel" aria-selected="${initialTab === "metadata" ? "true" : "false"}" ${initialTab === "metadata" ? "" : 'tabindex="-1"'}>Metadata${hasError ? '<span class="timeline-detail-tab-alert" aria-label="Contains errors">!</span>' : ""}</button>
-          <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="raw" id="${detailId}-raw-tab" aria-controls="${detailId}-raw-panel" aria-selected="${initialTab === "raw" ? "true" : "false"}" ${initialTab === "raw" ? "" : 'tabindex="-1"'}>Raw</button>
+      </header>
+      <section class="portfolio-detail-switches timeline-detail-switch-section" data-detail-section="switches">
+        <div class="portfolio-detail-tabs timeline-detail-tablist" role="tablist" aria-label="Message detail sections">
+          <button type="button" class="timeline-detail-tab ${initialTab === "contents" ? "active" : ""}" role="tab" data-action="timeline-detail-tab" data-portfolio-detail-tab="contents" data-detail-tab-target="contents" id="${detailId}-contents-tab" aria-controls="${detailId}-contents-panel" aria-selected="${initialTab === "contents" ? "true" : "false"}" ${initialTab === "contents" ? "" : 'tabindex="-1"'}>Contents</button>
+          <button type="button" class="timeline-detail-tab ${initialTab === "metadata" ? "active" : ""}" role="tab" data-action="timeline-detail-tab" data-portfolio-detail-tab="metadata" data-detail-tab-target="metadata" id="${detailId}-metadata-tab" aria-controls="${detailId}-metadata-panel" aria-selected="${initialTab === "metadata" ? "true" : "false"}" ${initialTab === "metadata" ? "" : 'tabindex="-1"'}>Metadata${hasError ? '<span class="timeline-detail-tab-alert" aria-label="Contains errors">!</span>' : ""}</button>
+          <button type="button" class="timeline-detail-tab ${initialTab === "raw" ? "active" : ""}" role="tab" data-action="timeline-detail-tab" data-portfolio-detail-tab="raw" data-detail-tab-target="raw" id="${detailId}-raw-tab" aria-controls="${detailId}-raw-panel" aria-selected="${initialTab === "raw" ? "true" : "false"}" ${initialTab === "raw" ? "" : 'tabindex="-1"'}>Raw</button>
         </div>
       </section>
-      <section class="timeline-detail-active-section" data-detail-section="active-panel">
-        <div class="timeline-detail-panel-section" data-detail-panel="contents" id="${detailId}-contents-panel" role="tabpanel" aria-labelledby="${detailId}-contents-tab" ${initialTab === "contents" ? "" : "hidden"}>
+      <section class="portfolio-detail-active-panel timeline-detail-active-section" data-detail-section="active-panel">
+        <div class="portfolio-detail-panel timeline-detail-panel-section" data-portfolio-detail-panel="contents" data-detail-panel="contents" id="${detailId}-contents-panel" role="tabpanel" aria-labelledby="${detailId}-contents-tab" ${initialTab === "contents" ? "" : "hidden"}>
           ${bodyHtml}
         </div>
-        <div class="timeline-detail-panel-section" data-detail-panel="metadata" id="${detailId}-metadata-panel" role="tabpanel" aria-labelledby="${detailId}-metadata-tab" ${initialTab === "metadata" ? "" : "hidden"}>
+        <div class="portfolio-detail-panel timeline-detail-panel-section" data-portfolio-detail-panel="metadata" data-detail-panel="metadata" id="${detailId}-metadata-panel" role="tabpanel" aria-labelledby="${detailId}-metadata-tab" ${initialTab === "metadata" ? "" : "hidden"}>
           ${metadataHtml}
         </div>
-        <div class="timeline-detail-panel-section" data-detail-panel="raw" id="${detailId}-raw-panel" role="tabpanel" aria-labelledby="${detailId}-raw-tab" ${initialTab === "raw" ? "" : "hidden"}>
+        <div class="portfolio-detail-panel timeline-detail-panel-section" data-portfolio-detail-panel="raw" data-detail-panel="raw" id="${detailId}-raw-panel" role="tabpanel" aria-labelledby="${detailId}-raw-tab" ${initialTab === "raw" ? "" : "hidden"}>
           ${rawHtml}
         </div>
       </section>
@@ -3143,6 +3263,7 @@ function setTimelineDetailTab(button) {
     const selected = tabButton.dataset.detailTabTarget === tab;
     tabButton.setAttribute("aria-selected", String(selected));
     tabButton.tabIndex = selected ? 0 : -1;
+    tabButton.classList.toggle("active", selected);
   });
   detailWindow.querySelectorAll("[data-detail-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.detailPanel !== tab;
@@ -3321,7 +3442,7 @@ function copyText(value, message = "Copied link") {
 }
 
 function rawPayloadContainerForButton(button) {
-  const scope = button.closest(".reader-part, .timeline-detail-part");
+  const scope = button.closest(".reader-part");
   return scope?.querySelector("[data-raw-payload]") || null;
 }
 
