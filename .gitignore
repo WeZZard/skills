@@ -73,5 +73,5 @@ website/screenshots/
 # Plans (local planning artifacts)
 .plan/
 
-.playwright/
+.playwright-mcp/
 
