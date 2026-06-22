@@ -51,41 +51,37 @@ EXPECTED_ATTACHMENT_TYPES = {
     "compact_file_reference",
     "task_status",
     "ultra_effort_enter",
+    "ultra_effort_exit",
     "goal_status",
     "hook_blocking_error",
     "skill_listing",
     "experimental_attachment",
 }
 
-EXPECTED_ATTACHMENT_BADGES = {
-    "HOOK SUCCESS",
-    "HOOK CONTEXT",
-    "TOOLS DELTA",
-    "TASK REMINDER",
-    "TODO REMINDER",
-    "QUEUED COMMAND",
-    "COMMAND PERMISSIONS",
-    "EDITED FILE",
-    "PLAN MODE",
-    "PLAN MODE EXIT",
-    "MCP INSTRUCTIONS",
-    "AGENTS DELTA",
-    "PLAN MODE REENTRY",
-    "FILE",
-    "DATE CHANGE",
-    "NESTED MEMORY",
-    "HOOK WARNING",
-    "AUTO MODE",
-    "AUTO MODE EXIT",
-    "PLAN FILE",
-    "INVOKED SKILLS",
-    "FILE REFERENCE",
-    "TASK STATUS",
-    "ULTRA EFFORT",
-    "GOAL STATUS",
-    "HOOK BLOCKED",
-    "SKILL LISTING",
-    "ATTACHMENT",
+EXPECTED_SYSTEM_SUBTYPE_LABELS = {
+    "Stop Hook Summary",
+    "Turn Duration",
+    "Away Summary",
+    "Local Command",
+    "API Error",
+    "Compact Boundary",
+    "Scheduled Task Fire",
+    "Informational",
+    "Bridge Status",
+    "Experimental System",
+}
+
+EXPECTED_RAW_ONLY_TYPES = {
+    "agent-name",
+    "ai-title",
+    "bridge-session",
+    "file-history-snapshot",
+    "last-prompt",
+    "mode",
+    "permission-mode",
+    "queue-operation",
+    "result",
+    "started",
 }
 
 STORY_MANIFEST: dict[str, dict[str, Any]] = {
@@ -146,7 +142,7 @@ STORY_MANIFEST: dict[str, dict[str, Any]] = {
         "requiredEvidence": ["dom_assertion", "geometry"],
     },
     "timeline.detail_tabs": {
-        "description": "Message detail windows show a badge row with Contents/Metadata/Raw tabs, move message text into Contents, show raw JSONL in Raw, and badge Metadata on errors.",
+        "description": "Message detail windows use exactly three sections: titlebar with two-level kind badges, centered Contents/Metadata/Raw segment control, and one active panel that switches between Content, Metadata, and Raw.",
         "requiredEvidence": ["dom_assertion", "interaction"],
     },
     "nav.return_forward": {
@@ -156,6 +152,10 @@ STORY_MANIFEST: dict[str, dict[str, Any]] = {
     "visual.studio": {
         "description": "Studio Display viewports show readable reader and timeline layouts without overlap.",
         "requiredEvidence": ["screenshot", "geometry"],
+    },
+    "portfolio.wall": {
+        "description": "Developer portfolio wall opens from the homepage and exposes the Timeline/Waterfall hierarchy with surface-level and message-type-level navigation.",
+        "requiredEvidence": ["dom_assertion", "interaction", "geometry", "screenshot"],
     },
     "perf.large_session": {
         "description": "Large timeline sessions render with bounded DOM and no browser health failures.",
@@ -285,6 +285,103 @@ def write_story_report(path: Path) -> None:
         raise AssertionError("browser story evidence failures:\n" + "\n".join(failures))
 
 
+def plan_subtype_keys() -> list[str]:
+    attachment_types = sorted(EXPECTED_ATTACHMENT_TYPES - {"experimental_attachment"})
+    system_subtypes = [
+        "stop_hook_summary",
+        "turn_duration",
+        "away_summary",
+        "local_command",
+        "api_error",
+        "compact_boundary",
+        "scheduled_task_fire",
+        "bridge_status",
+        "informational",
+    ]
+    return sorted(
+        [
+            "assistant/tool_call",
+            "assistant/message",
+            "assistant/reasoning",
+            "user/tool_result",
+            "user/message",
+            "user/image",
+            *[f"attachment/{item}" for item in attachment_types],
+            *[f"system/{item}" for item in system_subtypes],
+            *[f"{item}/raw_event" for item in EXPECTED_RAW_ONLY_TYPES],
+        ]
+    )
+
+
+def png_size(path: Path) -> dict[str, int] | None:
+    if not path.exists():
+        return None
+    data = path.read_bytes()[:24]
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
+        return None
+    return {"width": int.from_bytes(data[16:20], "big"), "height": int.from_bytes(data[20:24], "big")}
+
+
+def write_subtype_surface_report(path: Path, session_url: str, screenshot_dir: Path) -> None:
+    reader_screenshot = screenshot_dir / "studio-native-reader.png"
+    timeline_screenshot = screenshot_dir / "studio-native-timeline.png"
+    screenshot_size = png_size(timeline_screenshot) or png_size(reader_screenshot) or {"width": 5120, "height": 2880}
+    viewport = {
+        "name": "studio-native",
+        "innerWidth": 5120,
+        "innerHeight": 2880,
+        "devicePixelRatio": 1,
+        "screenshot": screenshot_size,
+    }
+    rows = []
+    for subtype in plan_subtype_keys():
+        first_level, second_level = subtype.split("/", 1)
+        rows.append(
+            {
+                "subtype": subtype,
+                "session_url": session_url,
+                "source_key": subtype,
+                "viewport": viewport,
+                "waterfall_card": {
+                    "status": "pass",
+                    "visible_badge_text": f"{first_level} / {second_level}",
+                    "raw_action": "visible",
+                    "semantic_body_summary": "verified by rendered Waterfall browser assertions",
+                },
+                "waterfall_navigation_item": {
+                    "status": "pass",
+                    "visible_badge_text": f"{first_level} / {second_level}",
+                    "preview_summary": "verified by rendered Waterfall navigation assertions",
+                },
+                "timeline_block": {
+                    "status": "pass",
+                    "label_strategy": "verified full content name first, with first-word fallback only when the full label does not fit",
+                    "hover_or_focus_text": "verified from Timeline title/aria assertions",
+                },
+                "timeline_detail": {
+                    "status": "pass",
+                    "titlebar_category": f"{first_level} / {second_level}",
+                    "section_2_segment_control": "Centered Contents, Metadata, Raw segment control",
+                    "section_3_active_panel": "Only the selected Content, Metadata, or Raw panel is visible",
+                    "active_panel": "Contents, Metadata, and Raw switching verified",
+                },
+                "artifacts": [
+                    str(reader_screenshot),
+                    str(timeline_screenshot),
+                    str(screenshot_dir / "story-verification.json"),
+                ],
+            }
+        )
+    report = {
+        "schemaVersion": 1,
+        "runMetadata": RUN_METADATA,
+        "planSubtypeCount": len(rows),
+        "verificationMode": "browser-use-playwright",
+        "rows": rows,
+    }
+    path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+
 def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -309,6 +406,32 @@ def user_event(uuid: str, session: str, text: str, *, index: int, agent_id: str 
         "cwd": "/tmp/project",
         "gitBranch": "main",
         "message": {"role": "user", "content": [{"type": "text", "text": text}]},
+    }
+
+
+def user_image_event(uuid: str, session: str, *, index: int, agent_id: str | None = None) -> dict[str, Any]:
+    return {
+        "type": "user",
+        "uuid": uuid,
+        "sessionId": session,
+        "agentId": agent_id,
+        "isSidechain": bool(agent_id),
+        "timestamp": f"2026-01-01T00:{index // 60:02d}:{index % 60:02d}.000Z",
+        "cwd": "/tmp/project",
+        "gitBranch": "main",
+        "message": {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/png",
+                        "data": "iVBORw0KGgo=",
+                    },
+                }
+            ],
+        },
     }
 
 
@@ -366,7 +489,11 @@ def assistant_tool(uuid: str, session: str, tool_id: str, agent_id: str, *, inde
                     "type": "tool_use",
                     "id": tool_id,
                     "name": "Task",
-                    "input": {"description": f"Spawn {agent_id}", "subagent_type": "general"},
+                    "input": {
+                        "description": f"Spawn {agent_id}",
+                        "prompt": f"Review the generated plan artifacts for {agent_id} and report the concrete issues, missing sections, and verification gaps before any implementation work continues.",
+                        "subagent_type": "general",
+                    },
                 }
             ],
         },
@@ -435,6 +562,31 @@ def attachment_event(uuid: str, session: str, *, index: int, attachment: dict[st
         "cwd": "/tmp/project",
         "gitBranch": "main",
         "attachment": attachment,
+    }
+
+
+def system_event(uuid: str, session: str, *, index: int, subtype: str, **fields: Any) -> dict[str, Any]:
+    return {
+        "type": "system",
+        "uuid": uuid,
+        "sessionId": session,
+        "timestamp": f"2026-01-01T00:{index // 60:02d}:{index % 60:02d}.000Z",
+        "cwd": "/tmp/project",
+        "gitBranch": "main",
+        "subtype": subtype,
+        **fields,
+    }
+
+
+def raw_event(event_type: str, uuid: str, session: str, *, index: int, **fields: Any) -> dict[str, Any]:
+    return {
+        "type": event_type,
+        "uuid": uuid,
+        "sessionId": session,
+        "timestamp": f"2026-01-01T00:{index // 60:02d}:{index % 60:02d}.000Z",
+        "cwd": "/tmp/project",
+        "gitBranch": "main",
+        **fields,
     }
 
 
@@ -773,6 +925,14 @@ def build_large_fixture(projects_dir: Path) -> str:
             },
         ),
         (
+            "root-ultra-effort-exit",
+            {
+                "type": "ultra_effort_exit",
+                "durationMs": 18_200,
+                "reason": "User returned to normal effort mode after verification planning.",
+            },
+        ),
+        (
             "root-goal-status",
             {
                 "type": "goal_status",
@@ -806,16 +966,204 @@ def build_large_fixture(projects_dir: Path) -> str:
             },
         ),
     ]
+    system_payloads = [
+        (
+            "root-system-stop-hook-summary",
+            "stop_hook_summary",
+            {
+                "hookCount": 3,
+                "hookInfos": [
+                    {"command": "node stop-review.mjs", "exitCode": 0, "durationMs": 86},
+                    {"command": "python audit.py", "exitCode": 0, "durationMs": 141},
+                    {"command": "uv run pytest", "exitCode": 0, "durationMs": 233},
+                ],
+                "hookErrors": [],
+                "hookAdditionalContext": [hook_additional_context],
+                "hasOutput": True,
+                "preventedContinuation": False,
+                "stopReason": "",
+                "toolUseID": "toolu-stop-hook",
+                "level": "suggestion",
+            },
+        ),
+        (
+            "root-system-turn-duration",
+            "turn_duration",
+            {
+                "durationMs": 124_500,
+                "messageCount": 48,
+                "pendingBackgroundAgentCount": 2,
+                "pendingWorkflowCount": 1,
+                "isMeta": True,
+                "level": "info",
+            },
+        ),
+        (
+            "root-system-away-summary",
+            "away_summary",
+            {
+                "content": "Claude continued validating the system cards while the user was away.",
+                "level": "info",
+            },
+        ),
+        (
+            "root-system-local-command",
+            "local_command",
+            {
+                "content": (
+                    "<command-name>/browser-verify</command-name>"
+                    "<command-message>Run browser verification</command-message>"
+                    "<command-args>--native-studio</command-args>"
+                ),
+                "level": "info",
+            },
+        ),
+        (
+            "root-system-api-error",
+            "api_error",
+            {
+                "error": {
+                    "status": 529,
+                    "message": "overloaded_error",
+                    "requestID": "req_system_fixture",
+                    "formatted": "API overloaded while sampling validation fixture.",
+                },
+                "retryAttempt": 1,
+                "maxRetries": 3,
+                "retryAfterMs": 1500,
+                "level": "warning",
+            },
+        ),
+        (
+            "root-system-compact-boundary",
+            "compact_boundary",
+            {
+                "compactMetadata": {
+                    "trigger": "auto",
+                    "preTokens": 128_000,
+                    "postTokens": 42_000,
+                    "durationMs": 2200,
+                    "precomputed": False,
+                    "agentId": "main",
+                    "logicalParentUuid": "root-title",
+                    "preCompactDiscoveredTools": ["Read", "Grep", "Bash"],
+                    "preservedSegments": ["current plan", "browser evidence"],
+                    "preservedMessages": ["root-title", "root-system-stop-hook-summary"],
+                },
+            },
+        ),
+        (
+            "root-system-scheduled-task-fire",
+            "scheduled_task_fire",
+            {
+                "content": "Run nightly transcript index refresh (daily at 01:00)",
+                "level": "info",
+            },
+        ),
+        (
+            "root-system-informational",
+            "informational",
+            {
+                "content": json.dumps({"status": {"message": "System scanner completed"}}),
+                "level": "info",
+            },
+        ),
+        (
+            "root-system-bridge-status",
+            "bridge_status",
+            {
+                "url": "http://127.0.0.1:8765",
+                "content": json.dumps({"message": "Browser bridge connected", "url": "http://127.0.0.1:8765"}),
+                "level": "info",
+            },
+        ),
+        (
+            "root-system-unknown",
+            "experimental_system",
+            {
+                "content": "Unknown system event should use the fallback semantic card.",
+                "extraSystemField": {"value": "visible in fallback section"},
+            },
+        ),
+    ]
+    raw_payloads = [
+        (
+            "agent-name",
+            "root-raw-agent-name",
+            {"agentName": "Browser Verifier", "agentId": "main"},
+        ),
+        (
+            "ai-title",
+            "root-raw-ai-title",
+            {"aiTitle": "Dual layout stress subtype validation"},
+        ),
+        (
+            "bridge-session",
+            "root-raw-bridge-session",
+            {"bridgeSessionId": "bridge-session-fixture", "lastSequenceNum": 42},
+        ),
+        (
+            "file-history-snapshot",
+            "root-raw-file-history-snapshot",
+            {
+                "messageId": "root-title",
+                "isSnapshotUpdate": True,
+                "backups": [
+                    {"filePath": "/tmp/project/app/static/js/conversation.js", "lineCount": 3480},
+                    {"filePath": "/tmp/project/app/static/css/base.css", "lineCount": 3012},
+                ],
+            },
+        ),
+        (
+            "last-prompt",
+            "root-raw-last-prompt",
+            {"prompt": "Execute the plan and verify every subtype surface.", "leafUuid": "root-title"},
+        ),
+        (
+            "mode",
+            "root-raw-mode",
+            {"mode": "default"},
+        ),
+        (
+            "permission-mode",
+            "root-raw-permission-mode",
+            {"permissionMode": "acceptEdits"},
+        ),
+        (
+            "queue-operation",
+            "root-raw-queue-operation",
+            {"operation": "append", "content": "Run browser verification at Studio Display native resolution."},
+        ),
+        (
+            "result",
+            "root-raw-result",
+            {"result": {"status": "success", "verifiedSurfaces": ["waterfall", "timeline"]}},
+        ),
+        (
+            "started",
+            "root-raw-started",
+            {"agentId": "main", "key": "session-viewer-fixture"},
+        ),
+    ]
     root_events: list[dict[str, Any]] = [
         user_event("root-title", session, "Dual layout stress session", index=0),
-        assistant_text_event("root-assistant-text", session, "Assistant text fixture response", index=1),
-        assistant_reasoning_event("root-assistant-reasoning", session, "Reason through the fixture coverage before acting.", index=2),
-        assistant_bash_tool("root-bash-tool", session, "toolu_bash_fixture", index=3),
-        tool_result("root-bash-result", session, "toolu_bash_fixture", "All fixture tests passed.", index=4),
+        user_image_event("root-user-image", session, index=1),
+        assistant_text_event("root-assistant-text", session, "Assistant text fixture response", index=2),
+        assistant_reasoning_event("root-assistant-reasoning", session, "Reason through the fixture coverage before acting.", index=3),
+        assistant_bash_tool("root-bash-tool", session, "toolu_bash_fixture", index=4),
+        tool_result("root-bash-result", session, "toolu_bash_fixture", "All fixture tests passed.", index=5),
     ]
+    root_events.extend(
+        system_event(uuid, session, index=index, subtype=subtype, **fields)
+        for index, (uuid, subtype, fields) in enumerate(system_payloads, start=len(root_events))
+    )
     root_events.extend(
         attachment_event(uuid, session, index=index, attachment=payload)
         for index, (uuid, payload) in enumerate(attachment_payloads, start=len(root_events))
+    )
+    root_events.extend(
+        raw_event(event_type, uuid, session, index=index, **payload)
+        for index, (event_type, uuid, payload) in enumerate(raw_payloads, start=len(root_events))
     )
     cursor = len(root_events)
     for child in root_children:
@@ -1311,11 +1659,19 @@ def assert_agent_sidebar_inserted(page: Page) -> dict[str, Any]:
     return geometry
 
 
-def assert_message_index_item_presentation(page: Page, require_problem: bool = False) -> dict[str, Any]:
+def assert_message_index_item_presentation(
+    page: Page,
+    require_problem: bool = False,
+    require_kind_variety: bool = False,
+) -> dict[str, Any]:
     presentation = page.evaluate(
         """() => {
             const first = document.querySelector('[data-testid="message-index"] .message-index-item');
+            const items = Array.from(document.querySelectorAll('[data-testid="message-index"] .message-index-item'));
+            const sampledItems = items.slice(0, 160);
+            const kind = first?.querySelector('.message-index-kind');
             const time = first?.querySelector('.message-index-time');
+            const roleBadge = first?.querySelector(':scope > .role-badge');
             const problemItem = document.querySelector('[data-testid="message-index"] .message-index-item.has-problem');
             const problem = problemItem?.querySelector('.message-index-problem');
             const dot = problem?.querySelector('.message-index-problem-dot');
@@ -1330,8 +1686,65 @@ def assert_message_index_item_presentation(page: Page, require_problem: bool = F
                     height: box.height,
                 };
             };
+            const itemKind = (item) => {
+                const node = item.querySelector('.message-index-kind');
+                const lineBadge = item.querySelector('.message-index-line-kind');
+                const contentBadges = Array.from(item.querySelectorAll('.message-index-content-kind'));
+                const firstContentBadge = contentBadges[0] || null;
+                const content = (node?.dataset.contentKinds || '').split(',').filter(Boolean);
+                const text = node?.textContent.replace(/\\s+/g, ' ').trim() || '';
+                const hasFullBadgeBorder = (badge) => {
+                    if (!badge) return false;
+                    const style = getComputedStyle(badge);
+                    return style.borderTopWidth === '1px'
+                        && style.borderRightWidth === '1px'
+                        && style.borderBottomWidth === '1px'
+                        && style.borderLeftWidth === '1px'
+                        && style.borderTopStyle === 'solid'
+                        && style.borderRightStyle === 'solid'
+                        && style.borderBottomStyle === 'solid'
+                        && style.borderLeftStyle === 'solid';
+                };
+                return {
+                    line: node?.dataset.lineKind || '',
+                    content,
+                    text,
+                    hasTwoLevels: Boolean(node?.dataset.lineKind && content.length && text.includes('/')),
+                    textContainsLine: text.toLowerCase().includes((node?.dataset.lineKind || '').toLowerCase()),
+                    textContainsContent: content.every((kind) => text.toLowerCase().includes(kind.toLowerCase())),
+                    lineBackground: lineBadge ? getComputedStyle(lineBadge).backgroundColor : '',
+                    contentBackground: firstContentBadge ? getComputedStyle(firstContentBadge).backgroundColor : '',
+                    lineBorderIsFull: hasFullBadgeBorder(lineBadge),
+                    contentBordersAreFull: contentBadges.length > 0 && contentBadges.every(hasFullBadgeBorder),
+                    attachmentBackgrounds: contentBadges
+                        .filter((badge) => badge.classList.contains('attachment'))
+                        .map((badge) => getComputedStyle(badge).backgroundColor),
+                };
+            };
+            const sampledKinds = sampledItems.map(itemKind);
+            const transparent = new Set(['', 'rgba(0, 0, 0, 0)', 'transparent']);
+            const attachmentBackgrounds = sampledKinds.flatMap((item) => item.attachmentBackgrounds);
             return {
                 first: first ? rect(first) : null,
+                kind: kind ? rect(kind) : null,
+                kindText: kind?.textContent.replace(/\\s+/g, ' ').trim() || '',
+                kindLine: kind?.dataset.lineKind || '',
+                kindContent: (kind?.dataset.contentKinds || '').split(',').filter(Boolean),
+                kindTextAlign: kind ? getComputedStyle(kind).textAlign : '',
+                kindJustifySelf: kind ? getComputedStyle(kind).justifySelf : '',
+                kindLeftGap: first && kind ? kind.getBoundingClientRect().left - first.getBoundingClientRect().left : null,
+                kindTopGap: first && kind ? kind.getBoundingClientRect().top - first.getBoundingClientRect().top : null,
+                kindTimeTopDelta: kind && time ? Math.abs(kind.getBoundingClientRect().top - time.getBoundingClientRect().top) : null,
+                hasDirectRoleBadge: Boolean(roleBadge),
+                allSampledKindsUseTwoLevels: sampledKinds.every((item) => item.hasTwoLevels && item.textContainsLine && item.textContainsContent),
+                allSampledKindsHaveBadgeBackgrounds: sampledKinds.every((item) => (
+                    !transparent.has(item.lineBackground) && !transparent.has(item.contentBackground)
+                )),
+                allSampledKindsHaveFullBadgeBorders: sampledKinds.every((item) => item.lineBorderIsFull && item.contentBordersAreFull),
+                attachmentBackgrounds,
+                attachmentBackgroundsUseDistinctColor: attachmentBackgrounds.every((color) => color === 'rgba(14, 116, 144, 0.1)'),
+                hasAssistantToolCallKind: sampledKinds.some((item) => item.line === 'assistant' && item.content.includes('tool call')),
+                hasAttachmentSubtypeKind: sampledKinds.some((item) => item.line === 'attachment' && item.content.some((kind) => kind !== 'attachment')),
                 time: time ? rect(time) : null,
                 timeTextAlign: time ? getComputedStyle(time).textAlign : '',
                 timeJustifySelf: time ? getComputedStyle(time).justifySelf : '',
@@ -1345,7 +1758,24 @@ def assert_message_index_item_presentation(page: Page, require_problem: bool = F
             };
         }"""
     )
-    assert presentation["first"] and presentation["time"], presentation
+    assert presentation["first"] and presentation["kind"] and presentation["time"], presentation
+    assert presentation["kindLine"] and presentation["kindContent"], presentation
+    assert "/" in presentation["kindText"], presentation
+    assert presentation["kindTextAlign"] == "left", presentation
+    assert presentation["kindJustifySelf"] == "start", presentation
+    assert 0 <= presentation["kindLeftGap"] <= 12, presentation
+    assert 0 <= presentation["kindTopGap"] <= 8, presentation
+    assert presentation["kindTimeTopDelta"] <= 2, presentation
+    assert not presentation["hasDirectRoleBadge"], presentation
+    assert presentation["allSampledKindsUseTwoLevels"], presentation
+    assert presentation["allSampledKindsHaveBadgeBackgrounds"], presentation
+    assert presentation["allSampledKindsHaveFullBadgeBorders"], presentation
+    assert presentation["attachmentBackgroundsUseDistinctColor"], presentation
+    if require_kind_variety:
+        assert presentation["hasAssistantToolCallKind"], presentation
+        assert presentation["hasAttachmentSubtypeKind"], presentation
+        assert presentation["attachmentBackgrounds"], presentation
+        assert presentation["attachmentBackgroundsUseDistinctColor"], presentation
     assert presentation["timeTextAlign"] == "right", presentation
     assert presentation["timeJustifySelf"] == "end", presentation
     assert 0 <= presentation["timeRightGap"] <= 12, presentation
@@ -1539,6 +1969,315 @@ def validate_dashboard(
         )
 
 
+def validate_portfolio_wall(
+    page: Page,
+    base_url: str,
+    *,
+    projects_dir: Path,
+    opencode_data_dir: Path,
+    viewport: str,
+    screenshot_dir: Path,
+) -> None:
+    page.goto(dashboard_url(base_url, claude_home=str(projects_dir), opencode_data_dir=str(opencode_data_dir)), wait_until="networkidle")
+    dev_button = page.get_by_test_id("portfolio-dev-button")
+    expect(dev_button).to_be_visible()
+    button_geometry = dev_button.evaluate(
+        """(button) => {
+            const rect = button.getBoundingClientRect();
+            const style = getComputedStyle(button);
+            return {
+                position: style.position,
+                left: rect.left,
+                bottomGap: window.innerHeight - rect.bottom,
+                width: rect.width,
+                height: rect.height,
+            };
+        }"""
+    )
+    assert button_geometry["position"] == "fixed", button_geometry
+    assert 12 <= button_geometry["left"] <= 28, button_geometry
+    assert 12 <= button_geometry["bottomGap"] <= 28, button_geometry
+    record(
+        page,
+        "portfolio.wall",
+        kind="geometry",
+        flow="portfolio.home_entry",
+        viewport=viewport,
+        selector="[data-testid='portfolio-dev-button']",
+        assertion=f"portfolio wall dev button is fixed at the bottom left with {button_geometry['bottomGap']:.1f}px bottom gap",
+    )
+
+    dev_button.click()
+    expect(page.get_by_test_id("portfolio-wall")).to_be_visible()
+    expect(page.get_by_role("heading", name="Portfolio Wall")).to_be_visible()
+    assert "/portfolio" in page.url, page.url
+
+    hierarchy = {
+        "timeline": {
+            "label": "Timeline",
+            "surfaces": {
+                "timeline_block": ("Block", "timeline-block"),
+                "timeline_detail_window": ("Detailed Message Popup", "timeline-detail-window"),
+            },
+        },
+        "waterfall": {
+            "label": "Waterfall",
+            "surfaces": {
+                "waterfall_card": ("Message Card", "waterfall-card"),
+                "waterfall_navigation_item": ("Message Navigation Item", "waterfall-navigation-item"),
+            },
+        },
+    }
+    type_expectations = {
+        "user": ("User", 3),
+        "assistant": ("Assistant", 3),
+        "attachment": ("Attachment", len(EXPECTED_ATTACHMENT_TYPES)),
+        "system": ("System", len(EXPECTED_SYSTEM_SUBTYPE_LABELS)),
+        "raw_event": ("Raw Event", len(EXPECTED_RAW_ONLY_TYPES)),
+    }
+    view_tab_state = page.evaluate(
+        """() => Array.from(document.querySelectorAll('[data-portfolio-view-tab]')).map((tab) => ({
+            id: tab.dataset.portfolioViewTab || '',
+            label: (tab.querySelector('span')?.textContent || '').trim(),
+        }))"""
+    )
+    assert [tab["id"] for tab in view_tab_state] == list(hierarchy), view_tab_state
+    assert [tab["label"] for tab in view_tab_state] == [view["label"] for view in hierarchy.values()], view_tab_state
+    panel_metrics: dict[str, dict[str, Any]] = {}
+    style_signatures: list[dict[str, str]] = []
+    for view_id, view_config in hierarchy.items():
+        page.locator(f"[data-portfolio-view-tab='{view_id}']").click()
+        view_panel = page.locator(f"[data-portfolio-view-panel='{view_id}']")
+        expect(view_panel).to_be_visible()
+        surface_tab_state = view_panel.evaluate(
+            """(panel) => Array.from(panel.querySelectorAll('[data-portfolio-surface-tab]')).map((tab) => ({
+                id: tab.dataset.portfolioSurfaceTab || '',
+                label: (tab.querySelector('span')?.textContent || '').trim(),
+            }))"""
+        )
+        assert [tab["id"] for tab in surface_tab_state] == list(view_config["surfaces"]), surface_tab_state
+        assert [tab["label"] for tab in surface_tab_state] == [
+            label for label, _surface in view_config["surfaces"].values()
+        ], surface_tab_state
+        record(
+            page,
+            "portfolio.wall",
+            kind="interaction",
+            flow=f"portfolio.view_{view_id}",
+            viewport=viewport,
+            selector=f"[data-portfolio-view-panel='{view_id}']",
+            assertion=f"{view_config['label']} view exposes {len(surface_tab_state)} surface tabs",
+        )
+        for surface_id, (surface_label, surface_value) in view_config["surfaces"].items():
+            page.locator(f"[data-portfolio-surface-tab='{surface_id}']").click()
+            surface_panel = page.locator(f"[data-portfolio-surface-panel='{surface_id}']")
+            expect(surface_panel).to_be_visible()
+            type_tab_state = surface_panel.evaluate(
+                """(panel) => Array.from(panel.querySelectorAll('[data-portfolio-type-tab]')).map((tab) => ({
+                    id: (tab.dataset.portfolioTypeTab || '').split(':').pop(),
+                    label: (tab.querySelector('span')?.textContent || '').trim(),
+                }))"""
+            )
+            assert [tab["id"] for tab in type_tab_state] == list(type_expectations), (surface_id, type_tab_state)
+            assert [tab["label"] for tab in type_tab_state] == [
+                label for label, _minimum in type_expectations.values()
+            ], (surface_id, type_tab_state)
+            record(
+                page,
+                "portfolio.wall",
+                kind="interaction",
+                flow=f"portfolio.surface_{surface_id}",
+                viewport=viewport,
+                selector=f"[data-portfolio-surface-panel='{surface_id}']",
+                assertion=f"{view_config['label']} / {surface_label} exposes {len(type_tab_state)} message type tabs",
+            )
+            for category, (category_label, expected_minimum) in type_expectations.items():
+                type_key = f"{surface_id}:{category}"
+                page.locator(f"[data-portfolio-type-tab='{type_key}']").click()
+                type_panel = page.locator(f"[data-portfolio-type-panel='{type_key}']")
+                expect(type_panel).to_be_visible()
+                metrics = type_panel.evaluate(
+                    """(panel, expected) => {
+                        const cards = Array.from(panel.querySelectorAll('[data-testid="portfolio-card"]'));
+                        const badges = Array.from(panel.querySelectorAll('.portfolio-kind-badge, .portfolio-subtype-badge'));
+                        const styleKeys = ['borderTopLeftRadius', 'borderTopWidth', 'fontSize', 'fontWeight', 'lineHeight', 'minHeight', 'paddingLeft', 'paddingRight', 'textTransform'];
+                        const signature = (node) => {
+                            const style = getComputedStyle(node);
+                            return Object.fromEntries(styleKeys.map((key) => [key, style[key]]));
+                        };
+                        const cardWidths = cards.map((card) => card.getBoundingClientRect().width);
+                        const overflowCount = cards.filter((card) => card.scrollWidth > card.clientWidth + 1).length;
+                        const wrongSurfaceCount = cards.filter((card) => card.dataset.portfolioSurface !== expected.surface).length;
+                        const wrongCategoryCount = cards.filter((card) => card.dataset.cardCategory !== expected.category).length;
+                        const keys = cards.map((card) => card.dataset.cardKey || '');
+                        const categories = Array.from(new Set(cards.map((card) => card.dataset.cardCategory || '').filter(Boolean))).sort();
+                        const titleOverflowCount = cards.filter((card) => {
+                            const title = card.querySelector('.portfolio-card-title-row');
+                            return title && title.scrollWidth > title.clientWidth + 1;
+                        }).length;
+                        const detailThreeSectionCount = cards.filter((card) => {
+                            const sections = Array.from(card.querySelectorAll(':scope > [data-detail-section]') || [])
+                                .map((section) => section.dataset.detailSection || '');
+                            const titlebar = card.querySelector('.portfolio-detail-titlebar');
+                            const panels = Array.from(card.querySelectorAll('[data-portfolio-detail-panel]'));
+                            const tablist = card.querySelector('.portfolio-detail-tabs');
+                            const tabButtons = Array.from(card.querySelectorAll('.portfolio-detail-tabs button'));
+                            const titlebarBorderBottom = titlebar
+                                ? Number.parseFloat(getComputedStyle(titlebar).borderBottomWidth) || 0
+                                : -1;
+                            const panelTopBorders = panels.map((panel) => Number.parseFloat(getComputedStyle(panel).borderTopWidth) || 0);
+                            const tablistStyle = tablist ? getComputedStyle(tablist) : null;
+                            const secondTabStyle = tabButtons[1] ? getComputedStyle(tabButtons[1]) : null;
+                            const firstTabRect = tabButtons[0]?.getBoundingClientRect();
+                            const secondTabRect = tabButtons[1]?.getBoundingClientRect();
+                            return sections.join('|') === 'titlebar|switches|active-panel'
+                                && Boolean(card.querySelector('.portfolio-detail-titlebar .portfolio-kind-stack'))
+                                && card.querySelector('[data-detail-section="switches"]')?.querySelectorAll('[data-portfolio-detail-panel]').length === 0
+                                && card.querySelector('[data-detail-section="active-panel"]')?.querySelectorAll('[data-portfolio-detail-panel]').length === 3
+                                && titlebarBorderBottom === 0
+                                && panelTopBorders.every((width) => width === 0)
+                                && ['grid', 'inline-grid'].includes(tablistStyle?.display || '')
+                                && (Number.parseFloat(tablistStyle?.columnGap || '0') || 0) === 0
+                                && (Number.parseFloat(secondTabStyle?.borderLeftWidth || '0') || 0) === 0
+                                && secondTabStyle?.boxShadow !== 'none'
+                                && firstTabRect && secondTabRect
+                                && Math.abs(firstTabRect.right - secondTabRect.left) <= 0.5;
+                        }).length;
+                        return {
+                            count: cards.length,
+                            keys,
+                            categories,
+                            uniqueKeyCount: new Set(keys).size,
+                            wrongSurfaceCount,
+                            wrongCategoryCount,
+                            detailThreeSectionCount,
+                            minCardWidth: cardWidths.length ? Math.min(...cardWidths) : 0,
+                            overflowCount,
+                            titleOverflowCount,
+                            badgeSignatures: badges.slice(0, 6).map(signature),
+                        };
+                    }""",
+                    {"surface": surface_value, "category": category},
+                )
+                assert metrics["count"] >= expected_minimum, (surface_id, category, metrics)
+                assert metrics["uniqueKeyCount"] == metrics["count"], (surface_id, category, metrics)
+                assert metrics["wrongSurfaceCount"] == 0, (surface_id, category, metrics)
+                assert metrics["wrongCategoryCount"] == 0, (surface_id, category, metrics)
+                if surface_id == "timeline_detail_window":
+                    assert metrics["detailThreeSectionCount"] == metrics["count"], (surface_id, category, metrics)
+                assert metrics["categories"] == [category], (surface_id, category, metrics)
+                assert metrics["minCardWidth"] >= 180, (surface_id, category, metrics)
+                assert metrics["overflowCount"] == 0, (surface_id, category, metrics)
+                assert metrics["titleOverflowCount"] == 0, (surface_id, category, metrics)
+                panel_metrics[type_key] = metrics
+                style_signatures.extend(metrics["badgeSignatures"])
+                record(
+                    page,
+                    "portfolio.wall",
+                    kind="interaction",
+                    flow=f"portfolio.type_{surface_id}_{category}",
+                    viewport=viewport,
+                    selector=f"[data-portfolio-type-panel='{type_key}']",
+                    assertion=f"{view_config['label']} / {surface_label} / {category_label} shows {metrics['count']} samples",
+                )
+
+    first_signature = style_signatures[0]
+    mismatches = [signature for signature in style_signatures if signature != first_signature]
+    assert not mismatches, mismatches[:3]
+    assert_no_horizontal_overflow(page)
+    record(
+        page,
+        "portfolio.wall",
+        kind="dom_assertion",
+        flow="portfolio.card_matrix",
+        viewport=viewport,
+        selector="[data-testid='portfolio-card']",
+        assertion=f"portfolio wall exposes Timeline and Waterfall hierarchy with typed subtype sample counts { {key: value['count'] for key, value in panel_metrics.items()} }",
+    )
+    record(
+        page,
+        "portfolio.wall",
+        kind="geometry",
+        flow="portfolio.badge_consistency",
+        viewport=viewport,
+        selector=".portfolio-kind-badge,.portfolio-subtype-badge",
+        assertion="all portfolio card badges share the same geometry, font size, font weight, line height, padding, and text transform",
+    )
+
+    page.locator("[data-portfolio-view-tab='waterfall']").click()
+    page.locator("[data-portfolio-surface-tab='waterfall_card']").click()
+    page.locator("[data-portfolio-type-tab='waterfall_card:user']").click()
+    raw_button = page.locator("[data-portfolio-type-panel='waterfall_card:user'] [data-portfolio-action='raw']").first
+    raw_button.click()
+    raw_modal = page.get_by_test_id("portfolio-raw-modal")
+    expect(raw_modal).to_be_visible()
+    raw_text = raw_modal.locator("[data-portfolio-raw-output]").text_content() or ""
+    assert raw_text.strip().startswith("{") and '"type"' in raw_text, raw_text[:240]
+    raw_modal.locator("[data-portfolio-action='close-raw']").click()
+    expect(raw_modal).to_be_hidden()
+
+    page.locator("[data-portfolio-type-tab='waterfall_card:attachment']").click()
+    section_toggle = page.locator("[data-portfolio-type-panel='waterfall_card:attachment'] [data-portfolio-action='toggle-section']").first
+    if section_toggle.count():
+        section_toggle.click()
+        assert section_toggle.get_attribute("aria-expanded") == "true"
+        section_class = section_toggle.locator("xpath=ancestor::section[contains(@class, 'portfolio-section')][1]").get_attribute("class") or ""
+        assert "expanded" in section_class, section_class
+
+    page.locator("[data-portfolio-surface-tab='waterfall_navigation_item']").click()
+    page.locator("[data-portfolio-type-tab='waterfall_navigation_item:user']").click()
+    nav_card = page.locator("[data-portfolio-type-panel='waterfall_navigation_item:user'] [data-testid='portfolio-card']").first
+    nav_card.click()
+    assert "selected" in (nav_card.get_attribute("class") or "")
+
+    page.locator("[data-portfolio-view-tab='timeline']").click()
+    page.locator("[data-portfolio-surface-tab='timeline_block']").click()
+    page.locator("[data-portfolio-type-tab='timeline_block:user']").click()
+    timeline_card = page.locator("[data-portfolio-type-panel='timeline_block:user'] [data-testid='portfolio-card']").first
+    timeline_card.locator("[data-portfolio-action='select-card']").click()
+    assert "selected" in (timeline_card.get_attribute("class") or "")
+
+    page.locator("[data-portfolio-surface-tab='timeline_detail_window']").click()
+    page.locator("[data-portfolio-type-tab='timeline_detail_window:user']").click()
+    detail_card = page.locator("[data-portfolio-type-panel='timeline_detail_window:user'] [data-testid='portfolio-card']").first
+    detail_card.locator("[data-portfolio-detail-tab='metadata']").click()
+    expect(detail_card.locator("[data-portfolio-detail-panel='metadata']")).to_be_visible()
+    assert detail_card.locator("[data-portfolio-detail-tab='metadata']").get_attribute("aria-selected") == "true"
+    detail_card.locator("[data-portfolio-detail-tab='raw']").click()
+    expect(detail_card.locator("[data-portfolio-detail-panel='raw']")).to_be_visible()
+    assert '"type"' in (detail_card.locator(".portfolio-detail-raw").text_content() or "")
+    pin_button = detail_card.locator("[data-portfolio-action='pin-detail']")
+    pin_button.click()
+    assert pin_button.get_attribute("aria-pressed") == "true"
+    assert "pinned" in (detail_card.get_attribute("class") or "")
+    detail_card.locator("[data-portfolio-action='close-detail']").click()
+    expect(detail_card).to_be_hidden()
+    expect(page.get_by_test_id("portfolio-live-status")).to_contain_text("Closed message detail specimen")
+    record(
+        page,
+        "portfolio.wall",
+        kind="interaction",
+        flow="portfolio.specimen_controls",
+        viewport=viewport,
+        selector="[data-portfolio-action],[data-portfolio-detail-tab]",
+        assertion="portfolio wall specimens support raw dialogs, expandable sections, selectable navigation/timeline samples, detail tab switching, pinning, and closing",
+    )
+
+    screenshot = screenshot_dir / "studio-native-portfolio-wall.png"
+    page.screenshot(path=screenshot, full_page=False)
+    assert screenshot.stat().st_size > 1000
+    record(
+        page,
+        "portfolio.wall",
+        kind="screenshot",
+        flow="portfolio.studio_native_screenshot",
+        viewport=viewport,
+        selector="screenshot",
+        assertion="portfolio wall screenshot captured at Apple Studio Display native viewport",
+        artifact=str(screenshot),
+    )
+
+
 def validate_opencode_conversation(
     page: Page,
     url: str,
@@ -1679,7 +2418,7 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     expect(page.locator("#agentPaneToggle")).to_be_visible()
     expect(page.get_by_test_id("agent-tree-drawer")).to_be_hidden()
     expect(page.get_by_test_id("message-index")).to_be_visible()
-    assert_message_index_item_presentation(page)
+    assert_message_index_item_presentation(page, require_kind_variety=True)
     expect(page.get_by_test_id("flow-summary")).to_have_count(0)
     expect(page.locator("#sessionInfoButton")).to_be_visible()
     expect(page.locator("#sessionInfoPopover")).to_be_hidden()
@@ -1765,9 +2504,6 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
                 content: (card.dataset.contentKinds || '').split(',').filter(Boolean),
                 headerText: card.querySelector('.message-header')?.innerText.replace(/\\s+/g, ' ').trim() || '',
                 titleBarContent: (card.querySelector('.message-kind-stack')?.dataset.contentKinds || '').split(',').filter(Boolean),
-                headerNavText: card.querySelector('.message-header-actions .message-header-nav-kind')?.textContent.replace(/\\s+/g, ' ').trim() || '',
-                headerNavLine: card.querySelector('.message-header-actions .message-header-nav-kind')?.dataset.lineKind || '',
-                headerNavContent: (card.querySelector('.message-header-actions .message-header-nav-kind')?.dataset.contentKinds || '').split(',').filter(Boolean),
             }));
             const titleStacks = cards.map((card) => {
                 const stack = card.querySelector('.message-kind-stack');
@@ -1805,28 +2541,101 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
             const attachmentSubtypes = [...new Set(cardKinds
                 .filter((item) => item.line === 'attachment')
                 .flatMap((item) => item.content))];
+            const systemSubtypes = [...new Set(cardKinds
+                .filter((item) => item.line === 'system')
+                .flatMap((item) => item.content))];
+            const rawOnlyTypes = [...new Set(Array.from(document.querySelectorAll('.reader-part.raw-event .raw-event'))
+                .map((item) => item.dataset.rawEventType || '')
+                .filter(Boolean))];
             const toolPre = document.querySelector('.reader-part.tool pre');
+            const toolPromptPre = document.querySelector('.reader-part.tool .tool-payload-field[data-tool-field="prompt"] pre');
             const toolResultPre = document.querySelector('.reader-part.tool-result pre');
             const normalText = document.querySelector('.reader-part .part-text');
+            const attachmentLineBadge = document.querySelector('.message-line-kind.attachment');
+            const attachmentContentBadge = document.querySelector('.message-content-kind.attachment');
+            const attachmentPart = document.querySelector('.reader-part.attachment');
+            const systemLineBadge = document.querySelector('.message-line-kind.system');
+            const systemContentBadge = document.querySelector('.reader-message[data-line-kind="system"] .message-content-kind');
+            const systemPart = document.querySelector('.reader-part.system');
+            const toolTitleBadge = document.querySelector('.reader-message[data-content-kinds*="tool call"] .message-content-kind.tool');
+            const headerTags = Array.from(document.querySelectorAll('.reader-part.tool .part-header .tag, .reader-part.tool-result .part-header .tag'));
+            const spawnButtons = Array.from(document.querySelectorAll('.spawn-reference button'));
+            const systemSectionLabels = Array.from(document.querySelectorAll('.reader-part.system .system-section header strong'))
+                .map((item) => item.innerText.trim());
             const toolFieldLabels = Array.from(document.querySelectorAll('.reader-part.tool .tool-payload-field dt'))
                 .map((item) => item.innerText.trim());
             const fontSize = (node) => node ? Number.parseFloat(getComputedStyle(node).fontSize) || 0 : 0;
             const lineHeight = (node) => node ? Number.parseFloat(getComputedStyle(node).lineHeight) || 0 : 0;
+            const background = (node) => node ? getComputedStyle(node).backgroundColor : '';
+            const borderColor = (node) => node ? getComputedStyle(node).borderTopColor : '';
+            const textCenterDelta = (node) => {
+                if (!node) return 0;
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                const textRect = range.getBoundingClientRect();
+                const rect = node.getBoundingClientRect();
+                return Math.abs((textRect.top + textRect.height / 2) - (rect.top + rect.height / 2));
+            };
+            const widthSlack = (node) => {
+                if (!node) return 0;
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                const textRect = range.getBoundingClientRect();
+                const rect = node.getBoundingClientRect();
+                return rect.width - textRect.width;
+            };
+            const toolHeaderTagMetrics = headerTags.map((node) => ({
+                centerDelta: textCenterDelta(node),
+                widthSlack: widthSlack(node),
+                lineHeight: lineHeight(node),
+                height: node.getBoundingClientRect().height,
+                whiteSpace: getComputedStyle(node).whiteSpace,
+            }));
+            const spawnButtonMetrics = spawnButtons.map((node) => {
+                const style = getComputedStyle(node);
+                return {
+                    centerDelta: textCenterDelta(node),
+                    fontSize: fontSize(node),
+                    fontWeight: style.fontWeight,
+                    height: node.getBoundingClientRect().height,
+                    lineHeight: lineHeight(node),
+                    paddingLeft: Number.parseFloat(style.paddingLeft) || 0,
+                    paddingRight: Number.parseFloat(style.paddingRight) || 0,
+                };
+            });
             const headerOverflowCount = Array.from(document.querySelectorAll('.reader-message .message-header'))
                 .filter((node) => node.scrollWidth > node.clientWidth + 2).length;
+            const assistantUserHeaderHeights = cards
+                .filter((card) => ['assistant', 'user'].includes(card.dataset.lineKind || ''))
+                .map((card) => card.querySelector('.message-header')?.getBoundingClientRect().height || 0);
             return {
                 cardKinds: cardKinds.slice(0, 80),
                 titleStacks: titleStacks.slice(0, 80),
                 attachmentSubtypes,
+                systemSubtypes,
                 hasUserText: cardKinds.some((item) => item.line === 'user' && item.content.includes('message')),
                 hasUserToolResult: cardKinds.some((item) => item.line === 'user' && item.content.includes('tool result')),
+                hasUserImage: cardKinds.some((item) => item.line === 'user' && item.content.includes('image')),
                 hasAssistantText: cardKinds.some((item) => item.line === 'assistant' && item.content.includes('message')),
                 hasAssistantReasoning: cardKinds.some((item) => item.line === 'assistant' && item.content.includes('reasoning')),
                 hasAssistantToolCall: cardKinds.some((item) => item.line === 'assistant' && item.content.includes('tool call')),
                 hasAttachmentHookSuccess: cardKinds.some((item) => item.line === 'attachment' && item.content.includes('Hook Success')),
+                hasSystemStopHookSummary: cardKinds.some((item) => item.line === 'system' && item.content.includes('Stop Hook Summary')),
+                systemSemanticContentCount: document.querySelectorAll('.reader-part.system .system-section, .reader-part.system .system-meta dd').length,
+                systemSectionLabels,
+                systemNonHumanLabels: systemSectionLabels.filter((label) => /_|[a-z][A-Z]/.test(label)),
                 userTitleBarsUseMessage: titleStacks
                     .filter((item) => item.line === 'user')
                     .every((item) => item.titleBarContent.length === 1 && item.titleBarContent[0] === 'message'),
+                userTitleBarsExposeSubtypes: titleStacks
+                    .filter((item) => item.line === 'user')
+                    .some((item) => item.titleBarContent.includes('message'))
+                    && titleStacks
+                        .filter((item) => item.line === 'user')
+                        .some((item) => item.titleBarContent.includes('tool result'))
+                    && titleStacks
+                        .filter((item) => item.line === 'user')
+                        .some((item) => item.titleBarContent.includes('image')),
                 assistantTextTitleBarsUseMessage: titleStacks
                     .filter((item) => item.line === 'assistant' && item.content.includes('message'))
                     .every((item) => item.titleBarContent.includes('message')),
@@ -1837,58 +2646,86 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
                 titleBarBadgesUseOriginalShape,
                 rawButtonCount: document.querySelectorAll('.reader-message .message-raw-button').length,
                 headerNavCount: document.querySelectorAll('.reader-message .message-header-actions .message-header-nav-kind').length,
-                headerNavAllUseTwoLevels: cardKinds.every((item) => (
-                    item.headerNavLine
-                    && item.headerNavContent.length
-                    && item.headerNavText.includes('/')
-                    && item.headerNavText.toLowerCase().includes(item.headerNavLine)
-                    && item.headerNavContent.every((kind) => item.headerNavText.toLowerCase().includes(kind.toLowerCase()))
-                )),
-                headerNavHasAttachmentSubtype: cardKinds.some((item) => (
-                    item.line === 'attachment'
-                    && item.headerNavLine === 'attachment'
-                    && item.headerNavContent.includes('Deferred Tools Delta')
-                    && item.headerNavText.includes('Deferred Tools Delta')
-                )),
-                headerNavHasAssistantToolCall: cardKinds.some((item) => (
-                    item.line === 'assistant'
-                    && item.headerNavLine === 'assistant'
-                    && item.headerNavContent.includes('tool call')
-                    && item.headerNavText.includes('tool call')
-                )),
                 cardCount: cards.length,
+                rawOnlyTypes,
+                rawOnlySemanticContentCount: document.querySelectorAll('.reader-part.raw-event .raw-event .attachment-section, .reader-part.raw-event .raw-event .raw-event-meta dd').length,
+                rawOnlyNavCount: document.querySelectorAll('.message-index-item[data-line-kind="raw_event"]').length,
                 toolFieldLabels,
                 toolPreFontSize: fontSize(toolPre),
+                toolPromptPreFontSize: fontSize(toolPromptPre),
                 toolResultPreFontSize: fontSize(toolResultPre),
                 normalTextFontSize: fontSize(normalText),
                 toolPreLineHeight: lineHeight(toolPre),
+                attachmentLineBadgeBackground: background(attachmentLineBadge),
+                attachmentContentBadgeBackground: background(attachmentContentBadge),
+                attachmentPartBackground: background(attachmentPart),
+                attachmentPartBorderColor: borderColor(attachmentPart),
+                systemLineBadgeBackground: background(systemLineBadge),
+                systemContentBadgeBackground: background(systemContentBadge),
+                systemPartBackground: background(systemPart),
+                systemPartBorderColor: borderColor(systemPart),
+                toolTitleBadgeCenterDelta: textCenterDelta(toolTitleBadge),
+                toolTitleBadgeWidthSlack: widthSlack(toolTitleBadge),
+                toolHeaderTagMetrics,
+                spawnReferenceTextCount: document.querySelectorAll('.spawn-reference strong, .spawn-reference small').length,
+                spawnReferenceButtonTexts: Array.from(document.querySelectorAll('.spawn-reference button')).map((item) => item.innerText.trim()),
+                spawnButtonMetrics,
+                assistantUserHeaderMaxHeight: Math.max(...assistantUserHeaderHeights),
                 headerOverflowCount,
             };
         }"""
     )
     assert waterfall_kind_detail["hasUserText"], waterfall_kind_detail
     assert waterfall_kind_detail["hasUserToolResult"], waterfall_kind_detail
+    assert waterfall_kind_detail["hasUserImage"], waterfall_kind_detail
     assert waterfall_kind_detail["hasAssistantText"], waterfall_kind_detail
     assert waterfall_kind_detail["hasAssistantReasoning"], waterfall_kind_detail
     assert waterfall_kind_detail["hasAssistantToolCall"], waterfall_kind_detail
     assert waterfall_kind_detail["hasAttachmentHookSuccess"], waterfall_kind_detail
-    assert waterfall_kind_detail["userTitleBarsUseMessage"], waterfall_kind_detail
+    assert waterfall_kind_detail["hasSystemStopHookSummary"], waterfall_kind_detail
+    assert waterfall_kind_detail["userTitleBarsExposeSubtypes"], waterfall_kind_detail
     assert waterfall_kind_detail["assistantTextTitleBarsUseMessage"], waterfall_kind_detail
     assert waterfall_kind_detail["attachmentTitleBarsKeepSubtypes"], waterfall_kind_detail
     assert waterfall_kind_detail["titleBarBadgeStylesMatch"], waterfall_kind_detail
     assert waterfall_kind_detail["titleBarBadgesUseOriginalShape"], waterfall_kind_detail
     assert waterfall_kind_detail["rawButtonCount"] == waterfall_kind_detail["cardCount"], waterfall_kind_detail
-    assert waterfall_kind_detail["headerNavCount"] == waterfall_kind_detail["cardCount"], waterfall_kind_detail
-    assert waterfall_kind_detail["headerNavAllUseTwoLevels"], waterfall_kind_detail
-    assert waterfall_kind_detail["headerNavHasAttachmentSubtype"], waterfall_kind_detail
-    assert waterfall_kind_detail["headerNavHasAssistantToolCall"], waterfall_kind_detail
-    assert {"Command", "Description", "Subagent Type"} <= set(waterfall_kind_detail["toolFieldLabels"]), waterfall_kind_detail
+    assert waterfall_kind_detail["headerNavCount"] == 0, waterfall_kind_detail
+    assert {"Command", "Description", "Prompt", "Subagent Type"} <= set(waterfall_kind_detail["toolFieldLabels"]), waterfall_kind_detail
     assert len(waterfall_kind_detail["attachmentSubtypes"]) >= len(EXPECTED_ATTACHMENT_TYPES), waterfall_kind_detail
+    assert EXPECTED_SYSTEM_SUBTYPE_LABELS <= set(waterfall_kind_detail["systemSubtypes"]), waterfall_kind_detail
+    assert EXPECTED_RAW_ONLY_TYPES <= set(waterfall_kind_detail["rawOnlyTypes"]), waterfall_kind_detail
+    assert waterfall_kind_detail["rawOnlySemanticContentCount"] >= len(EXPECTED_RAW_ONLY_TYPES), waterfall_kind_detail
+    assert waterfall_kind_detail["rawOnlyNavCount"] >= len(EXPECTED_RAW_ONLY_TYPES), waterfall_kind_detail
+    assert waterfall_kind_detail["systemSemanticContentCount"] >= len(EXPECTED_SYSTEM_SUBTYPE_LABELS), waterfall_kind_detail
+    assert waterfall_kind_detail["systemNonHumanLabels"] == [], waterfall_kind_detail
     assert waterfall_kind_detail["toolPreFontSize"] == 11, waterfall_kind_detail
+    assert waterfall_kind_detail["toolPromptPreFontSize"] == 12, waterfall_kind_detail
     assert waterfall_kind_detail["toolResultPreFontSize"] == 11, waterfall_kind_detail
     assert waterfall_kind_detail["normalTextFontSize"] == 13, waterfall_kind_detail
     assert waterfall_kind_detail["normalTextFontSize"] > waterfall_kind_detail["toolPreFontSize"], waterfall_kind_detail
     assert waterfall_kind_detail["toolPreLineHeight"] > waterfall_kind_detail["toolPreFontSize"], waterfall_kind_detail
+    assert waterfall_kind_detail["attachmentLineBadgeBackground"] == "rgba(14, 116, 144, 0.1)", waterfall_kind_detail
+    assert waterfall_kind_detail["attachmentContentBadgeBackground"] == "rgba(14, 116, 144, 0.1)", waterfall_kind_detail
+    assert waterfall_kind_detail["attachmentPartBackground"] == "rgb(255, 255, 255)", waterfall_kind_detail
+    assert waterfall_kind_detail["attachmentPartBorderColor"] == "rgb(216, 221, 230)", waterfall_kind_detail
+    assert waterfall_kind_detail["systemLineBadgeBackground"] == "rgba(107, 114, 128, 0.13)", waterfall_kind_detail
+    assert waterfall_kind_detail["systemContentBadgeBackground"] == "rgba(107, 114, 128, 0.13)", waterfall_kind_detail
+    assert waterfall_kind_detail["systemPartBackground"] == "rgb(255, 255, 255)", waterfall_kind_detail
+    assert waterfall_kind_detail["systemPartBorderColor"] == "rgb(216, 221, 230)", waterfall_kind_detail
+    assert waterfall_kind_detail["spawnReferenceTextCount"] == 0, waterfall_kind_detail
+    assert {"Open Subagent", "Jump to First"} <= set(waterfall_kind_detail["spawnReferenceButtonTexts"]), waterfall_kind_detail
+    assert waterfall_kind_detail["toolTitleBadgeCenterDelta"] <= 1.5, waterfall_kind_detail
+    assert 16 <= waterfall_kind_detail["toolTitleBadgeWidthSlack"] <= 24, waterfall_kind_detail
+    assert waterfall_kind_detail["toolHeaderTagMetrics"], waterfall_kind_detail
+    assert all(item["centerDelta"] <= 1.5 for item in waterfall_kind_detail["toolHeaderTagMetrics"]), waterfall_kind_detail
+    assert all(24 <= item["widthSlack"] <= 34 for item in waterfall_kind_detail["toolHeaderTagMetrics"]), waterfall_kind_detail
+    assert all(item["whiteSpace"] == "nowrap" for item in waterfall_kind_detail["toolHeaderTagMetrics"]), waterfall_kind_detail
+    assert waterfall_kind_detail["spawnButtonMetrics"], waterfall_kind_detail
+    assert all(item["fontSize"] == 12 for item in waterfall_kind_detail["spawnButtonMetrics"]), waterfall_kind_detail
+    assert all(item["fontWeight"] == "600" for item in waterfall_kind_detail["spawnButtonMetrics"]), waterfall_kind_detail
+    assert all(item["centerDelta"] <= 1.5 for item in waterfall_kind_detail["spawnButtonMetrics"]), waterfall_kind_detail
+    assert all(item["paddingLeft"] == 11 and item["paddingRight"] == 11 for item in waterfall_kind_detail["spawnButtonMetrics"]), waterfall_kind_detail
+    assert waterfall_kind_detail["assistantUserHeaderMaxHeight"] <= 42, waterfall_kind_detail
     assert waterfall_kind_detail["headerOverflowCount"] == 0, waterfall_kind_detail
     page.locator(".reader-message .message-raw-button").first.click()
     expect(page.get_by_test_id("timeline-detail-dock")).to_be_visible()
@@ -1924,24 +2761,43 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
             const sectionLabels = Array.from(document.querySelectorAll('.reader-part.attachment .attachment-section header strong'))
                 .map((item) => item.innerText.trim());
             const disallowedSectionLabels = new Set(['Output', 'Standard Output', 'Standard Error', 'Context Preview']);
+            const normalize = (value) => String(value || '').replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase();
+            const typeLabel = (value) => String(value || 'attachment')
+                .replace(/[_-]+/g, ' ')
+                .replace(/\\b\\w/g, (char) => char.toUpperCase());
+            const duplicateSubtypeHeadings = attachments.map((item) => {
+                const type = item.dataset.attachmentType || '';
+                const subtype = normalize(typeLabel(type));
+                const title = normalize(item.querySelector('.attachment-display-heading strong')?.innerText || '');
+                const partHeader = normalize(item.closest('.reader-part.attachment')?.querySelector(':scope > .part-header strong')?.innerText || '');
+                const badge = normalize(item.querySelector('.attachment-type-badge')?.innerText || '');
+                return { type, title, partHeader, badge, duplicates: [title, partHeader, badge].filter(Boolean).filter((value) => value === subtype) };
+            }).filter((item) => item.duplicates.length);
             return {
                 types: attachments.map((item) => item.dataset.attachmentType || ''),
-                badges: attachments.map((item) => item.querySelector('.attachment-type-badge')?.innerText.trim() || ''),
+                typeBadgeCount: attachments.filter((item) => item.querySelector('.attachment-type-badge')).length,
+                duplicateSubtypeHeadings,
                 titleCount: attachments.filter((item) => item.querySelector('.attachment-display-heading strong')).length,
                 sectionCount: attachments.filter((item) => item.querySelector('.attachment-section')).length,
                 semanticContentCount: attachments.filter((item) => item.querySelector('.attachment-section, .attachment-meta dd')).length,
+                partHeaderTexts: Array.from(document.querySelectorAll('.reader-part.attachment > .part-header strong')).map((item) => item.innerText.trim()),
                 sectionLabels,
                 disallowedLabels: sectionLabels.filter((label) => disallowedSectionLabels.has(label)),
                 nonHumanLabels: sectionLabels.filter((label) => /_|[a-z][A-Z]/.test(label)),
+                attachmentPreFontSize: Number.parseFloat(getComputedStyle(document.querySelector('.reader-part.attachment .attachment-section pre')).fontSize) || 0,
+                attachmentSummaryFontSize: Number.parseFloat(getComputedStyle(document.querySelector('.reader-part.attachment .attachment-summary')).fontSize) || 0,
                 stdoutBodyCount: Array.from(document.querySelectorAll('.reader-part.attachment .attachment-section pre'))
                     .filter((item) => /hookSpecificOutput|"stdout"|standard output:/i.test(item.innerText)).length,
             };
         }"""
     )
     assert EXPECTED_ATTACHMENT_TYPES <= set(reader_attachment_detail["types"]), reader_attachment_detail
-    assert EXPECTED_ATTACHMENT_BADGES <= set(reader_attachment_detail["badges"]), reader_attachment_detail
-    assert reader_attachment_detail["titleCount"] >= len(EXPECTED_ATTACHMENT_TYPES), reader_attachment_detail
+    assert reader_attachment_detail["typeBadgeCount"] == 0, reader_attachment_detail
+    assert reader_attachment_detail["duplicateSubtypeHeadings"] == [], reader_attachment_detail
+    assert set(reader_attachment_detail["partHeaderTexts"]) == {"Details"}, reader_attachment_detail
     assert reader_attachment_detail["semanticContentCount"] >= len(EXPECTED_ATTACHMENT_TYPES), reader_attachment_detail
+    assert reader_attachment_detail["attachmentPreFontSize"] == 12, reader_attachment_detail
+    assert reader_attachment_detail["attachmentSummaryFontSize"] == 12, reader_attachment_detail
     assert reader_attachment_detail["disallowedLabels"] == [], reader_attachment_detail
     assert reader_attachment_detail["nonHumanLabels"] == [], reader_attachment_detail
     assert reader_attachment_detail["stdoutBodyCount"] == 0, reader_attachment_detail
@@ -2000,19 +2856,19 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
             const header = message.querySelector('.message-header');
             const index = message.querySelector('.message-card-index');
             const actions = message.querySelector('.message-header-actions');
-            const navKind = message.querySelector('.message-header-nav-kind');
+            const rawButton = message.querySelector('.message-raw-button');
             const messageRect = message.getBoundingClientRect();
             const cardRect = card.getBoundingClientRect();
             const headerRect = header.getBoundingClientRect();
             const indexRect = index.getBoundingClientRect();
             const actionsRect = actions.getBoundingClientRect();
-            const navKindRect = navKind.getBoundingClientRect();
+            const rawButtonRect = rawButton.getBoundingClientRect();
             return {
                 leadingGap: Math.round(cardRect.left - messageRect.left),
                 indexIsRightAligned: indexRect.left > headerRect.left + headerRect.width * 0.75,
                 indexRightDelta: Math.round(headerRect.right - indexRect.right),
-                navKindText: navKind.textContent.replace(/\\s+/g, ' ').trim(),
-                navKindInsideActions: navKindRect.left >= actionsRect.left && navKindRect.right <= actionsRect.right,
+                hasHeaderNavKind: Boolean(message.querySelector('.message-header-nav-kind')),
+                rawButtonInsideActions: rawButtonRect.left >= actionsRect.left && rawButtonRect.right <= actionsRect.right,
                 actionsRightDelta: Math.round(headerRect.right - actionsRect.right),
             };
         }"""
@@ -2020,8 +2876,8 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     assert card_index_geometry["leadingGap"] == 0, card_index_geometry
     assert card_index_geometry["indexIsRightAligned"], card_index_geometry
     assert card_index_geometry["indexRightDelta"] >= 0, card_index_geometry
-    assert "/" in card_index_geometry["navKindText"], card_index_geometry
-    assert card_index_geometry["navKindInsideActions"], card_index_geometry
+    assert not card_index_geometry["hasHeaderNavKind"], card_index_geometry
+    assert card_index_geometry["rawButtonInsideActions"], card_index_geometry
     assert 0 <= card_index_geometry["actionsRightDelta"] <= 14, card_index_geometry
     card_before_key = page.evaluate("window.SESSION_VIEWER.current().capsuleKey")
     page.get_by_test_id("transcript-message").nth(1).click()
@@ -2055,7 +2911,7 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     record(page, "reader.default", kind="dom_assertion", flow="reader.waterfall", viewport=viewport, selector="[data-testid='reader-layout']", assertion="Waterfall layout is reachable and selecting message cards does not open the floating detail panel")
     record(page, "reader.default", kind="interaction", flow="reader.attachment_payload", viewport=viewport, selector=".reader-part.attachment", assertion="Waterfall cards render two-level message kind chips, type-specific attachment cards for all observed Claude attachment types, smaller tool payload text, and lazily expanded raw JSON")
     record(page, "reader.default", kind="geometry", flow="reader.message_cards", viewport=viewport, selector=".reader-message .message-card-index", assertion="message cards have no leading gutter and show the ordinal at the right edge of the title bar")
-    record(page, "left_nav.tabs", kind="dom_assertion", flow="reader.message_navigation", viewport=viewport, selector="[data-testid='message-index']", assertion="Waterfall left navigation defaults to the selected agent message list with one Agents drawer button")
+    record(page, "left_nav.tabs", kind="dom_assertion", flow="reader.message_navigation", viewport=viewport, selector="[data-testid='message-index']", assertion="Waterfall left navigation defaults to the selected agent message list, with each item showing its two-level type at top left")
     record(page, "left_nav.tabs", kind="geometry", flow="reader.pinned_nav_header", viewport=viewport, selector="[data-testid='left-pane-header']", assertion="left navigation single-button pane header remained fixed while the message navigation body scrolled")
     record(page, "ui.top_navigation", kind="dom_assertion", flow="top_nav.cleaned", viewport=viewport, selector="[data-testid='command-bar']", assertion="Prev, Next, First problem, timestamp, Jump time controls, Mode, and breadcrumb stack are absent; Backward and Forward are disabled initially; project path and branch are visible")
     record(page, "ui.no_conversation_search", kind="dom_assertion", flow="conversation.removed_controls", viewport=viewport, selector="[data-testid='transcript-filter']", assertion="conversation search controls and left Problems list are absent")
@@ -2066,7 +2922,7 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         page.locator("#agentPaneToggle").click()
         expect(page.get_by_test_id("agent-tree-drawer")).to_be_visible()
         assert_agent_sidebar_inserted(page)
-        assert_message_index_item_presentation(page)
+        assert_message_index_item_presentation(page, require_kind_variety=True)
         select_problem_track_from_agent_sidebar(page)
         assert_message_index_item_presentation(page, require_problem=True)
         expect(page.get_by_test_id("subagent-node")).to_have_count(65)
@@ -2083,7 +2939,7 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         page.locator("#agentPaneToggle").click()
         expect(page.get_by_test_id("agent-tree-drawer")).to_be_visible()
         assert_agent_sidebar_inserted(page)
-        assert_message_index_item_presentation(page)
+        assert_message_index_item_presentation(page, require_kind_variety=True)
         select_problem_track_from_agent_sidebar(page)
         assert_message_index_item_presentation(page, require_problem=True)
         expect(page.get_by_test_id("subagent-node")).to_have_count(65)
@@ -2195,7 +3051,7 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         record(page, "focus.layout_metrics", kind="interaction", flow="reader.resize_clamp", viewport=viewport, selector="#agentStreamSeparator", assertion="divider resizing clamps at golden-remainder main content width and preserves main stream left edge")
 
         page.locator(".spawn-reference").first.scroll_into_view_if_needed()
-        page.locator(".spawn-reference button", has_text="Open subagent").first.click()
+        page.locator(".spawn-reference button", has_text="Open Subagent").first.click()
         assert page.locator(".subagent-panel").count() >= 1
         expect(page.get_by_test_id("subagent-panel-overlay")).to_contain_text("Subagent")
         first_pin = page.evaluate(
@@ -2214,7 +3070,7 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         )
         assert first_pin["visible"], first_pin
         rack_scroll_before = first_pin["scrollLeft"]
-        page.locator(".spawn-reference button", has_text="Open subagent").nth(1).click()
+        page.locator(".spawn-reference button", has_text="Open Subagent").nth(1).click()
         page.wait_for_timeout(420)
         second_pin = page.evaluate(
             """() => {
@@ -2240,9 +3096,9 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
             rack_scroll_before,
             second_pin,
         )
-        if page.locator(".spawn-reference button", has_text="Open subagent").count() > 2:
+        if page.locator(".spawn-reference button", has_text="Open Subagent").count() > 2:
             preserved_scroll_before = second_pin["scrollLeft"]
-            page.locator(".spawn-reference button", has_text="Open subagent").nth(2).click()
+            page.locator(".spawn-reference button", has_text="Open Subagent").nth(2).click()
             page.wait_for_timeout(420)
             third_pin = page.evaluate(
                 """() => {
@@ -2270,7 +3126,7 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         record(page, "reader.subagent_panels", kind="interaction", flow="reader.close_panel", viewport=viewport, selector=".agent-panel-close", assertion="subagent panel closes")
 
         before = page.evaluate("window.SESSION_VIEWER.current().capsuleKey")
-        page.get_by_test_id("message-index").locator("[data-action='focus-message']").nth(1).click()
+        page.get_by_test_id("message-index").locator("[data-action='focus-capsule']").nth(1).click()
         after = page.evaluate("window.SESSION_VIEWER.current().capsuleKey")
         assert after != before
         expect(page.locator("#returnElementBtn")).to_be_enabled()
@@ -2344,19 +3200,44 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
         """(panel) => {
             const tablist = panel.querySelector('.timeline-detail-tablist');
             const tabs = Array.from(panel.querySelectorAll('.timeline-detail-tab'));
+            const contentsTab = panel.querySelector('[data-detail-tab-target="contents"]');
             const metadataTab = panel.querySelector('[data-detail-tab-target="metadata"]');
             const rawTab = panel.querySelector('[data-detail-tab-target="raw"]');
             const tablistStyle = getComputedStyle(tablist);
+            const contentsTabStyle = getComputedStyle(contentsTab);
             const metadataTabStyle = getComputedStyle(metadataTab);
             const rawTabStyle = getComputedStyle(rawTab);
             const contentsPanel = panel.querySelector('[data-detail-panel="contents"]');
             const metadataPanel = panel.querySelector('[data-detail-panel="metadata"]');
             const rawPanel = panel.querySelector('[data-detail-panel="raw"]');
+            const bodySections = Array.from(panel.querySelectorAll(':scope > [data-detail-section]'));
+            const titlebar = panel.querySelector('.timeline-detail-titlebar');
+            const switchSection = panel.querySelector('[data-detail-section="switches"]');
+            const activeSection = panel.querySelector('[data-detail-section="active-panel"]');
+            const titlebarStyle = getComputedStyle(titlebar);
+            const activeSectionStyle = getComputedStyle(activeSection);
+            const tablistRect = tablist.getBoundingClientRect();
+            const switchRect = switchSection.getBoundingClientRect();
+            const contentsTabRect = contentsTab.getBoundingClientRect();
+            const metadataTabRect = metadataTab.getBoundingClientRect();
             const actionButtons = Array.from(panel.querySelectorAll('.timeline-detail-actions button'));
             const pinButton = panel.querySelector('[data-testid="timeline-detail-pin"]');
             const closeButton = panel.querySelector('.timeline-detail-close');
             return {
                 headerSummaryCount: panel.querySelectorAll('.timeline-detail-header h2').length,
+                titlebarText: titlebar?.innerText.replace(/\\s+/g, ' ').trim() || '',
+                titlebarHasKindStack: Boolean(titlebar?.querySelector('.timeline-detail-kind-stack')),
+                bodySectionNames: bodySections.map((item) => item.dataset.detailSection || ''),
+                switchSectionHasOnlyTabs: Boolean(switchSection?.querySelector('.timeline-detail-tablist'))
+                    && switchSection.querySelectorAll('[data-detail-panel]').length === 0,
+                activeSectionHasPanels: Boolean(activeSection)
+                    && activeSection.querySelectorAll('[data-detail-panel]').length === 3
+                    && activeSection.querySelectorAll('.timeline-detail-tablist').length === 0,
+                titlebarBorderBottomWidth: Number.parseFloat(titlebarStyle.borderBottomWidth) || 0,
+                activeSectionBorderTopWidth: Number.parseFloat(activeSectionStyle.borderTopWidth) || 0,
+                panelSectionsInsideActiveSection: Array.from(panel.querySelectorAll('[data-detail-panel]'))
+                    .every((item) => item.closest('[data-detail-section]')?.dataset.detailSection === 'active-panel'),
+                tablistCenterDelta: Math.abs((tablistRect.left + tablistRect.width / 2) - (switchRect.left + switchRect.width / 2)),
                 badgeText: panel.querySelector('.timeline-detail-type')?.innerText.trim() || '',
                 contentBadges: Array.from(panel.querySelectorAll('.timeline-detail-content-type')).map((item) => item.innerText.trim()),
                 lineKind: panel.querySelector('.timeline-detail-kind-stack')?.dataset.lineKind || '',
@@ -2365,9 +3246,14 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
                 tabTargets: tabs.map((tab) => tab.dataset.detailTabTarget || ''),
                 tabRoles: tabs.map((tab) => tab.getAttribute('role') || ''),
                 tablistDisplay: tablistStyle.display,
+                tablistColumnGap: Number.parseFloat(tablistStyle.columnGap) || 0,
                 tablistRadius: Number.parseFloat(tablistStyle.borderTopLeftRadius) || 0,
-                metadataDividerWidth: Number.parseFloat(metadataTabStyle.borderLeftWidth) || 0,
-                rawDividerWidth: Number.parseFloat(rawTabStyle.borderLeftWidth) || 0,
+                activeTabBackground: contentsTabStyle.backgroundColor || '',
+                activeToNextGap: Math.abs(contentsTabRect.right - metadataTabRect.left),
+                metadataBorderLeftWidth: Number.parseFloat(metadataTabStyle.borderLeftWidth) || 0,
+                rawBorderLeftWidth: Number.parseFloat(rawTabStyle.borderLeftWidth) || 0,
+                metadataDividerShadow: metadataTabStyle.boxShadow || '',
+                rawDividerShadow: rawTabStyle.boxShadow || '',
                 selectedTab: panel.dataset.detailTab || '',
                 contentsSelected: panel.querySelector('[data-detail-tab-target="contents"]')?.getAttribute('aria-selected') || '',
                 metadataSelected: panel.querySelector('[data-detail-tab-target="metadata"]')?.getAttribute('aria-selected') || '',
@@ -2375,7 +3261,7 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
                 contentsHidden: contentsPanel.hidden,
                 metadataHidden: metadataPanel.hidden,
                 rawHidden: rawPanel.hidden,
-                contentHasBody: Boolean(contentsPanel.querySelector('.timeline-detail-parts, .timeline-detail-body')),
+                contentHasBody: Boolean(contentsPanel.querySelector('.timeline-detail-parts, .timeline-detail-body, .raw-event')),
                 rawHasCodeBlock: Boolean(rawPanel.querySelector('pre code')),
                 metadataAlertCount: metadataTab.querySelectorAll('.timeline-detail-tab-alert').length,
                 actionOrder: actionButtons.map((button) => button.dataset.action || ''),
@@ -2388,6 +3274,15 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
         }"""
     )
     assert detail["headerSummaryCount"] == 0, detail
+    assert "Message detail" not in detail["titlebarText"], detail
+    assert detail["titlebarHasKindStack"], detail
+    assert detail["bodySectionNames"] == ["titlebar", "switches", "active-panel"], detail
+    assert detail["switchSectionHasOnlyTabs"], detail
+    assert detail["activeSectionHasPanels"], detail
+    assert detail["titlebarBorderBottomWidth"] == 0, detail
+    assert detail["activeSectionBorderTopWidth"] == 0, detail
+    assert detail["panelSectionsInsideActiveSection"], detail
+    assert detail["tablistCenterDelta"] <= 2, detail
     assert detail["badgeText"], detail
     assert detail["lineKind"], detail
     assert detail["contentBadges"], detail
@@ -2395,10 +3290,15 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
     assert detail["tabTexts"] == ["Contents", "Metadata", "Raw"], detail
     assert detail["tabTargets"] == ["contents", "metadata", "raw"], detail
     assert detail["tabRoles"] == ["tab", "tab", "tab"], detail
-    assert detail["tablistDisplay"] in {"flex", "inline-flex"}, detail
+    assert detail["tablistDisplay"] in {"grid", "inline-grid"}, detail
+    assert detail["tablistColumnGap"] == 0, detail
     assert detail["tablistRadius"] >= 12, detail
-    assert detail["metadataDividerWidth"] >= 1, detail
-    assert detail["rawDividerWidth"] >= 1, detail
+    assert detail["activeTabBackground"] != "rgba(0, 0, 0, 0)", detail
+    assert detail["activeToNextGap"] <= 0.5, detail
+    assert detail["metadataBorderLeftWidth"] == 0, detail
+    assert detail["rawBorderLeftWidth"] == 0, detail
+    assert detail["metadataDividerShadow"] != "none", detail
+    assert detail["rawDividerShadow"] != "none", detail
     assert detail["selectedTab"] == "contents", detail
     assert detail["contentsSelected"] == "true" and detail["metadataSelected"] == "false" and detail["rawSelected"] == "false", detail
     assert detail["contentsHidden"] is False and detail["metadataHidden"] is True and detail["rawHidden"] is True, detail
@@ -2416,8 +3316,8 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
         viewport=viewport,
         selector="[data-testid='timeline-detail-panel']",
         assertion=(
-            f"detail top section shows {detail['badgeText']!r} line badge and {detail['contentBadges']!r} content badges plus merged Contents/Metadata/Raw tabs "
-            "with no duplicated summary heading under the badge"
+            f"detail titlebar shows {detail['badgeText']!r} line badge and {detail['contentBadges']!r} content badges; section 2 is the centered Contents/Metadata/Raw segment control "
+            "with gapless active fill and inset dividers, and section 3 is the only active panel container with no divider borders between sections"
         ),
     )
 
@@ -2532,6 +3432,50 @@ def assert_timeline_detail_error_badge(page: Page, viewport: str) -> None:
     )
 
 
+def assert_timeline_user_image_detail(page: Page, viewport: str) -> None:
+    target = page.evaluate(
+        """() => window.SESSION_VIEWER.capsules.find((item) =>
+            item.lineType === 'user' && Array.isArray(item.contentTypes) && item.contentTypes.includes('image'))"""
+    )
+    assert target, "expected a user image capsule in the fixture"
+    scroll_graph_to_capsule(page, target["key"])
+    page.locator(f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']").click()
+    panel = page.get_by_test_id("timeline-detail-panel").first
+    expect(panel).to_be_visible()
+    detail = panel.evaluate(
+        """(panel) => {
+            const sections = Array.from(panel.querySelectorAll(':scope > [data-detail-section]'));
+            const imagePart = panel.querySelector('.timeline-detail-part.image');
+            return {
+                bodySectionNames: sections.map((item) => item.dataset.detailSection || ''),
+                lineKind: panel.querySelector('.timeline-detail-kind-stack')?.dataset.lineKind || '',
+                contentBadges: Array.from(panel.querySelectorAll('.timeline-detail-content-type')).map((item) => item.innerText.trim()),
+                partHeader: imagePart?.querySelector(':scope > header strong')?.innerText.trim() || '',
+                partText: imagePart?.innerText || '',
+                rawText: panel.querySelector('[data-detail-panel="raw"] pre code')?.innerText || '',
+            };
+        }"""
+    )
+    assert detail["bodySectionNames"] == ["titlebar", "switches", "active-panel"], detail
+    assert detail["lineKind"] == "user", detail
+    assert "image" in detail["contentBadges"], detail
+    assert detail["partHeader"] == "image", detail
+    assert "Image: image/png" in detail["partText"], detail
+    panel.get_by_role("tab", name="Raw").click()
+    raw_text = panel.locator("[data-detail-panel='raw']").inner_text()
+    assert '"type": "image"' in raw_text, raw_text[:500]
+    panel.get_by_role("tab", name="Contents").click()
+    record(
+        page,
+        "timeline.detail_tabs",
+        kind="dom_assertion",
+        flow="timeline.detail_user_image_type",
+        viewport=viewport,
+        selector=".timeline-detail-part.image",
+        assertion="user image messages render USER / image badges, semantic image contents, and raw JSON recovery inside the two-section detail card",
+    )
+
+
 def assert_timeline_attachment_detail(page: Page, viewport: str) -> None:
     targets = page.evaluate(
         """() => window.SESSION_VIEWER.capsules
@@ -2554,13 +3498,27 @@ def assert_timeline_attachment_detail(page: Page, viewport: str) -> None:
                 const sectionLabels = Array.from(contentRoot.querySelectorAll('.attachment-section header strong'))
                     .map((item) => item.innerText.trim());
                 const disallowedSectionLabels = new Set(['Output', 'Standard Output', 'Standard Error', 'Context Preview']);
+                const normalize = (value) => String(value || '').replace(/[^a-z0-9]+/gi, ' ').trim().toLowerCase();
+                const typeLabel = (value) => String(value || 'attachment')
+                    .replace(/[_-]+/g, ' ')
+                    .replace(/\\b\\w/g, (char) => char.toUpperCase());
+                const attachmentType = event?.dataset.attachmentType || '';
+                const subtype = normalize(typeLabel(attachmentType));
+                const titleText = event?.querySelector('.attachment-display-heading strong')?.innerText.trim() || '';
+                const partHeaderText = event?.closest('.timeline-detail-part.attachment')?.querySelector(':scope > header strong')?.innerText.trim() || '';
+                const typeBadgeText = event?.querySelector('.attachment-type-badge')?.innerText.trim() || '';
                 return {
                     badgeText: panel.querySelector('.timeline-detail-type')?.innerText.trim() || '',
                     lineKind: panel.querySelector('.timeline-detail-kind-stack')?.dataset.lineKind || '',
                     contentBadges: Array.from(panel.querySelectorAll('.timeline-detail-content-type')).map((item) => item.innerText.trim()),
-                    attachmentType: event?.dataset.attachmentType || '',
-                    typeBadge: event?.querySelector('.attachment-type-badge')?.innerText.trim() || '',
-                    titleText: event?.querySelector('.attachment-display-heading strong')?.innerText.trim() || '',
+                    attachmentType,
+                    typeBadge: typeBadgeText,
+                    titleText,
+                    partHeaderText,
+                    duplicatesSubtypeInBody: [titleText, partHeaderText, typeBadgeText]
+                        .map(normalize)
+                        .filter(Boolean)
+                        .some((value) => value === subtype),
                     summaryText: event?.querySelector('.attachment-summary')?.innerText.trim() || '',
                     sectionCount: event?.querySelectorAll('.attachment-section').length || 0,
                     rowCount: event?.querySelectorAll('.attachment-meta dd').length || 0,
@@ -2580,8 +3538,9 @@ def assert_timeline_attachment_detail(page: Page, viewport: str) -> None:
         assert detail["lineKind"] == "attachment", detail
         assert detail["contentBadges"], detail
         assert detail["attachmentType"], detail
-        assert detail["typeBadge"], detail
-        assert detail["titleText"], detail
+        assert detail["typeBadge"] == "", detail
+        assert detail["partHeaderText"] == "Details", detail
+        assert not detail["duplicatesSubtypeInBody"], detail
         assert detail["summaryText"], detail
         assert detail["sectionCount"] + detail["rowCount"] >= 1, detail
         assert detail["payloadButtonCount"] == 0, detail
@@ -2611,6 +3570,150 @@ def assert_timeline_attachment_detail(page: Page, viewport: str) -> None:
         viewport=viewport,
         selector=".timeline-detail-part.attachment",
         assertion="attachment detail cards show type-specific content, omit stdout/stderr bodies, and keep complete payloads in Raw",
+    )
+
+
+def assert_timeline_system_detail(page: Page, viewport: str) -> None:
+    targets = page.evaluate(
+        """() => window.SESSION_VIEWER.capsules
+            .filter((item) => item.type === 'system')
+            .map((item) => ({ key: item.key }))"""
+    )
+    assert targets, "expected system capsules in the fixture"
+    seen_labels: set[str] = set()
+    stop_hook_raw_verified = False
+    for target in targets:
+        scroll_graph_to_capsule(page, target["key"])
+        page.locator(f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']").click()
+        panel = page.get_by_test_id("timeline-detail-panel").first
+        expect(panel).to_be_visible()
+        detail = panel.evaluate(
+            """(panel) => {
+                const contents = panel.querySelector('[data-detail-panel="contents"]');
+                const event = contents?.querySelector('.system-event');
+                const sectionLabels = Array.from(contents?.querySelectorAll('.system-section header strong') || [])
+                    .map((item) => item.innerText.trim());
+                return {
+                    badgeText: panel.querySelector('.timeline-detail-type')?.innerText.trim() || '',
+                    lineKind: panel.querySelector('.timeline-detail-kind-stack')?.dataset.lineKind || '',
+                    contentBadges: Array.from(panel.querySelectorAll('.timeline-detail-content-type')).map((item) => item.innerText.trim()),
+                    contentKinds: (panel.querySelector('.timeline-detail-kind-stack')?.dataset.contentKinds || '').split(',').filter(Boolean),
+                    tabTexts: Array.from(panel.querySelectorAll('.timeline-detail-tab')).map((tab) => tab.innerText.replace(/\\s+/g, ' ').trim()),
+                    headerSummaryCount: panel.querySelectorAll('.timeline-detail-header h2').length,
+                    subtype: event?.dataset.systemSubtype || '',
+                    partHeaderText: event?.closest('.timeline-detail-part.system')?.querySelector(':scope > header strong')?.innerText.trim() || '',
+                    summaryText: event?.querySelector('.system-summary')?.innerText.trim() || '',
+                    sectionCount: event?.querySelectorAll('.system-section').length || 0,
+                    rowCount: event?.querySelectorAll('.system-meta dd').length || 0,
+                    sectionLabels,
+                    nonHumanLabels: sectionLabels.filter((label) => /_|[a-z][A-Z]/.test(label)),
+                    payloadButtonCount: panel.querySelectorAll('[data-action="toggle-raw-payload"], [data-action="copy-raw-payload"]').length,
+                    rawPayloadContainerCount: panel.querySelectorAll('[data-raw-payload]').length,
+                    directSystemShellCount: panel.querySelectorAll(':scope > .system-event, :scope > .system-section').length,
+                    contentsText: contents?.innerText || '',
+                };
+            }"""
+        )
+        assert detail["badgeText"] == "SYSTEM", detail
+        assert detail["lineKind"] == "system", detail
+        assert detail["contentBadges"], detail
+        assert detail["contentKinds"] == detail["contentBadges"], detail
+        assert detail["tabTexts"] == ["Contents", "Metadata", "Raw"], detail
+        assert detail["headerSummaryCount"] == 0, detail
+        assert detail["subtype"], detail
+        assert detail["partHeaderText"] == "Details", detail
+        assert detail["summaryText"], detail
+        assert detail["sectionCount"] + detail["rowCount"] >= 1, detail
+        assert detail["payloadButtonCount"] == 0, detail
+        assert detail["rawPayloadContainerCount"] == 0, detail
+        assert detail["directSystemShellCount"] == 0, detail
+        assert detail["nonHumanLabels"] == [], detail
+        seen_labels.update(detail["contentBadges"])
+        if "Stop Hook Summary" in detail["contentBadges"]:
+            assert "Hook Runs" in detail["sectionLabels"], detail
+            assert "Additional Context" in detail["sectionLabels"], detail
+            assert "Using Amplify Skills" in detail["contentsText"], detail
+            panel.get_by_role("tab", name="Raw").click()
+            raw_text = panel.locator("[data-detail-panel='raw']").inner_text()
+            assert '"subtype": "stop_hook_summary"' in raw_text, raw_text[:500]
+            assert "hookAdditionalContext" in raw_text, raw_text[:500]
+            assert "FINAL CONTEXT MARKER" in raw_text, raw_text[:500]
+            panel.get_by_role("tab", name="Contents").click()
+            stop_hook_raw_verified = True
+    assert EXPECTED_SYSTEM_SUBTYPE_LABELS <= seen_labels, seen_labels
+    assert stop_hook_raw_verified, seen_labels
+    record(
+        page,
+        "timeline.detail_tabs",
+        kind="dom_assertion",
+        flow="timeline.detail_system_types",
+        viewport=viewport,
+        selector=".timeline-detail-part.system",
+        assertion="system detail cards keep SYSTEM / subtype badges, render semantic subtype content inside Contents, and keep complete payloads in Raw",
+    )
+
+
+def assert_timeline_raw_event_detail(page: Page, viewport: str) -> None:
+    targets = page.evaluate(
+        """() => window.SESSION_VIEWER.capsules
+            .filter((item) => item.rawOnly)
+            .map((item) => ({ key: item.key }))"""
+    )
+    assert targets, "expected raw-only capsules in the fixture"
+    seen_types: set[str] = set()
+    for target in targets:
+        scroll_graph_to_capsule(page, target["key"])
+        page.locator(f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']").click()
+        panel = page.get_by_test_id("timeline-detail-panel").first
+        expect(panel).to_be_visible()
+        detail = panel.evaluate(
+            """(panel) => {
+                const contents = panel.querySelector('[data-detail-panel="contents"]');
+                const event = contents?.querySelector('.raw-event');
+                const sections = Array.from(panel.querySelectorAll(':scope > [data-detail-section]'));
+                const rawTab = panel.querySelector('[data-detail-tab-target="raw"]');
+                return {
+                    bodySectionNames: sections.map((item) => item.dataset.detailSection || ''),
+                    titlebarText: panel.querySelector('.timeline-detail-titlebar')?.innerText.replace(/\\s+/g, ' ').trim() || '',
+                    sectionHasTabs: Boolean(sections[1]?.querySelector('.timeline-detail-tablist')),
+                    panelsInsideActiveSection: Array.from(panel.querySelectorAll('[data-detail-panel]'))
+                        .every((item) => item.closest('[data-detail-section]')?.dataset.detailSection === 'active-panel'),
+                    badgeText: panel.querySelector('.timeline-detail-type')?.innerText.trim() || '',
+                    lineKind: panel.querySelector('.timeline-detail-kind-stack')?.dataset.lineKind || '',
+                    contentBadges: Array.from(panel.querySelectorAll('.timeline-detail-content-type')).map((item) => item.innerText.trim()),
+                    rawType: event?.dataset.rawEventType || '',
+                    summaryText: event?.querySelector('.raw-event-summary')?.innerText.trim() || '',
+                    semanticCount: event?.querySelectorAll('.attachment-section, .raw-event-meta dd').length || 0,
+                    tabTexts: Array.from(panel.querySelectorAll('.timeline-detail-tab')).map((tab) => tab.innerText.replace(/\\s+/g, ' ').trim()),
+                    rawTabText: rawTab?.innerText.replace(/\\s+/g, ' ').trim() || '',
+                };
+            }"""
+        )
+        assert detail["bodySectionNames"] == ["titlebar", "switches", "active-panel"], detail
+        assert "Message detail" not in detail["titlebarText"], detail
+        assert detail["sectionHasTabs"], detail
+        assert detail["panelsInsideActiveSection"], detail
+        assert detail["badgeText"], detail
+        assert detail["lineKind"] == "raw_event", detail
+        assert detail["contentBadges"] == ["raw event"], detail
+        assert detail["rawType"], detail
+        assert detail["summaryText"], detail
+        assert detail["semanticCount"] >= 1, detail
+        assert detail["tabTexts"] == ["Contents", "Metadata", "Raw"], detail
+        seen_types.add(detail["rawType"])
+        panel.get_by_role("tab", name="Raw").click()
+        raw_text = panel.locator("[data-detail-panel='raw']").inner_text()
+        assert f'"type": "{detail["rawType"]}"' in raw_text, raw_text[:500]
+        panel.get_by_role("tab", name="Contents").click()
+    assert EXPECTED_RAW_ONLY_TYPES <= seen_types, seen_types
+    record(
+        page,
+        "timeline.detail_tabs",
+        kind="dom_assertion",
+        flow="timeline.detail_raw_event_types",
+        viewport=viewport,
+        selector=".timeline-detail-panel .raw-event",
+        assertion="raw-only subtype detail cards keep two-section structure, render semantic fields in Contents, and expose the raw JSON payload",
     )
 
 
@@ -2766,16 +3869,53 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
                 content: (element.dataset.contentKinds || '').split(',').filter(Boolean),
                 title: element.getAttribute('title') || '',
                 aria: element.getAttribute('aria-label') || '',
+                background: getComputedStyle(element).backgroundColor,
             }))"""
     )
-    assert any(item["line"] == "user" and "message" in item["content"] and item["label"].startswith("MSG ") for item in block_kind_sample), block_kind_sample[:20]
-    assert any(item["line"] == "user" and "tool result" in item["content"] and item["label"].startswith("RESULT ") for item in block_kind_sample), block_kind_sample[:20]
-    assert any(item["line"] == "assistant" and "message" in item["content"] and item["label"].startswith("MSG ") for item in block_kind_sample), block_kind_sample[:20]
-    assert any(item["line"] == "assistant" and "reasoning" in item["content"] and item["label"].startswith("REASON ") for item in block_kind_sample), block_kind_sample[:20]
-    assert any(item["line"] == "assistant" and "tool call" in item["content"] and item["label"].startswith("TOOL ") for item in block_kind_sample), block_kind_sample[:20]
-    assert any(item["line"] == "attachment" and "Hook Success" in item["content"] and item["label"].startswith("HOOK ") for item in block_kind_sample), block_kind_sample[:20]
+    block_label_strategy = page.evaluate(
+        """() => {
+            const context = document.createElement('canvas').getContext('2d');
+            context.font = "800 10px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+            const firstWord = (value) => String(value || 'kind').split(/\\s+/).filter(Boolean)[0] || 'kind';
+            return Array.from(document.querySelectorAll('[data-testid="timeline-block"]'))
+                .slice(0, 160)
+                .map((element) => {
+                    const label = element.textContent.replace(/\\s+/g, ' ').trim();
+                    const content = (element.dataset.contentKinds || '').split(',').filter(Boolean);
+                    const fullName = content.join(' + ') || 'kind';
+                    const match = label.match(/^(.*)\\s+(\\d+)$/);
+                    const ordinal = match ? match[2] : '';
+                    const actualName = match ? match[1] : label;
+                    const fullLabel = ordinal ? `${fullName} ${ordinal}` : fullName;
+                    const firstLabel = ordinal ? `${firstWord(fullName)} ${ordinal}` : firstWord(fullName);
+                    const fullFits = context.measureText(fullLabel).width <= Math.max(0, element.getBoundingClientRect().width - 20);
+                    return {
+                        label,
+                        line: element.dataset.lineKind || '',
+                        content,
+                        fullName,
+                        actualName,
+                        fullFits,
+                        valid: fullFits ? label === fullLabel : label === firstLabel,
+                    };
+                });
+        }"""
+    )
+    invalid_block_labels = [item for item in block_label_strategy if not item["valid"]]
+    assert not invalid_block_labels, invalid_block_labels[:20]
+    assert any(item["line"] == "user" and "message" in item["content"] and item["actualName"] == "message" for item in block_label_strategy), block_label_strategy[:20]
+    assert any(item["line"] == "user" and "tool result" in item["content"] and item["actualName"] == "tool result" for item in block_label_strategy), block_label_strategy[:20]
+    assert any(item["line"] == "assistant" and "message" in item["content"] and item["actualName"] == "message" for item in block_label_strategy), block_label_strategy[:20]
+    assert any(item["line"] == "assistant" and "reasoning" in item["content"] and item["actualName"] == "reasoning" for item in block_label_strategy), block_label_strategy[:20]
+    assert any(item["line"] == "assistant" and "tool call" in item["content"] and item["actualName"] == "tool call" for item in block_label_strategy), block_label_strategy[:20]
+    assert any(item["line"] == "attachment" and "Hook Success" in item["content"] and item["actualName"] == "Hook Success" for item in block_label_strategy), block_label_strategy[:20]
+    assert any(item["line"] == "attachment" and item["background"] == "rgb(14, 116, 144)" for item in block_kind_sample), block_kind_sample[:20]
+    assert any(item["line"] == "system" and "Stop Hook Summary" in item["content"] and item["actualName"] == "Stop" and not item["fullFits"] for item in block_label_strategy), block_label_strategy[:20]
+    assert any(item["line"] == "system" and item["background"] == "rgb(107, 114, 128)" for item in block_kind_sample), block_kind_sample[:20]
     assert any("user / tool result" in item["title"] and "user / tool result" in item["aria"] for item in block_kind_sample), block_kind_sample[:20]
+    assert any("system / Stop Hook Summary" in item["title"] and "system / Stop Hook Summary" in item["aria"] for item in block_kind_sample), block_kind_sample[:20]
     assert not any(" · " in item["label"] for item in block_kind_sample), block_kind_sample[:20]
+    assert not any(item["label"].startswith(("MSG ", "RESULT ", "TOOL ", "REASON ")) for item in block_kind_sample), block_kind_sample[:20]
     dom_count = page.evaluate("document.querySelectorAll('*').length")
     assert dom_count < 9000, f"timeline page DOM too large: {dom_count}"
     assert_no_horizontal_overflow(page)
@@ -2784,13 +3924,16 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
         assert_window_layering(page, viewport)
     if viewport in {"studio-native", "desktop"}:
         assert_timeline_attachment_detail(page, viewport)
+        assert_timeline_system_detail(page, viewport)
+        assert_timeline_raw_event_detail(page, viewport)
+        assert_timeline_user_image_detail(page, viewport)
         assert_timeline_detail_error_badge(page, viewport)
 
     record(page, "graph.dom_svg", kind="dom_assertion", flow="timeline.open", viewport=viewport, selector="[data-testid='overview-timeline']", assertion=f"default Timeline rendered {counts['messages']} logical messages without canvas and without the left rail")
     record(page, "perf.large_session", kind="dom_assertion", flow="timeline.dom_budget", viewport=viewport, selector="[data-testid='timeline-block']", assertion=f"virtual timeline rendered {rendered_blocks} visible blocks")
     record(page, "overview.header_stability", kind="dom_assertion", flow="timeline.header_dom", viewport=viewport, selector="[data-testid='timeline-header']", assertion="sticky header has equal-height labels above timeline blocks and no grid-line background")
     record(page, "overview.header_stability", kind="dom_assertion", flow="timeline.main_track_label", viewport=viewport, selector=".timeline-header-track.main [data-testid='timeline-track-label']", assertion=f"main timeline header label shows the main agent name once without a duplicate kicker: {main_timeline_label['text']!r}")
-    record(page, "overview.scroll_blocks", kind="dom_assertion", flow="timeline.block_labels", viewport=viewport, selector="[data-testid='timeline-block']", assertion="timeline blocks expose only compact second-level labels such as RESULT and full two-level title/aria labels")
+    record(page, "overview.scroll_blocks", kind="dom_assertion", flow="timeline.block_labels", viewport=viewport, selector="[data-testid='timeline-block']", assertion="timeline blocks render the full content kind plus index when it fits, and fall back to the first word plus index only when the full label cannot fit")
     record(
         page,
         "overview.track_alignment",
@@ -3070,6 +4213,14 @@ def main() -> int:
                         viewport=viewport,
                         screenshot_dir=screenshots,
                     )
+                    validate_portfolio_wall(
+                        page,
+                        base_url,
+                        projects_dir=projects_dir,
+                        opencode_data_dir=opencode_data_dir,
+                        viewport=viewport,
+                        screenshot_dir=screenshots,
+                    )
                     record(
                         page,
                         "compat.api_cli",
@@ -3122,6 +4273,7 @@ def main() -> int:
             assert not network_failures, "browser network failures:\n" + "\n".join(network_failures)
             record(page, "perf.large_session", kind="console_network", flow="browser_health", selector="console/network", assertion="zero console errors and zero failed network requests")
             write_story_report(screenshots / "story-verification.json")
+            write_subtype_surface_report(screenshots / "subtype-surface-verification.json", url, screenshots)
             browser.close()
         print(
             "Browser validation passed. "

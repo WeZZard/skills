@@ -234,3 +234,72 @@ def test_duplicate_session_ids_are_unique_across_projects(claude_projects: Path)
     assert second_export is not None
     titles = {first_export.summary.title, second_export.summary.title}
     assert titles == {"First project", "Second project"}
+
+
+def test_system_events_keep_subtype_state_for_two_level_display(claude_projects: Path):
+    project = claude_projects / "-system-events"
+    session = "system-events-session"
+    system_events = [
+        {
+            "subtype": "stop_hook_summary",
+            "hookCount": 2,
+            "hookInfos": [{"command": "lint", "durationMs": 42}],
+            "hasOutput": True,
+        },
+        {"subtype": "turn_duration", "durationMs": 1234, "messageCount": 4},
+        {"subtype": "away_summary", "content": "Worked while away."},
+        {
+            "subtype": "local_command",
+            "content": "<command-name>/test</command-name><command-message>Run tests</command-message>",
+        },
+        {
+            "subtype": "api_error",
+            "error": {"status": 529, "message": "overloaded"},
+            "retryAttempt": 1,
+            "maxRetries": 3,
+        },
+        {
+            "subtype": "compact_boundary",
+            "compactMetadata": {"trigger": "auto", "preTokens": 1000, "postTokens": 250},
+        },
+        {"subtype": "scheduled_task_fire", "content": "Run scheduled cleanup (daily)"},
+        {"subtype": "informational", "content": "Bridge connected"},
+        {"subtype": "bridge_status", "content": '{"message":"Bridge ready","url":"http://127.0.0.1:1"}'},
+        {"subtype": "experimental_system", "content": "Unknown fallback"},
+    ]
+    write_jsonl(
+        project / f"{session}.jsonl",
+        [
+            user_event("u1", None, session, "Inspect system events"),
+            *[
+                {
+                    "type": "system",
+                    "uuid": f"sys-{index}",
+                    "sessionId": session,
+                    "timestamp": f"2026-01-01T00:00:{index:02d}.000Z",
+                    "cwd": "/tmp/project",
+                    **event,
+                }
+                for index, event in enumerate(system_events, start=1)
+            ],
+        ],
+    )
+
+    session_ref = list_sessions()[0]
+    export = load_conversation(session_ref.id)
+
+    assert export is not None
+    system_messages = [message for message in export.messages if message.role == "system"]
+    assert len(system_messages) == len(system_events)
+    subtypes = [message.parts[0].state["subtype"] for message in system_messages]
+    assert subtypes == [event["subtype"] for event in system_events]
+    for message in system_messages:
+        part = message.parts[0]
+        assert part.type == "system"
+        assert part.state["kind"] == "system_event"
+        assert part.state["hasRawPayload"] is True
+        assert part.nav.elementType == "system"
+    rendered_text = "\n".join(message.parts[0].text or "" for message in system_messages)
+    assert "Turn completed in 1,234 ms across 4 messages" in rendered_text
+    assert "Stop hooks completed with 2 hooks" in rendered_text
+    assert "Unknown fallback" in rendered_text

@@ -50,9 +50,21 @@ Studio/desktop/mobile overflow.
 
 ## Utilities
 
-Scan Claude Code JSONL transcripts for attachment types and payload shapes:
+Scan Claude Code JSONL transcripts for message kinds and structural shapes:
 
 ```bash
-uv run python scripts/scan_claude_attachments.py --projects-dir ~/.claude/projects
-uv run python scripts/scan_claude_attachments.py --claude-config-dir ~/.claude --json
+uv run python scripts/scan_claude_message_kinds.py --projects-dir ~/.claude/projects
+uv run python scripts/scan_claude_message_shapes.py --projects-dir ~/.claude/projects --json
+uv run python scripts/compile_claude_message_type_design.py \
+  --projects-dir ~/.claude/projects \
+  --array-output reports/claude-transcript-scans/message-type-array.json \
+  --design-output reports/claude-transcript-scans/message-type-card-design.md
 ```
+
+Both scanners recurse through main and subagent JSONL transcripts. The legacy
+`scripts/scan_claude_attachments.py` command remains available for
+attachment-only audits.
+
+The compiler combines the kind and shape scans into a top-level type/subtype
+array and a renderer design report for Waterfall cards, Waterfall navigation
+items, Timeline blocks, and Timeline detail cards.

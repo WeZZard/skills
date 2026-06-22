@@ -185,17 +185,52 @@ def _attachment_event_summary(raw: dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
+def _system_event_state(raw: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "kind": "system_event",
+        "subtype": raw.get("subtype") or "system",
+        "sourceEventType": raw.get("type") or "system",
+        "hasRawPayload": True,
+    }
+
+
+def _system_event_summary(raw: dict[str, Any]) -> str:
+    subtype = str(raw.get("subtype") or "system")
+    content = raw.get("content")
+    if subtype == "turn_duration":
+        duration = raw.get("durationMs")
+        message_count = raw.get("messageCount")
+        if duration is not None and message_count is not None:
+            return f"Turn completed in {duration:,} ms across {message_count:,} messages"
+        if duration is not None:
+            return f"Turn completed in {duration:,} ms"
+    if subtype == "stop_hook_summary":
+        hook_count = raw.get("hookCount")
+        error_count = len(raw.get("hookErrors") or []) if isinstance(raw.get("hookErrors"), list) else 0
+        if raw.get("preventedContinuation"):
+            return f"Stop hooks prevented continuation with {error_count:,} errors"
+        if hook_count is not None:
+            return f"Stop hooks completed with {hook_count:,} hooks"
+    if subtype == "api_error":
+        retry = raw.get("retryAttempt")
+        max_retries = raw.get("maxRetries")
+        retry_text = f"; retry {retry} of {max_retries}" if retry is not None and max_retries is not None else ""
+        return f"API request failed{retry_text}"
+    if subtype == "compact_boundary":
+        trigger = raw.get("compactMetadata", {}).get("trigger") if isinstance(raw.get("compactMetadata"), dict) else None
+        return f"Conversation compacted{f' by {trigger} trigger' if trigger else ''}"
+    if content:
+        text = _text_from_content(content).strip()
+        return text[:600] + ("..." if len(text) > 600 else "")
+    return f"System event: {subtype}"
+
+
 def _compact_event_text(raw: dict[str, Any], event_type: str) -> str:
     if event_type == "attachment":
         return _attachment_event_summary(raw)
 
     if event_type == "system":
-        subtype = raw.get("subtype")
-        content = raw.get("content")
-        if content:
-            text = _text_from_content(content).strip()
-            return text[:600] + ("..." if len(text) > 600 else "")
-        return f"System event: {subtype or raw.get('type') or 'unknown'}"
+        return _system_event_summary(raw)
 
     return _text_from_content(raw.get("content") or raw.get("subtype") or event_type)
 
@@ -518,12 +553,35 @@ def parse_jsonl_file(
                         metadata["agentId"] = tool_use_result["agentId"]
                         state["metadata"] = metadata
                         tool_parts[tool_id].state = state
+            elif ctype == "image":
+                source = item.get("source") if isinstance(item.get("source"), dict) else {}
+                media_type = source.get("media_type") or source.get("type") or item.get("media_type")
+                source_type = source.get("type") or item.get("source_type")
+                summary = "Image"
+                if isinstance(media_type, str) and media_type:
+                    summary = f"{summary}: {media_type}"
+                elif isinstance(source_type, str) and source_type:
+                    summary = f"{summary}: {source_type}"
+                msg.parts.append(
+                    GenericPart(
+                        id=f"{msg.id}:image:{content_index}",
+                        type="image",
+                        text=summary,
+                        time_created=timestamp,
+                        nav=part_nav,
+                        state={
+                            "media_type": media_type,
+                            "source_type": source_type,
+                            "has_data": bool(source.get("data")),
+                        },
+                    )
+                )
 
             parsed.nav_index.append(part_nav)
 
         if not msg.parts and event_type in {"system", "attachment"}:
             text = _compact_event_text(raw, str(event_type))
-            state = _attachment_event_state(raw) if event_type == "attachment" else None
+            state = _attachment_event_state(raw) if event_type == "attachment" else _system_event_state(raw)
             part_nav = _nav(
                 session_id=session_id,
                 path=path,
@@ -538,7 +596,7 @@ def parse_jsonl_file(
             msg.parts.append(
                 GenericPart(
                     id=f"{msg.id}:raw",
-                    type="attachment" if event_type == "attachment" else "text",
+                    type="attachment" if event_type == "attachment" else "system",
                     text=text,
                     state=state,
                     time_created=timestamp,

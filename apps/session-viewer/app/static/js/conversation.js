@@ -26,7 +26,6 @@ const state = {
   timelineBlockRenderCount: 0,
   timelineDetailRenderCount: 0,
   agentTreeDrawerOpen: false,
-  expandedAttachmentSections: new Set(),
 };
 
 const navByKey = new Map();
@@ -107,27 +106,36 @@ const els = {
   linkStatus: document.getElementById("linkStatus"),
 };
 
+const TIMELINE_COLORS = {
+  system: "#6b7280",
+  user: "#00c853",
+  assistant: "#0066ff",
+  attachment: "#0e7490",
+  noSubtype: "#e5e7eb",
+  reasoning: "#a100ff",
+  toolCall: "#ff9500",
+  toolResult: "#00bcd4",
+};
+
 const TYPE_STYLE = {
-  system: { label: "system", className: "system", color: "#ff3b30" },
-  user: { label: "user", className: "user", color: "#00c853" },
-  assistant: { label: "assistant", className: "assistant", color: "#0066ff" },
-  reasoning: { label: "reasoning", className: "reasoning", color: "#a100ff" },
-  tool: { label: "tool call", className: "tool", color: "#ff9500" },
-  tool_result: { label: "tool result", className: "tool-result", color: "#00bcd4" },
+  system: { label: "system", className: "system", color: TIMELINE_COLORS.system },
+  user: { label: "user", className: "user", color: TIMELINE_COLORS.user },
+  assistant: { label: "assistant", className: "assistant", color: TIMELINE_COLORS.assistant },
+  reasoning: { label: "reasoning", className: "reasoning", color: TIMELINE_COLORS.reasoning },
+  tool: { label: "tool call", className: "tool", color: TIMELINE_COLORS.toolCall },
+  tool_result: { label: "tool result", className: "tool-result", color: TIMELINE_COLORS.toolResult },
+  image: { label: "image", className: "image", color: "#0f766e" },
   patch: { label: "patch", className: "patch", color: "#7c3aed" },
   file: { label: "file", className: "file", color: "#0f766e" },
   compaction: { label: "compaction", className: "compaction", color: "#475569" },
   "step-start": { label: "step start", className: "step-start", color: "#2563eb" },
   "step-finish": { label: "step finish", className: "step-finish", color: "#16a34a" },
-  attachment: { label: "attachment", className: "attachment", color: "#64748b" },
-  raw_event: { label: "raw event", className: "raw-event", color: "#ff2d55" },
-  mixed: { label: "mixed", className: "mixed", color: "#5856d6" },
+  attachment: { label: "attachment", className: "attachment", color: TIMELINE_COLORS.attachment },
+  raw_event: { label: "raw event", className: "raw-event", color: TIMELINE_COLORS.noSubtype },
+  mixed: { label: "mixed", className: "mixed", color: TIMELINE_COLORS.system },
 };
 
 const ATTACHMENT_PREVIEW_CHARS = 300;
-const ATTACHMENT_TEXT_COLLAPSE_CHARS = 900;
-const ATTACHMENT_TEXT_COLLAPSE_LINES = 12;
-const ATTACHMENT_LIST_SAMPLE_LIMIT = 8;
 
 function esc(value) {
   const div = document.createElement("div");
@@ -234,6 +242,7 @@ function rawText(event) {
 function partText(part) {
   if (!part) return "";
   if (isAttachmentPart(part)) return attachmentSummary(part, eventAddress(part.nav));
+  if (isSystemPart(part)) return systemSummary(part, eventAddress(part.nav));
   if (part.text) return part.text;
   if (part.state?.input) return text(part.state.input);
   if (part.state?.output) return text(part.state.output);
@@ -269,7 +278,7 @@ function renderStructuredToolPayload(part) {
   return `
     <dl class="tool-payload-fields">
       ${entries.map(([key, value]) => `
-        <div class="tool-payload-field">
+        <div class="tool-payload-field tool-payload-field-${escAttr(kindClass(key))}" data-tool-field="${escAttr(key)}">
           <dt>${esc(humanFieldName(key))}</dt>
           <dd><pre class="tool-payload-value">${esc(text(value))}</pre></dd>
         </div>`).join("")}
@@ -282,6 +291,10 @@ function messageText(message) {
 
 function isAttachmentPart(part) {
   return part?.type === "attachment" || part?.state?.kind === "attachment_event" || part?.nav?.elementType === "attachment";
+}
+
+function isSystemPart(part) {
+  return part?.type === "system" || part?.state?.kind === "system_event" || part?.nav?.elementType === "system";
 }
 
 function hasValue(value) {
@@ -360,6 +373,12 @@ function rawAttachmentForKey(rawEventKey) {
   return raw?.attachment && typeof raw.attachment === "object" ? raw.attachment : null;
 }
 
+function rawSystemForKey(rawEventKey) {
+  const rawEvent = rawEventByAddress.get(rawEventKey);
+  const raw = rawEvent?.raw && typeof rawEvent.raw === "object" ? rawEvent.raw : null;
+  return raw?.type === "system" ? raw : null;
+}
+
 function humanAttachmentType(type) {
   const special = {
     auto_mode: "Auto Mode",
@@ -387,11 +406,80 @@ function humanAttachmentType(type) {
     task_status: "Task Status",
     todo_reminder: "Todo Reminder",
     ultra_effort_enter: "Ultra Effort Enter",
+    ultra_effort_exit: "Ultra Effort Exit",
   };
   if (special[type]) return special[type];
   return String(type || "attachment")
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function humanSystemSubtype(type) {
+  const special = {
+    api_error: "API Error",
+    away_summary: "Away Summary",
+    bridge_status: "Bridge Status",
+    compact_boundary: "Compact Boundary",
+    informational: "Informational",
+    local_command: "Local Command",
+    scheduled_task_fire: "Scheduled Task Fire",
+    stop_hook_summary: "Stop Hook Summary",
+    turn_duration: "Turn Duration",
+  };
+  if (special[type]) return special[type];
+  return String(type || "system")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function humanRawEventType(type) {
+  const special = {
+    "agent-name": "Agent Name",
+    "ai-title": "AI Title",
+    "bridge-session": "Bridge Session",
+    "file-history-snapshot": "File History Snapshot",
+    "last-prompt": "Last Prompt",
+    mode: "Mode",
+    "permission-mode": "Permission Mode",
+    "queue-operation": "Queue Operation",
+    result: "Result",
+    started: "Started",
+  };
+  const key = String(type || "raw_event");
+  if (special[key]) return special[key];
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace(/\bAi\b/g, "AI")
+    .replace(/\bId\b/g, "ID")
+    .replace(/\bUuid\b/g, "UUID");
+}
+
+function humanRawFieldName(field) {
+  const special = {
+    aiTitle: "AI Title",
+    agentName: "Agent Name",
+    bridgeSessionId: "Bridge Session ID",
+    cwd: "Working Directory",
+    leafUuid: "Leaf UUID",
+    lastSequenceNum: "Last Sequence Number",
+    messageId: "Message ID",
+    permissionMode: "Permission Mode",
+    requestId: "Request ID",
+    sessionId: "Session ID",
+    toolUseId: "Tool Use ID",
+    uuid: "UUID",
+  };
+  if (special[field]) return special[field];
+  return String(field || "Field")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace(/\bAi\b/g, "AI")
+    .replace(/\bId\b/g, "ID")
+    .replace(/\bUuid\b/g, "UUID");
 }
 
 function basename(path) {
@@ -437,6 +525,18 @@ function formatDurationMs(value) {
   return hasValue(value) ? `${Number(value).toLocaleString()} ms` : "";
 }
 
+function formatHumanDurationMs(value) {
+  if (!hasValue(value)) return "";
+  const ms = Number(value);
+  if (!Number.isFinite(ms)) return "";
+  if (ms < 1000) return `${ms.toLocaleString()} ms`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds.toLocaleString()}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`;
+}
+
 function formatChars(value) {
   return `${valueCount(String(value || "").length)} chars`;
 }
@@ -456,6 +556,16 @@ function makeAttachmentDisplay(type, badge, title, summary) {
   };
 }
 
+function makeSystemDisplay(type, title, summary) {
+  return {
+    type,
+    title,
+    summary,
+    rows: [],
+    sections: [],
+  };
+}
+
 function listAttachmentSection(fieldKey, label, items, options = {}) {
   return {
     kind: "list",
@@ -464,7 +574,19 @@ function listAttachmentSection(fieldKey, label, items, options = {}) {
     items: attachmentItems(items),
     emptyText: options.emptyText || "None",
     ordered: options.ordered === true,
-    limit: options.limit || ATTACHMENT_LIST_SAMPLE_LIMIT,
+  };
+}
+
+function tableAttachmentSection(fieldKey, label, columns, rows, options = {}) {
+  const normalizedRows = (rows || []).map((row) => row.map((value) => text(value).trim())).filter((row) => row.some(Boolean));
+  if (!normalizedRows.length && options.keepEmpty !== true) return null;
+  return {
+    kind: "table",
+    fieldKey,
+    label,
+    columns,
+    rows: normalizedRows,
+    emptyText: options.emptyText || "None",
   };
 }
 
@@ -727,8 +849,12 @@ function attachmentDisplayModel(part, rawEventKey) {
     display.title = "Skills loaded";
     display.summary = `${plural(skills.length, "skill")} invoked`;
     display.rows = compactAttachmentRows([["Skills", skills.length]]);
-    addSection(display, listAttachmentSection("skills.name", "Skill Names", skills.map((skill) => skill?.name || "")));
-    addSection(display, listAttachmentSection("skills.content", "Skill Contents", skills.map((skill) => `${skill?.name || "skill"} - ${skill?.content || ""}`)));
+    addSection(display, tableAttachmentSection(
+      "skills",
+      "Skills",
+      ["Name", "Content"],
+      skills.map((skill) => [skill?.name || "", skill?.content || ""]),
+    ));
   } else if (type === "compact_file_reference") {
     display.badge = "FILE REFERENCE";
     display.title = basename(attachment.filename) || "File reference";
@@ -754,6 +880,14 @@ function attachmentDisplayModel(part, rawEventKey) {
     display.title = "Ultra effort enabled";
     display.summary = "Full reminder instructions are active";
     display.rows = compactAttachmentRows([["Reminder Type", attachment.reminderType]]);
+  } else if (type === "ultra_effort_exit") {
+    display.badge = "ULTRA EFFORT EXIT";
+    display.title = "Ultra effort disabled";
+    display.summary = attachment.reason || "Session returned to normal effort mode";
+    display.rows = compactAttachmentRows([
+      ["Duration", formatDurationMs(attachment.durationMs)],
+      ["Reason", attachment.reason],
+    ]);
   } else if (type === "goal_status") {
     display.badge = "GOAL STATUS";
     display.title = attachment.met ? "Goal met" : "Goal not met";
@@ -805,12 +939,233 @@ function attachmentSummary(part, rawEventKey) {
   return [display.title, display.summary].filter(Boolean).join(" · ");
 }
 
+function parseJsonObjectText(value) {
+  const parsed = tryParseJsonText(value);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+}
+
+function xmlTagValue(value, tag) {
+  const match = text(value).match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
+  return match ? match[1].trim() : "";
+}
+
+function systemSectionKey(rawEventKey, section) {
+  return `${rawEventKey || "system"}::system::${section.fieldKey || section.label}`;
+}
+
+function listSystemSection(fieldKey, label, items, options = {}) {
+  return {
+    kind: "list",
+    fieldKey,
+    label,
+    items: attachmentItems(items),
+    emptyText: options.emptyText || "None",
+    ordered: options.ordered === true,
+  };
+}
+
+function textSystemSection(fieldKey, label, value, options = {}) {
+  const valueText = attachmentText(value);
+  if (!valueText && options.keepEmpty !== true) return null;
+  return {
+    kind: "text",
+    fieldKey,
+    label,
+    text: valueText,
+    emptyText: options.emptyText || "None",
+    countLabel: options.countLabel || (valueText ? formatChars(valueText) : "0 chars"),
+  };
+}
+
+function statusSystemSection(fieldKey, label, lines) {
+  const values = attachmentItems(lines);
+  if (!values.length) return null;
+  return { kind: "status", fieldKey, label, lines: values };
+}
+
+function compactPercent(numerator, denominator) {
+  const top = Number(numerator);
+  const bottom = Number(denominator);
+  if (!Number.isFinite(top) || !Number.isFinite(bottom) || bottom === 0) return "";
+  return `${Math.round((top / bottom) * 100).toLocaleString()}%`;
+}
+
+function scalarSystemRows(raw, omit = new Set()) {
+  return compactAttachmentRows(Object.entries(raw || {})
+    .filter(([key, value]) => !omit.has(key) && !Array.isArray(value) && (typeof value !== "object" || value === null))
+    .map(([key, value]) => [humanSystemSubtype(key), yesNo(value)]));
+}
+
+function systemDisplayModel(part, rawEventKey) {
+  const raw = rawSystemForKey(rawEventKey) || {};
+  const subtype = raw.subtype || part?.state?.subtype || "system";
+  const label = humanSystemSubtype(subtype);
+  const display = makeSystemDisplay(subtype, label, "System event payload available in Raw");
+  const contentText = attachmentText(raw.content);
+
+  if (subtype === "stop_hook_summary") {
+    const hookInfos = Array.isArray(raw.hookInfos) ? raw.hookInfos : [];
+    const hookErrors = attachmentItems(raw.hookErrors);
+    const additionalContext = attachmentItems(raw.hookAdditionalContext);
+    display.title = "Stop Hook Summary";
+    display.summary = raw.preventedContinuation
+      ? "Stop hooks prevented continuation"
+      : raw.hasOutput
+        ? "Stop hooks completed with output"
+        : "Stop hooks completed";
+    display.rows = compactAttachmentRows([
+      ["Hook Count", hasValue(raw.hookCount) ? raw.hookCount : hookInfos.length],
+      ["Stop Reason", raw.stopReason || "empty"],
+      ["Prevented Continue", yesNo(raw.preventedContinuation)],
+      ["Has Output", yesNo(raw.hasOutput)],
+      ["Tool Use ID", raw.toolUseID || raw.toolUseId],
+      ["Level", raw.level],
+      ["Additional Context", additionalContext.length ? plural(additionalContext.length, "item") : ""],
+      ["Hook Errors", hookErrors.length],
+    ]);
+    addSection(display, listSystemSection("hookInfos", "Hook Runs", hookInfos.map((item) => {
+      if (!item || typeof item !== "object") return text(item);
+      const command = item.command || item.hookName || item.hookEventName || "Hook";
+      const duration = formatDurationMs(item.durationMs);
+      const exitCode = hasValue(item.exitCode) ? `exit ${item.exitCode}` : "";
+      return [command, exitCode, duration].filter(Boolean).join(" - ");
+    })));
+    addSection(display, listSystemSection("hookErrors", "Hook Errors", hookErrors));
+    addSection(display, textSystemSection("hookAdditionalContext", "Additional Context", additionalContext));
+  } else if (subtype === "turn_duration") {
+    const duration = formatHumanDurationMs(raw.durationMs);
+    display.title = "Turn Duration";
+    display.summary = duration
+      ? `Turn completed in ${duration}${hasValue(raw.messageCount) ? ` across ${valueCount(raw.messageCount)} messages` : ""}`
+      : "Turn duration recorded";
+    display.rows = compactAttachmentRows([
+      ["Duration", raw.durationMs ? `${duration} (${formatDurationMs(raw.durationMs)})` : ""],
+      ["Message Count", raw.messageCount],
+      ["Pending Agents", raw.pendingBackgroundAgentCount],
+      ["Pending Workflows", raw.pendingWorkflowCount],
+      ["Meta Event", yesNo(raw.isMeta)],
+      ["Level", raw.level],
+    ]);
+  } else if (subtype === "away_summary") {
+    display.title = "Away Summary";
+    display.summary = "Away summary generated for the session";
+    display.rows = scalarSystemRows(raw, new Set(["type", "subtype", "content", "uuid", "timestamp"]));
+    addSection(display, textSystemSection("content", "Summary", raw.content || part?.text));
+  } else if (subtype === "local_command") {
+    const commandName = xmlTagValue(raw.content, "command-name");
+    const commandMessage = xmlTagValue(raw.content, "command-message");
+    const commandArgs = xmlTagValue(raw.content, "command-args");
+    display.title = commandName || "Local Command";
+    display.summary = commandMessage || "Local command context was injected into the session";
+    display.rows = compactAttachmentRows([
+      ["Command Name", commandName],
+      ["Command Message", commandMessage],
+      ["Arguments", commandArgs || "empty"],
+      ["Level", raw.level],
+    ]);
+    if (contentText && !commandName && !commandMessage) addSection(display, textSystemSection("content", "Content", contentText));
+  } else if (subtype === "api_error") {
+    const error = raw.error && typeof raw.error === "object" ? raw.error : {};
+    display.title = "API Error";
+    display.summary = error.message || raw.message || "API request failed";
+    display.rows = compactAttachmentRows([
+      ["Status", error.status || raw.status],
+      ["Message", error.message || raw.message],
+      ["Request ID", error.requestId || error.requestID || raw.requestId || raw.requestID],
+      ["Network Down", yesNo(raw.networkDown || error.networkDown)],
+      ["Retry Attempt", hasValue(raw.retryAttempt) && hasValue(raw.maxRetries) ? `${raw.retryAttempt} / ${raw.maxRetries}` : raw.retryAttempt],
+      ["Retry In", formatDurationMs(raw.retryAfterMs || raw.retryDelayMs)],
+      ["Level", raw.level],
+    ]);
+    addSection(display, textSystemSection("error.formatted", "Error Details", error.formatted || error.details || raw.formatted));
+    addSection(display, textSystemSection("cause", "Cause", raw.cause || error.cause));
+  } else if (subtype === "compact_boundary") {
+    const meta = raw.compactMetadata && typeof raw.compactMetadata === "object" ? raw.compactMetadata : {};
+    const preservedMessages = meta.preservedMessages && typeof meta.preservedMessages === "object" ? meta.preservedMessages : {};
+    const preservedSegment = meta.preservedSegment && typeof meta.preservedSegment === "object" ? meta.preservedSegment : {};
+    const reduction = hasValue(meta.preTokens) && hasValue(meta.postTokens)
+      ? `${compactPercent(Number(meta.preTokens) - Number(meta.postTokens), meta.preTokens)} reduced`
+      : "";
+    display.title = "Compact Boundary";
+    display.summary = meta.trigger ? `Conversation compacted by ${meta.trigger} trigger` : "Conversation compacted";
+    display.rows = compactAttachmentRows([
+      ["Trigger", meta.trigger],
+      ["Pre Tokens", hasValue(meta.preTokens) ? valueCount(meta.preTokens) : ""],
+      ["Post Tokens", hasValue(meta.postTokens) ? valueCount(meta.postTokens) : ""],
+      ["Token Reduction", reduction],
+      ["Duration", formatDurationMs(meta.durationMs || raw.durationMs)],
+      ["Precomputed", yesNo(meta.usedPrecomputed || meta.precomputed)],
+      ["Agent ID", meta.agentId || raw.agentId],
+      ["Logical Parent", meta.logicalParentUuid || raw.logicalParentUuid],
+      ["Preserved Anchor", preservedMessages.anchorUuid],
+      ["Segment Head", preservedSegment.headUuid],
+      ["Segment Anchor", preservedSegment.anchorUuid],
+      ["Segment Tail", preservedSegment.tailUuid],
+    ]);
+    addSection(display, listSystemSection("compactMetadata.preCompactDiscoveredTools", "Pre-Compact Tools", meta.preCompactDiscoveredTools));
+    addSection(display, listSystemSection("compactMetadata.preservedMessages.allUuids", "All UUIDs", preservedMessages.allUuids));
+    addSection(display, listSystemSection("compactMetadata.preservedMessages.uuids", "UUIDs", preservedMessages.uuids));
+  } else if (subtype === "scheduled_task_fire") {
+    const schedule = contentText.match(/\(([^()]+)\)\s*$/)?.[1] || raw.schedule || "";
+    display.title = "Scheduled Task Fire";
+    display.summary = contentText ? compact(contentText, 180) : "Scheduled task fired";
+    display.rows = compactAttachmentRows([
+      ["Message", contentText],
+      ["Schedule", schedule],
+      ["Level", raw.level],
+    ]);
+  } else if (subtype === "informational") {
+    const parsed = parseJsonObjectText(raw.content);
+    const infoMessage = parsed?.status?.message || parsed?.message || contentText;
+    display.title = "Informational";
+    display.summary = infoMessage || "Informational system message";
+    display.rows = compactAttachmentRows([
+      ["Message", infoMessage],
+      ["Level", raw.level],
+    ]);
+    if (contentText && contentText !== infoMessage) addSection(display, textSystemSection("content", "Content", contentText));
+  } else if (subtype === "bridge_status") {
+    const parsed = parseJsonObjectText(raw.content) || {};
+    display.title = "Bridge Status";
+    display.summary = parsed.message || contentText || "Bridge status changed";
+    display.rows = compactAttachmentRows([
+      ["URL", raw.url || parsed.url],
+      ["Message", parsed.message || contentText],
+      ["Level", raw.level],
+    ]);
+  } else {
+    display.title = label;
+    display.summary = contentText ? compact(contentText, 180) : "Unknown system event payload available in Raw";
+    display.rows = scalarSystemRows(raw, new Set(["type", "subtype", "content", "uuid", "timestamp"]));
+    if (contentText) addSection(display, textSystemSection("content", "Content", contentText));
+    Object.entries(raw).forEach(([key, value]) => {
+      if (["type", "subtype", "content", "uuid", "timestamp"].includes(key)) return;
+      if (Array.isArray(value)) addSection(display, listSystemSection(key, humanSystemSubtype(key), value));
+      else if (typeof value === "object" && value !== null) addSection(display, textSystemSection(key, humanSystemSubtype(key), value));
+      else if (typeof value === "string" && value.length > 120) addSection(display, textSystemSection(key, humanSystemSubtype(key), value));
+    });
+  }
+
+  if (!display.sections.length && !display.rows.length) {
+    display.sections.push(statusSystemSection("status", "Status", [display.summary]));
+  }
+  return display;
+}
+
+function systemSummary(part, rawEventKey) {
+  const display = systemDisplayModel(part, rawEventKey);
+  return [display.title, display.summary].filter(Boolean).join(" · ");
+}
+
 function rawEventForMessage(message) {
   return rawEventByAddress.get(eventAddress(message?.nav)) || null;
 }
 
 function kindClass(value) {
-  return String(value || "mixed").replace(/_/g, "-");
+  const key = String(value || "mixed").replace(/_/g, "-");
+  if (key === "tool-call" || key === "tool-use") return "tool";
+  if (key === "tool-result" || key === "tool-used") return "tool-result";
+  return key;
 }
 
 function kindForLineType(value) {
@@ -843,6 +1198,13 @@ function partContentKind(part, lineKind) {
     const label = humanAttachmentType(subtype);
     return { key: "attachment", label, compact: compactKindLabel(label, "ATT") };
   }
+  if (isSystemPart(part) || lineKind.key === "system") {
+    const rawEventKey = eventAddress(part?.nav);
+    const raw = rawSystemForKey(rawEventKey) || {};
+    const subtype = raw.subtype || part?.state?.subtype || "system";
+    const label = humanSystemSubtype(subtype);
+    return { key: subtype || "system", label, compact: compactKindLabel(label, "SYS") };
+  }
   if (part?.type === "tool_result") return { key: "tool_result", label: "tool result", compact: "RESULT" };
   if (part?.type === "tool") return { key: "tool", label: "tool call", compact: "TOOL" };
   if (part?.type === "reasoning") return { key: "reasoning", label: "reasoning", compact: "REASON" };
@@ -874,6 +1236,7 @@ function uniqueContentKinds(kinds) {
 function primaryKindKey(lineKind, contentKinds) {
   const keys = contentKinds.map((kind) => kind.key);
   if (lineKind.key === "attachment") return "attachment";
+  if (lineKind.key === "system") return "system";
   if (lineKind.key === "user") return keys.includes("tool_result") ? "tool_result" : "user";
   if (lineKind.key === "assistant") {
     if (keys.includes("tool")) return "tool";
@@ -907,21 +1270,32 @@ function messageKindModel(message) {
 function rawEventKindModel(event) {
   const rawType = event?.raw && typeof event.raw === "object" ? event.raw.type : "raw_event";
   const lineKind = kindForLineType(rawType || "raw_event");
+  if (lineKind.key === "system") {
+    const subtype = event?.raw?.subtype || "system";
+    const label = humanSystemSubtype(subtype);
+    const contentKinds = [{ key: subtype, label, compact: compactKindLabel(label, "SYS") }];
+    return {
+      line: lineKind,
+      contentKinds,
+      primaryKey: "system",
+      primaryStyle: typeStyle("system"),
+      fullLabel: `${lineKind.label} / ${label}`,
+      compactLabel: `${lineKind.compact} · ${contentKinds[0].compact}`,
+      contentLabel: label,
+    };
+  }
   return {
     line: lineKind,
-    contentKinds: [{ key: "raw_event", label: "raw event", compact: "RAW" }],
+    contentKinds: [],
     primaryKey: "raw_event",
     primaryStyle: typeStyle("raw_event"),
-    fullLabel: `${lineKind.label} / raw event`,
-    compactLabel: `${lineKind.compact} · RAW`,
-    contentLabel: "raw event",
+    fullLabel: lineKind.label,
+    compactLabel: lineKind.compact,
+    contentLabel: "",
   };
 }
 
 function titleBarContentKinds(kind) {
-  if (kind.line.key === "user") {
-    return [{ key: "message", label: "message", compact: "MSG" }];
-  }
   if (kind.line.key !== "assistant") return kind.contentKinds;
   return uniqueContentKinds(kind.contentKinds.map((item) => (
     item.key === "assistant" || item.key === "message"
@@ -941,13 +1315,16 @@ function renderMessageKindStack(kind) {
     </span>`;
 }
 
-function renderMessageHeaderNavKind(kind) {
+function renderMessageIndexKind(kind) {
   const contentKinds = titleBarContentKinds(kind);
   return `
-    <span class="message-header-nav-kind" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
-      <span>${esc(kind.line.label)}</span>
-      <span aria-hidden="true">/</span>
-      <span>${esc(contentKinds.map((item) => item.label).join(" + "))}</span>
+    <span class="message-index-kind" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
+      <span class="message-index-line-kind ${escAttr(kindClass(kind.line.key))}">${esc(kind.line.label)}</span>
+      ${contentKinds.length ? `
+        <span class="message-index-kind-separator" aria-hidden="true">/</span>
+        <span class="message-index-content-kinds">
+          ${contentKinds.map((item) => `<span class="message-index-content-kind ${escAttr(kindClass(item.key))}">${esc(item.label)}</span>`).join("")}
+        </span>` : ""}
     </span>`;
 }
 
@@ -963,51 +1340,37 @@ function attachmentSectionKey(rawEventKey, section) {
   return `${rawEventKey || "attachment"}::${section.fieldKey || section.label}`;
 }
 
-function textCollapse(value) {
-  const valueText = text(value);
-  const lines = valueText.split("\n");
-  const lineLimited = lines.slice(0, ATTACHMENT_TEXT_COLLAPSE_LINES).join("\n");
-  let collapsed = lineLimited.length > ATTACHMENT_TEXT_COLLAPSE_CHARS
-    ? lineLimited.slice(0, ATTACHMENT_TEXT_COLLAPSE_CHARS - 3)
-    : lineLimited;
-  const truncated = lines.length > ATTACHMENT_TEXT_COLLAPSE_LINES || valueText.length > collapsed.length;
-  if (truncated && !collapsed.endsWith("...")) collapsed = `${collapsed.replace(/\s+$/, "")}\n...`;
-  return { collapsed, truncated };
-}
-
 function renderAttachmentSection(section, rawEventKey) {
   if (!section) return "";
-  const key = attachmentSectionKey(rawEventKey, section);
-  const expanded = state.expandedAttachmentSections.has(key);
-  const headerButton = (expandable) => expandable
-    ? `<button type="button" class="attachment-section-toggle" data-action="toggle-attachment-section" data-section-key="${escAttr(key)}" aria-expanded="${expanded ? "true" : "false"}">${expanded ? "Collapse" : "Expand"}</button>`
-    : "";
   if (section.kind === "list") {
     const items = (section.items || []).filter(Boolean);
-    const limit = section.limit || ATTACHMENT_LIST_SAMPLE_LIMIT;
-    const itemPreviewChars = 220;
-    const expandable = items.length > limit || items.some((item) => text(item).length > itemPreviewChars);
-    const shown = expanded || !expandable ? items : items.slice(0, limit);
-    const extra = Math.max(0, items.length - shown.length);
     const tag = section.ordered ? "ol" : "ul";
-    const body = shown.length
-      ? `<${tag}>${shown.map((item) => `<li>${esc(expanded || !expandable ? item : compact(item, itemPreviewChars))}</li>`).join("")}${extra ? `<li class="attachment-more">+${extra.toLocaleString()} more</li>` : ""}</${tag}>`
+    const body = items.length
+      ? `<${tag}>${items.map((item) => `<li>${esc(item)}</li>`).join("")}</${tag}>`
       : `<p>${esc(section.emptyText || "None")}</p>`;
     return `
       <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
-        <header><strong>${esc(section.label)}</strong><span>${items.length.toLocaleString()} items</span>${headerButton(expandable)}</header>
+        <header><strong>${esc(section.label)}</strong><span>${items.length.toLocaleString()} items</span></header>
+        ${body}
+      </section>`;
+  }
+  if (section.kind === "table") {
+    const rows = section.rows || [];
+    const body = rows.length
+      ? `<div class="attachment-table-scroll"><table><thead><tr>${section.columns.map((column) => `<th>${esc(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${esc(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+      : `<p>${esc(section.emptyText || "None")}</p>`;
+    return `
+      <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
+        <header><strong>${esc(section.label)}</strong><span>${rows.length.toLocaleString()} items</span></header>
         ${body}
       </section>`;
   }
   if (section.kind === "text") {
     const fullText = section.text || "";
-    const collapsed = textCollapse(fullText);
-    const expandable = collapsed.truncated;
-    const renderedText = expanded || !expandable ? fullText : collapsed.collapsed;
     return `
       <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
-        <header><strong>${esc(section.label)}</strong><span>${esc(section.countLabel || formatChars(fullText))}</span>${headerButton(expandable)}</header>
-        <pre>${esc(renderedText || section.emptyText || "None")}</pre>
+        <header><strong>${esc(section.label)}</strong><span>${esc(section.countLabel || formatChars(fullText))}</span></header>
+        <pre>${esc(fullText || section.emptyText || "None")}</pre>
       </section>`;
   }
   if (section.kind === "status") {
@@ -1015,6 +1378,38 @@ function renderAttachmentSection(section, rawEventKey) {
       <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
         <header><strong>${esc(section.label)}</strong></header>
         <div class="attachment-status-list">${section.lines.map((line) => `<p>${esc(line)}</p>`).join("")}</div>
+      </section>`;
+  }
+  return "";
+}
+
+function renderSystemSection(section, rawEventKey) {
+  if (!section) return "";
+  if (section.kind === "list") {
+    const items = (section.items || []).filter(Boolean);
+    const tag = section.ordered ? "ol" : "ul";
+    const body = items.length
+      ? `<${tag}>${items.map((item) => `<li>${esc(item)}</li>`).join("")}</${tag}>`
+      : `<p>${esc(section.emptyText || "None")}</p>`;
+    return `
+      <section class="system-section" data-system-section="${escAttr(section.label)}" data-system-field="${escAttr(section.fieldKey)}">
+        <header><strong>${esc(section.label)}</strong><span>${items.length.toLocaleString()} items</span></header>
+        ${body}
+      </section>`;
+  }
+  if (section.kind === "text") {
+    const fullText = section.text || "";
+    return `
+      <section class="system-section" data-system-section="${escAttr(section.label)}" data-system-field="${escAttr(section.fieldKey)}">
+        <header><strong>${esc(section.label)}</strong><span>${esc(section.countLabel || formatChars(fullText))}</span></header>
+        <pre>${esc(fullText || section.emptyText || "None")}</pre>
+      </section>`;
+  }
+  if (section.kind === "status") {
+    return `
+      <section class="system-section" data-system-section="${escAttr(section.label)}" data-system-field="${escAttr(section.fieldKey)}">
+        <header><strong>${esc(section.label)}</strong></header>
+        <div class="system-status-list">${section.lines.map((line) => `<p>${esc(line)}</p>`).join("")}</div>
       </section>`;
   }
   return "";
@@ -1028,21 +1423,133 @@ function renderAttachmentMetaRows(rows) {
     </dl>`;
 }
 
+function normalizedLabel(value) {
+  return String(value || "").replace(/[^a-z0-9]+/gi, " ").trim().toLowerCase();
+}
+
+function isDuplicateAttachmentSubtypeTitle(display) {
+  const title = normalizedLabel(display?.title);
+  if (!title) return true;
+  return title === normalizedLabel(display.badge) || title === normalizedLabel(humanAttachmentType(display.type));
+}
+
 function renderAttachmentPartBody(part, rawEventKey, options = {}) {
   const display = attachmentDisplayModel(part, rawEventKey);
   const showRawPayload = options.showRawPayload !== false;
+  const heading = isDuplicateAttachmentSubtypeTitle(display)
+    ? ""
+    : `<div class="attachment-display-heading"><strong>${esc(display.title)}</strong></div>`;
   return `
     <div class="attachment-event" data-raw-event-key="${escAttr(rawEventKey)}" data-attachment-type="${escAttr(display.type)}">
-      <div class="attachment-display-heading">
-        <span class="attachment-type-badge">${esc(display.badge)}</span>
-        <strong>${esc(display.title)}</strong>
-      </div>
+      ${heading}
       <p class="attachment-summary">${esc(display.summary)}</p>
       ${renderAttachmentMetaRows(display.rows)}
       <div class="attachment-sections">
         ${display.sections.map((section) => renderAttachmentSection(section, rawEventKey)).join("")}
       </div>
       ${showRawPayload ? `<div class="attachment-raw hidden" data-raw-payload data-raw-event-key="${escAttr(rawEventKey)}"></div>` : ""}
+    </div>`;
+}
+
+function renderSystemMetaRows(rows) {
+  if (!rows.length) return "";
+  return `
+    <dl class="system-meta">
+      ${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(yesNo(value))}</dd>`).join("")}
+    </dl>`;
+}
+
+function renderSystemPartBody(part, rawEventKey) {
+  const display = systemDisplayModel(part, rawEventKey);
+  return `
+    <div class="system-event" data-raw-event-key="${escAttr(rawEventKey)}" data-system-subtype="${escAttr(display.type)}">
+      <p class="system-summary">${esc(display.summary)}</p>
+      ${renderSystemMetaRows(display.rows)}
+      <div class="system-sections">
+        ${display.sections.map((section) => renderSystemSection(section, rawEventKey)).join("")}
+      </div>
+    </div>`;
+}
+
+function rawEventSummary(raw, typeLabel) {
+  if (!raw || typeof raw !== "object") return `${typeLabel} payload is available in Raw`;
+  const candidates = [
+    raw.aiTitle,
+    raw.agentName,
+    raw.mode,
+    raw.permissionMode,
+    raw.operation,
+    raw.queueOperation,
+    raw.action,
+    raw.status,
+    raw.message,
+    raw.summary,
+    raw.title,
+    raw.prompt,
+    raw.content,
+    raw.result,
+    raw.path,
+    raw.filePath,
+    raw.sessionId,
+    raw.bridgeSessionId,
+  ];
+  const value = candidates.find((item) => hasValue(item));
+  if (value === undefined || value === null || value === "") return `${typeLabel} event`;
+  return compact(text(value), 180);
+}
+
+function rawEventScalarRows(raw) {
+  if (!raw || typeof raw !== "object") return [];
+  const excluded = new Set(["type", "content", "result", "prompt", "message", "summary"]);
+  return compactAttachmentRows(Object.entries(raw)
+    .filter(([key, value]) => !excluded.has(key) && (typeof value !== "object" || value === null))
+    .map(([key, value]) => [humanRawFieldName(key), value]));
+}
+
+function rawEventSections(raw) {
+  if (!raw || typeof raw !== "object") return [];
+  const sections = [];
+  Object.entries(raw).forEach(([key, value]) => {
+    if (key === "type") return;
+    const label = humanRawFieldName(key);
+    if (Array.isArray(value)) {
+      sections.push(listAttachmentSection(key, label, value));
+    } else if (value && typeof value === "object") {
+      sections.push(textAttachmentSection(key, label, value));
+    } else if (typeof value === "string" && (value.length > 100 || ["content", "result", "prompt", "message", "summary"].includes(key))) {
+      sections.push(textAttachmentSection(key, label, value));
+    }
+  });
+  return sections.filter(Boolean);
+}
+
+function rawEventDisplayModel(rawEvent) {
+  const raw = rawEvent?.raw && typeof rawEvent.raw === "object" ? rawEvent.raw : {};
+  const type = raw.type || "raw_event";
+  const label = humanRawEventType(type);
+  const display = {
+    type,
+    title: label,
+    summary: rawEventSummary(raw, label),
+    rows: rawEventScalarRows(raw),
+    sections: rawEventSections(raw),
+  };
+  if (!display.sections.length && !display.rows.length) {
+    display.sections.push(statusAttachmentSection("status", "Status", [display.summary]));
+  }
+  return display;
+}
+
+function renderRawEventBody(rawEvent) {
+  const rawEventKey = eventAddress(rawEvent?.nav);
+  const display = rawEventDisplayModel(rawEvent);
+  return `
+    <div class="raw-event" data-raw-event-key="${escAttr(rawEventKey)}" data-raw-event-type="${escAttr(display.type)}">
+      <p class="raw-event-summary">${esc(display.summary)}</p>
+      ${display.rows.length ? `<dl class="raw-event-meta attachment-meta">${display.rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(yesNo(value))}</dd>`).join("")}</dl>` : ""}
+      <div class="raw-event-sections attachment-sections">
+        ${display.sections.map((section) => renderAttachmentSection(section, rawEventKey)).join("")}
+      </div>
     </div>`;
 }
 
@@ -1518,22 +2025,25 @@ function renderMessageIndex() {
   const track = trackById.get(state.selectedTrackId) || model.tracks[0];
   if (!track) return;
   const maxItems = 1400;
-  const messages = track.messages.slice(0, maxItems);
-  els.messageIndex.innerHTML = compactHtml(messages
-    .map((message, index) => {
-      const key = navKeyToCapsuleKey.get(navKey(message.nav)) || "";
+  const capsules = track.capsuleKeys.map((key) => capsuleByKey.get(key)).filter(Boolean);
+  const shownCapsules = capsules.slice(0, maxItems);
+  els.messageIndex.innerHTML = compactHtml(shownCapsules
+    .map((capsule) => {
+      const key = capsule.key;
       const active = key && key === state.currentCapsuleKey;
-      const problems = problemListForMessage(message);
+      const problems = capsule.problems || [];
       const problemText = problems.length === 1 ? "1 problem" : `${problems.length} problems`;
+      const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
+      const contentKinds = titleBarContentKinds(kind);
       return `
-        <button class="nav-item message-index-item ${active ? "active" : ""} ${problems.length ? "has-problem" : ""}" data-action="focus-message" data-track-id="${escAttr(track.id)}" data-message-index="${index}" aria-current="${active ? "true" : "false"}">
-          <span class="role-badge ${escAttr(message.role || "message")}">${esc(message.role || "message")}</span>
+        <button class="nav-item message-index-item ${active ? "active" : ""} ${problems.length ? "has-problem" : ""}" data-action="focus-capsule" data-track-id="${escAttr(track.id)}" data-message-index="${capsule.messageIndex}" data-capsule-key="${escAttr(key)}" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}" aria-current="${active ? "true" : "false"}">
+          ${renderMessageIndexKind(kind)}
           ${problems.length ? `<span class="message-index-problem" aria-label="${escAttr(problemText)}"><span class="message-index-problem-dot" aria-hidden="true"></span><span>${esc(problemText)}</span></span>` : ""}
-          <span class="message-index-time">${esc(formatTime(message.time_created))}</span>
-          <span class="message-preview">${esc(compact(messageText(message) || "(no content)", 110))}</span>
+          <span class="message-index-time">${esc(formatTime(capsule.timestamp))}</span>
+          <span class="message-preview">${esc(compact(capsule.summary || "(no content)", 110))}</span>
         </button>`;
     })
-    .join("") + (track.messages.length > maxItems ? `<div class="nav-item muted">Showing first ${maxItems.toLocaleString()} of ${track.messages.length.toLocaleString()} messages.</div>` : ""));
+    .join("") + (capsules.length > maxItems ? `<div class="nav-item muted">Showing first ${maxItems.toLocaleString()} of ${capsules.length.toLocaleString()} blocks.</div>` : ""));
 }
 
 function renderLegend() {
@@ -1825,6 +2335,7 @@ function bindSubagentSeparatorResize() {
 function renderTrack(track, options = {}) {
   const panel = Boolean(options.panel);
   const title = trackTitle(track);
+  const capsules = track.capsuleKeys.map((key) => capsuleByKey.get(key)).filter(Boolean);
   return `
     <section class="reader-track ${track.depth === 0 ? "main-track" : "subagent-track"} ${panel ? "subagent-panel" : ""}" id="track-${domId(track.id)}" data-agent-id="${escAttr(track.id)}" data-track-kind="${track.depth === 0 ? "main" : "subagent"}">
       <header class="reader-track-header">
@@ -1833,14 +2344,14 @@ function renderTrack(track, options = {}) {
           <h2 title="${escAttr(title)}">${esc(title)}</h2>
         </div>
         <div class="agent-track-actions">
-          <span class="count-pill">${track.messages.length} messages</span>
+          <span class="count-pill">${capsules.length} blocks</span>
           ${track.problemCount ? `<span class="problem-pill">${track.problemCount} problems</span>` : ""}
           ${panel ? `<button class="agent-panel-close" data-action="close-panel" data-track-id="${escAttr(track.id)}" aria-label="Close ${escAttr(title)}">x</button>` : ""}
         </div>
         ${renderAgentConnector(track)}
       </header>
       <div class="reader-track-body">
-        ${track.messages.length ? track.messages.map((message, index) => renderReaderMessage(message, track, index)).join("") : '<div class="agent-track-empty">No messages in this transcript.</div>'}
+        ${capsules.length ? capsules.map((capsule) => renderReaderCapsule(capsule, track)).join("") : '<div class="agent-track-empty">No messages in this transcript.</div>'}
       </div>
     </section>`;
 }
@@ -1858,10 +2369,47 @@ function renderAgentConnector(track) {
       </button>
       <button type="button" class="agent-connector-node first" data-action="focus-capsule" data-capsule-key="${escAttr(track.firstCapsuleKey)}">
         <span class="agent-connector-label">first message</span>
-        <span class="agent-connector-value">${track.messages.length ? "1" : "none"}</span>
+        <span class="agent-connector-value">${track.capsuleKeys.length ? "1" : "none"}</span>
       </button>
       ${resultKey ? `<button type="button" class="agent-connector-node result" data-action="focus-capsule" data-capsule-key="${escAttr(resultKey)}"><span class="agent-connector-label">result</span><span class="agent-connector-value">open</span></button>` : ""}
     </div>`;
+}
+
+function renderReaderCapsule(capsule, track) {
+  if (capsule.rawOnly) return renderReaderRawEvent(capsule, track);
+  return renderReaderMessage(capsule.message, track, capsule.messageIndex);
+}
+
+function renderReaderRawEvent(capsule, track) {
+  const kind = capsule.kindModel || rawEventKindModel(capsule.rawEvent);
+  const problems = capsule.problems || [];
+  const index = capsule.messageIndex;
+  return `
+    <article class="reader-message ${escAttr(kindClass(kind.line.key))} raw-event ${problems.length ? "has-problem" : ""} ${capsule.key === state.currentCapsuleKey ? "active" : ""}" id="${readerMessageId(track.id, index)}" data-action="focus-capsule" data-agent-id="${escAttr(track.id)}" data-message-index="${index}" data-capsule-key="${escAttr(capsule.key)}" data-testid="transcript-message" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" role="button" tabindex="0" aria-current="${capsule.key === state.currentCapsuleKey ? "true" : "false"}" aria-label="${escAttr(`${kind.fullLabel} block ${index + 1}`)}">
+      <div class="message-card">
+        <header class="message-header">
+          <div class="message-header-left">
+            <span class="role-dot" aria-hidden="true"></span>
+            ${renderMessageKindStack(kind)}
+            <span class="message-meta">
+              ${capsule.timestamp ? `<span>${esc(formatFullTime(capsule.timestamp))}</span>` : ""}
+              <span>${esc(capsule.nav?.agentPath || "main")}</span>
+              ${problems.length ? `<span class="problem-tag">${problems.length} problems</span>` : ""}
+            </span>
+          </div>
+          <div class="message-header-actions">
+            <button type="button" class="message-raw-button" data-action="open-reader-raw">Raw</button>
+            <span class="message-card-index" aria-label="Block ${index + 1}">#${index + 1}</span>
+          </div>
+        </header>
+        <div class="message-body">
+          <section class="reader-part raw-event" data-nav-key="${escAttr(capsule.key)}" data-raw-event-key="${escAttr(eventAddress(capsule.rawEvent?.nav))}" data-testid="raw-event">
+            <header class="part-header"><strong>Details</strong></header>
+            ${renderRawEventBody(capsule.rawEvent)}
+          </section>
+        </div>
+      </div>
+    </article>`;
 }
 
 function renderReaderMessage(message, track, index) {
@@ -1884,7 +2432,6 @@ function renderReaderMessage(message, track, index) {
             </span>
           </div>
           <div class="message-header-actions">
-            ${renderMessageHeaderNavKind(kind)}
             <button type="button" class="message-raw-button" data-action="open-reader-raw">Raw</button>
             <span class="message-card-index" aria-label="Message ${index + 1}">#${index + 1}</span>
           </div>
@@ -1899,15 +2446,19 @@ function renderReaderMessage(message, track, index) {
 function renderPart(part, context) {
   const key = rememberNav(part.nav);
   const attachment = isAttachmentPart(part);
+  const system = isSystemPart(part);
   const rawEventKey = eventAddress(part.nav);
-  const style = part.type === "tool_result" ? "tool-result" : part.type === "tool" ? "tool" : attachment ? "attachment" : part.type || "part";
+  const style = part.type === "tool_result" ? "tool-result" : part.type === "tool" ? "tool" : attachment ? "attachment" : system ? "system" : part.type || "part";
   const partKind = partContentKind(part, kindForLineType(rawEventByAddress.get(rawEventKey)?.raw?.type || context?.message?.role || ""));
-  const testId = part.type === "tool_result" ? "tool-result" : part.type === "tool" ? "tool-call" : "transcript-part";
+  const testId = part.type === "tool_result" ? "tool-result" : part.type === "tool" ? "tool-call" : system ? "system-message" : "transcript-part";
   const childTrack = childTrackByParentTaskKey.get(navKey(part.nav));
   const pairedKey = navKeyToCapsuleKey.get(navKey(pairedNav(part))) || "";
   const hasRawPayload = attachment && rawEventByAddress.has(rawEventKey);
+  const partHeaderLabel = attachment || system ? "Details" : part.type === "tool" ? part.tool || partKind.label : partKind.label;
   const partBody = attachment
     ? renderAttachmentPartBody(part, rawEventKey)
+    : system
+    ? renderSystemPartBody(part, rawEventKey)
     : part.type === "tool"
     ? renderStructuredToolPayload(part)
     : part.type === "tool_result"
@@ -1916,7 +2467,7 @@ function renderPart(part, context) {
   return `
     <section class="reader-part ${escAttr(style)} ${part.state?.is_error ? "error" : ""}" data-nav-key="${escAttr(key)}" data-raw-event-key="${escAttr(rawEventKey)}" data-testid="${testId}">
       <header class="part-header">
-        <strong>${esc(part.type === "tool" ? part.tool || partKind.label : partKind.label)}</strong>
+        <strong>${esc(partHeaderLabel)}</strong>
         <div class="part-actions">
           ${part.type === "tool" && part.tool ? `<span class="tag">${esc(partKind.label)}</span>` : ""}
           ${part.nav?.toolUseId ? `<span class="tag">${esc(part.nav.toolUseId)}</span>` : ""}
@@ -1931,15 +2482,9 @@ function renderPart(part, context) {
 
 function renderSpawnReference(track) {
   return `
-    <div class="spawn-reference" data-linked-agent-id="${escAttr(track.id)}">
-      <div>
-        <strong>${esc(trackTitle(track))}</strong>
-        <small>${esc(track.agentType)} · ${track.messages.length} messages${track.relationship ? ` · ${track.relationship}` : ""}</small>
-      </div>
-      <div class="part-actions">
-        <button data-action="open-panel" data-track-id="${escAttr(track.id)}">Open subagent</button>
-        <button data-action="focus-capsule" data-capsule-key="${escAttr(track.firstCapsuleKey)}">Jump to first</button>
-      </div>
+    <div class="spawn-reference" data-linked-agent-id="${escAttr(track.id)}" aria-label="Subagent actions">
+      <button data-action="open-panel" data-track-id="${escAttr(track.id)}">Open Subagent</button>
+      <button data-action="focus-capsule" data-capsule-key="${escAttr(track.firstCapsuleKey)}">Jump to First</button>
     </div>`;
 }
 
@@ -2021,10 +2566,43 @@ function timelineBlockTypeName(type) {
   return typeStyle(type).label.toUpperCase();
 }
 
+const timelineBlockMeasure = {
+  canvas: null,
+  context: null,
+};
+
+function timelineBlockLabelName(kind, capsule) {
+  if (kind?.contentLabel) return kind.contentLabel;
+  if (kind?.line?.label) return kind.line.label;
+  return typeStyle(capsule?.type).label || capsule?.type || "kind";
+}
+
+function timelineBlockTextWidth(value) {
+  if (!timelineBlockMeasure.canvas) {
+    timelineBlockMeasure.canvas = document.createElement("canvas");
+    timelineBlockMeasure.context = timelineBlockMeasure.canvas.getContext("2d");
+  }
+  if (!timelineBlockMeasure.context) return String(value || "").length * 6;
+  timelineBlockMeasure.context.font = "800 10px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  return timelineBlockMeasure.context.measureText(String(value || "").toUpperCase()).width;
+}
+
+function timelineBlockLabelFits(label, capsule) {
+  const width = Number(capsule?.width || model.blockWidth || 0);
+  const horizontalChrome = 20;
+  return timelineBlockTextWidth(label) <= Math.max(0, width - horizontalChrome);
+}
+
 function timelineBlockKindLabel(capsule, index) {
+  void index;
   const kind = capsule?.kindModel;
-  if (!kind) return `${timelineBlockTypeName(capsule?.type)} ${index + 1}`;
-  return `${kind.contentKinds[0]?.compact || "KIND"} ${index + 1}`;
+  const labelName = kind ? timelineBlockLabelName(kind, capsule) : timelineBlockTypeName(capsule?.type).toLowerCase();
+  const words = String(labelName || "kind").split(/\s+/).filter(Boolean);
+  for (let length = words.length; length > 0; length -= 1) {
+    const candidate = words.slice(0, length).join(" ");
+    if (timelineBlockLabelFits(candidate, capsule)) return candidate;
+  }
+  return words[0] || "kind";
 }
 
 function timelineTrackBounds(track) {
@@ -2220,17 +2798,21 @@ function updateTimelineDetailDockLayout(count = document.querySelectorAll("[data
 
 function renderTimelineDetailPart(part, partIndex) {
   const attachment = isAttachmentPart(part);
+  const system = isSystemPart(part);
   const rawEventKey = eventAddress(part.nav);
   const lineKind = kindForLineType(rawEventByAddress.get(rawEventKey)?.raw?.type || "");
   const partKind = partContentKind(part, lineKind);
+  const partHeaderLabel = attachment || system ? "Details" : part.type === "tool" ? part.tool || partKind.label : partKind.label;
   const body = attachment
     ? renderAttachmentPartBody(part, rawEventKey, { showRawPayload: false })
+    : system
+    ? renderSystemPartBody(part, rawEventKey)
     : `<pre>${esc(partText(part) || "(empty)")}</pre>`;
   return `
-    <article class="timeline-detail-part ${escAttr(attachment ? "attachment" : typeStyle(part.type).className || part.type || "part")} ${part.state?.is_error ? "error" : ""}" data-raw-event-key="${escAttr(rawEventKey)}">
+    <article class="timeline-detail-part ${escAttr(attachment ? "attachment" : system ? "system" : typeStyle(part.type).className || part.type || "part")} ${part.state?.is_error ? "error" : ""}" data-raw-event-key="${escAttr(rawEventKey)}">
       <header>
         <span>${partIndex + 1}</span>
-        <strong>${esc(part.type === "tool" ? part.tool || partKind.label : partKind.label)}</strong>
+        <strong>${esc(partHeaderLabel)}</strong>
         ${part.type === "tool" && part.tool ? `<code>${esc(partKind.label)}</code>` : ""}
         ${part.nav?.toolUseId ? `<code>${esc(part.nav.toolUseId)}</code>` : ""}
       </header>
@@ -2331,13 +2913,14 @@ function renderTimelineDetailWindow(item, index) {
   const timestamp = formatFullTime(displayCapsule.timestamp);
   const problems = displayCapsule.problems || [];
   const parts = displayCapsule.message?.parts || [];
-  const rawBody = displayCapsule.rawOnly ? rawText(displayCapsule.rawEvent) : "";
   const hasError = timelineDetailHasError(problems, parts);
   const detailId = `timeline-detail-${index}-${domId(displayCapsule.key)}`;
   const initialTab = ["contents", "metadata", "raw"].includes(item.initialTab) ? item.initialTab : "contents";
-  const detailTitle = item.title || (pinned ? "Pinned message" : "Message detail");
+  const titlebarContent = item.mode === "reader-raw"
+    ? `<strong>${esc(item.title || "Raw JSON")}</strong>`
+    : renderTimelineDetailKindStack(kind);
   const bodyHtml = displayCapsule.rawOnly
-    ? `<pre class="timeline-detail-body">${esc(rawBody || "(empty raw event)")}</pre>`
+    ? renderRawEventBody(displayCapsule.rawEvent)
     : `<div class="timeline-detail-parts">
         ${parts.map(renderTimelineDetailPart).join("") || '<p class="muted">(no content)</p>'}
       </div>`;
@@ -2345,29 +2928,30 @@ function renderTimelineDetailWindow(item, index) {
   const rawHtml = renderTimelineDetailRaw(displayCapsule, parts);
   return `
     <article class="timeline-detail-window ${pinned ? "pinned" : "live"}" data-testid="timeline-detail-panel" data-detail-mode="${escAttr(item.mode)}" data-detail-capsule-key="${escAttr(displayCapsule.key)}" data-detail-index="${index}" data-detail-tab="${escAttr(initialTab)}">
-      <div class="timeline-detail-titlebar">
-        <strong>${esc(detailTitle)}</strong>
+      <div class="timeline-detail-titlebar" data-detail-section="titlebar">
+        ${titlebarContent}
         <div class="timeline-detail-actions">
           ${canPin ? `<button type="button" class="timeline-detail-pin ${pinned ? "active" : ""}" data-action="toggle-timeline-detail-pin" data-testid="timeline-detail-pin" aria-pressed="${pinned ? "true" : "false"}" aria-label="${pinned ? "Unpin message detail" : "Pin message detail"}" title="${pinned ? "Unpin" : "Pin"}">${pinIconSvg()}</button>` : ""}
           <button type="button" class="timeline-detail-close" data-action="close-timeline-detail" aria-label="Close timeline detail">&times;</button>
         </div>
       </div>
-      <header class="timeline-detail-header">
-        ${renderTimelineDetailKindStack(kind)}
+      <section class="timeline-detail-switch-section" data-detail-section="switches">
         <div class="timeline-detail-tablist" role="tablist" aria-label="Message detail sections">
           <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="contents" id="${detailId}-contents-tab" aria-controls="${detailId}-contents-panel" aria-selected="${initialTab === "contents" ? "true" : "false"}" ${initialTab === "contents" ? "" : 'tabindex="-1"'}>Contents</button>
           <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="metadata" id="${detailId}-metadata-tab" aria-controls="${detailId}-metadata-panel" aria-selected="${initialTab === "metadata" ? "true" : "false"}" ${initialTab === "metadata" ? "" : 'tabindex="-1"'}>Metadata${hasError ? '<span class="timeline-detail-tab-alert" aria-label="Contains errors">!</span>' : ""}</button>
           <button type="button" class="timeline-detail-tab" role="tab" data-action="timeline-detail-tab" data-detail-tab-target="raw" id="${detailId}-raw-tab" aria-controls="${detailId}-raw-panel" aria-selected="${initialTab === "raw" ? "true" : "false"}" ${initialTab === "raw" ? "" : 'tabindex="-1"'}>Raw</button>
         </div>
-      </header>
-      <section class="timeline-detail-panel-section" data-detail-panel="contents" id="${detailId}-contents-panel" role="tabpanel" aria-labelledby="${detailId}-contents-tab" ${initialTab === "contents" ? "" : "hidden"}>
-        ${bodyHtml}
       </section>
-      <section class="timeline-detail-panel-section" data-detail-panel="metadata" id="${detailId}-metadata-panel" role="tabpanel" aria-labelledby="${detailId}-metadata-tab" ${initialTab === "metadata" ? "" : "hidden"}>
-        ${metadataHtml}
-      </section>
-      <section class="timeline-detail-panel-section" data-detail-panel="raw" id="${detailId}-raw-panel" role="tabpanel" aria-labelledby="${detailId}-raw-tab" ${initialTab === "raw" ? "" : "hidden"}>
-        ${rawHtml}
+      <section class="timeline-detail-active-section" data-detail-section="active-panel">
+        <div class="timeline-detail-panel-section" data-detail-panel="contents" id="${detailId}-contents-panel" role="tabpanel" aria-labelledby="${detailId}-contents-tab" ${initialTab === "contents" ? "" : "hidden"}>
+          ${bodyHtml}
+        </div>
+        <div class="timeline-detail-panel-section" data-detail-panel="metadata" id="${detailId}-metadata-panel" role="tabpanel" aria-labelledby="${detailId}-metadata-tab" ${initialTab === "metadata" ? "" : "hidden"}>
+          ${metadataHtml}
+        </div>
+        <div class="timeline-detail-panel-section" data-detail-panel="raw" id="${detailId}-raw-panel" role="tabpanel" aria-labelledby="${detailId}-raw-tab" ${initialTab === "raw" ? "" : "hidden"}>
+          ${rawHtml}
+        </div>
       </section>
     </article>`;
 }
@@ -2762,20 +3346,6 @@ function copyRawPayload(button) {
   if (payload) copyText(payload, "Copied raw JSON");
 }
 
-function toggleAttachmentSection(button) {
-  const key = button.dataset.sectionKey || "";
-  if (!key) return;
-  if (state.expandedAttachmentSections.has(key)) state.expandedAttachmentSections.delete(key);
-  else state.expandedAttachmentSections.add(key);
-  if (state.layout === "reader") {
-    renderReader();
-    renderMessageIndex();
-    renderReaderActiveState();
-  }
-  state.timelineDetailKey = "";
-  renderGraphStatus();
-}
-
 function layoutMetrics() {
   const styles = window.getComputedStyle(els.readerLayout);
   const layoutRect = els.readerLayout.getBoundingClientRect();
@@ -2946,6 +3516,9 @@ function exposeDebugState() {
       key: capsule.key,
       trackId: capsule.trackId,
       type: capsule.type,
+      lineType: capsule.lineType,
+      contentTypes: capsule.contentTypes,
+      summary: capsule.summary,
       problemCount: capsule.problemCount,
       rawOnly: capsule.rawOnly,
       nav: capsule.nav,
@@ -3054,12 +3627,6 @@ document.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     setTimelineDetailTab(button);
-    return;
-  }
-  if (action === "toggle-attachment-section") {
-    event.preventDefault();
-    event.stopPropagation();
-    toggleAttachmentSection(button);
     return;
   }
   if (action === "toggle-raw-payload") {

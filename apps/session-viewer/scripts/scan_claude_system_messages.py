@@ -25,7 +25,7 @@ from scripts.claude_transcript_scan import (
 
 
 @dataclass
-class AttachmentStats:
+class SystemSubtypeStats:
     count: int = 0
     files: Counter[str] = field(default_factory=Counter)
     fields: dict[str, FieldStats] = field(default_factory=lambda: defaultdict(FieldStats))
@@ -45,20 +45,22 @@ class ScanResult:
     root: Path
     files_scanned: int = 0
     malformed_lines: int = 0
-    attachment_events: int = 0
-    types: dict[str, AttachmentStats] = field(default_factory=lambda: defaultdict(AttachmentStats))
+    system_events: int = 0
+    subtypes: dict[str, SystemSubtypeStats] = field(
+        default_factory=lambda: defaultdict(SystemSubtypeStats)
+    )
 
     def to_json(self) -> dict[str, Any]:
         return {
             "root": str(self.root),
             "filesScanned": self.files_scanned,
             "malformedLines": self.malformed_lines,
-            "attachmentEvents": self.attachment_events,
-            "types": {key: value.to_json() for key, value in sorted(self.types.items())},
+            "systemEvents": self.system_events,
+            "subtypes": {key: value.to_json() for key, value in sorted(self.subtypes.items())},
         }
 
 
-def scan_attachments(
+def scan_system_messages(
     root: Path,
     *,
     max_depth: int = DEFAULT_MAX_DEPTH,
@@ -69,7 +71,7 @@ def scan_attachments(
     scan = scan_jsonl_records(
         root,
         include_raw_only=False,
-        record_filter=lambda record: record.kind.line_kind == "attachment",
+        record_filter=lambda record: record.kind.line_kind == "system",
     )
     result = ScanResult(
         root=scan.root,
@@ -77,11 +79,11 @@ def scan_attachments(
         malformed_lines=scan.malformed_lines,
     )
     for record in scan.records:
-        attachment_type = record.kind.content_kind
-        stats = result.types[attachment_type]
+        subtype = record.kind.content_kind
+        stats = result.subtypes[subtype]
         stats.count += 1
         stats.files[record.location.file] += 1
-        result.attachment_events += 1
+        result.system_events += 1
         if len(stats.examples) < sample_limit:
             stats.examples.append(compact_example(record.payload, sample_chars))
         shape = shape_for_payload(
@@ -100,23 +102,23 @@ def render_text(result: ScanResult, *, field_limit: int) -> str:
     lines = [
         f"Root: {result.root}",
         f"Files scanned: {result.files_scanned}",
-        f"Attachment events: {result.attachment_events}",
+        f"System events: {result.system_events}",
         f"Malformed JSONL lines: {result.malformed_lines}",
         "",
-        "Attachment types:",
+        "System subtypes:",
     ]
-    if not result.types:
+    if not result.subtypes:
         lines.append("  none")
         return "\n".join(lines)
 
-    for attachment_type, stats in sorted(
-        result.types.items(),
+    for subtype, stats in sorted(
+        result.subtypes.items(),
         key=lambda item: (-item[1].count, item[0]),
     ):
-        lines.append(f"  {stats.count:>7}  {attachment_type}")
+        lines.append(f"  {stats.count:>7}  {subtype}")
 
-    for attachment_type, stats in sorted(result.types.items()):
-        lines.extend(["", f"{attachment_type}", "-" * len(attachment_type)])
+    for subtype, stats in sorted(result.subtypes.items()):
+        lines.extend(["", f"{subtype}", "-" * len(subtype)])
         for field_name, field_stats in sorted(stats.fields.items())[:field_limit]:
             type_summary = ", ".join(
                 f"{name}:{count}" for name, count in sorted(field_stats.types.items())
@@ -139,7 +141,7 @@ def render_text(result: ScanResult, *, field_limit: int) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Compatibility wrapper for scanning Claude Code attachment payload shapes.",
+        description="Compatibility wrapper for scanning Claude Code system event shapes.",
     )
     add_source_args(parser)
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
@@ -150,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-parse-json-strings",
         action="store_true",
-        help="Do not inspect JSON-looking string fields such as hook stdout.",
+        help="Do not inspect JSON-looking string fields.",
     )
     return parser
 
@@ -161,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     root = resolve_projects_root(args)
     if not root.exists():
         parser.error(f"Claude transcript path does not exist: {root}")
-    result = scan_attachments(
+    result = scan_system_messages(
         root,
         max_depth=max(0, args.max_depth),
         sample_limit=max(0, args.sample_limit),
