@@ -172,10 +172,20 @@ def test_dashboard_and_api_routes(populated_projects: Path, opencode_data_dir: P
     dashboard = client.get("/")
     assert dashboard.status_code == 200
     assert "Claude Code sessions" in dashboard.text
-    assert "OpenCode sessions" in dashboard.text
+    assert "Open Code sessions" in dashboard.text
     assert "Debug Amplify run" in dashboard.text
+    assert "sources configured when the server starts" in dashboard.text
+    assert "data-testid=\"claude-source-form\"" not in dashboard.text
+    assert "data-testid=\"claude-open-source-button\"" not in dashboard.text
+    assert "data-location-browser" not in dashboard.text
+    assert ">Choose</button>" not in dashboard.text
+    assert "claude_home" not in dashboard.text
+    assert "opencode_data_dir" not in dashboard.text
     assert "claude_q" in dashboard.text
     assert "opencode_q" in dashboard.text
+
+    fs_directories = client.get("/api/fs/directories", params={"path": str(populated_projects.parent)})
+    assert fs_directories.status_code == 404
 
     sessions = client.get("/api/sessions")
     assert sessions.status_code == 200
@@ -185,6 +195,8 @@ def test_dashboard_and_api_routes(populated_projects: Path, opencode_data_dir: P
     assert conversation.status_code == 200
     assert "conversation-data" in conversation.text
     assert "data-testid=\"transcript-root\"" in conversation.text
+    assert 'data-agent="claude"' in conversation.text
+    assert 'data-default-layout="graph"' in conversation.text
 
     api = client.get(f"/api/conversation/{session_id}")
     assert api.status_code == 200
@@ -202,7 +214,7 @@ def test_dashboard_and_api_routes(populated_projects: Path, opencode_data_dir: P
 
     opencode_sessions = client.get(
         "/api/sessions",
-        params={"agent": "opencode", "opencode_data_dir": str(opencode_data_dir)},
+        params={"agent": "opencode"},
     )
     assert opencode_sessions.status_code == 200
     opencode_session_id = opencode_sessions.json()[0]["id"]
@@ -211,28 +223,26 @@ def test_dashboard_and_api_routes(populated_projects: Path, opencode_data_dir: P
         "/",
         params={
             "tab": "opencode",
-            "opencode_data_dir": str(opencode_data_dir),
             "opencode_q": "smoke",
             "claude_q": "Debug",
         },
     )
     assert opencode_dashboard.status_code == 200
     assert "OpenCode smoke session" in opencode_dashboard.text
+    assert "Open Code Home" not in opencode_dashboard.text
+    assert "data-testid=\"opencode-read-path\"" not in opencode_dashboard.text
+    assert "data-testid=\"opencode-open-source-button\"" not in opencode_dashboard.text
     assert f"/conversation/opencode/{opencode_session_id}" in opencode_dashboard.text
     assert "name=\"claude_q\" value=\"Debug\"" in opencode_dashboard.text
 
-    opencode_conversation = client.get(
-        f"/conversation/opencode/{opencode_session_id}",
-        params={"opencode_data_dir": str(opencode_data_dir)},
-    )
+    opencode_conversation = client.get(f"/conversation/opencode/{opencode_session_id}")
     assert opencode_conversation.status_code == 200
     assert "conversation-data" in opencode_conversation.text
     assert "data-testid=\"transcript-root\"" in opencode_conversation.text
+    assert 'data-agent="opencode"' in opencode_conversation.text
+    assert 'data-default-layout="reader"' in opencode_conversation.text
 
-    opencode_api = client.get(
-        f"/api/conversation/opencode/{opencode_session_id}",
-        params={"opencode_data_dir": str(opencode_data_dir)},
-    )
+    opencode_api = client.get(f"/api/conversation/opencode/{opencode_session_id}")
     assert opencode_api.status_code == 200
     assert opencode_api.json()["summary"]["title"] == "OpenCode smoke session"
 

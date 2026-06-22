@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Session Viewer</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/css/base.css?v=20260622-timeline-reuse-v19" />
+    <link rel="stylesheet" href="/static/css/base.css?v=20260622-dashboard-launch-source-v1" />
   </head>
   <body>
     <main class="dashboard-shell">
       <header class="app-header dual-dashboard-header">
         <div>
           <h1>Session Viewer</h1>
-          <p class="source-line">Browse Claude Code and OpenCode sessions from explicit, URL-scoped sources.</p>
+          <p class="source-line">Browse Claude Code and Open Code sessions from sources configured when the server starts.</p>
         </div>
         <nav class="agent-tabs" role="tablist" aria-label="Session source">
           {% for agent, panel in panels.items() %}
@@ -35,34 +35,11 @@
           data-testid="{{ agent }}-panel"
           {% if not panel.active %}hidden{% endif %}
         >
-          <div class="source-card" data-testid="{{ agent }}-source-summary">
-            <div>
-              <h2>{{ panel.label }} source</h2>
-              <p class="source-line">
-                {{ panel.source.source_label }}:
-                <code>{{ panel.source.source_path }}</code><br />
-                Reads:
-                <code>{{ panel.source.display_path }}</code>
-              </p>
-            </div>
-            <span class="count-pill{% if not panel.source.readable %} problem-pill{% endif %}">
-              {{ "readable" if panel.source.readable else "not readable" }}
-            </span>
-          </div>
-
           <form class="session-search tabbed-session-search" method="get" data-testid="{{ agent }}-session-form">
             <input type="hidden" name="tab" value="{{ agent }}" />
             {% if agent == "claude" %}
-              <input type="hidden" name="opencode_data_dir" value="{{ params.opencode_data_dir }}" />
               <input type="hidden" name="opencode_q" value="{{ params.opencode_q }}" />
               <input type="hidden" name="opencode_directory" value="{{ params.opencode_directory }}" />
-              <input
-                name="claude_home"
-                value="{{ panel.source_value }}"
-                placeholder="Claude config directory"
-                aria-label="Claude config directory"
-                data-testid="claude-source-path"
-              />
               <input
                 name="claude_q"
                 value="{{ panel.query }}"
@@ -78,21 +55,13 @@
                 data-testid="directory-filter"
               />
             {% else %}
-              <input type="hidden" name="claude_home" value="{{ params.claude_home }}" />
               <input type="hidden" name="claude_q" value="{{ params.claude_q }}" />
               <input type="hidden" name="claude_directory" value="{{ params.claude_directory }}" />
-              <input
-                name="opencode_data_dir"
-                value="{{ panel.source_value }}"
-                placeholder="OpenCode data directory"
-                aria-label="OpenCode data directory"
-                data-testid="opencode-source-path"
-              />
               <input
                 name="opencode_q"
                 value="{{ panel.query }}"
                 placeholder="Search title, directory, model, or id"
-                aria-label="Search OpenCode sessions"
+                aria-label="Search Open Code sessions"
                 data-testid="opencode-session-search"
               />
               <input
@@ -117,7 +86,7 @@
                 <pre>uv run python -m app --claude-config-dir /path/to/claude-config</pre>
                 <pre>uv run python -m app --projects-dir /path/to/projects</pre>
               {% else %}
-                <h2>No readable OpenCode database</h2>
+                <h2>No readable Open Code database</h2>
                 <p>Resolved database path: <code>{{ panel.source.db_path }}</code></p>
                 <pre>uv run python -m app --opencode-data-dir /path/to/opencode-data</pre>
               {% endif %}

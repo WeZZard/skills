@@ -20,7 +20,7 @@ app.mount("/static", StaticFiles(directory=str(Config.STATIC_DIR)), name="static
 templates = Jinja2Templates(directory=str(Config.TEMPLATES_DIR))
 
 
-AGENTS = {"claude": "Claude Code", "opencode": "OpenCode"}
+AGENTS = {"claude": "Claude Code", "opencode": "Open Code"}
 PORTFOLIO_CATEGORY_ORDER = ("user", "assistant", "attachment", "system", "raw_event")
 PORTFOLIO_CATEGORY_LABELS = {
     "user": "User",
@@ -61,10 +61,8 @@ PORTFOLIO_VIEW_HIERARCHY = (
 )
 DASHBOARD_PARAM_KEYS = (
     "tab",
-    "claude_home",
     "claude_q",
     "claude_directory",
-    "opencode_data_dir",
     "opencode_q",
     "opencode_directory",
 )
@@ -95,9 +93,7 @@ def _agent_or_404(agent: str) -> str:
 
 
 def _source_path(agent: str, params: dict[str, str]) -> str | None:
-    if agent == "claude":
-        return params.get("claude_home") or None
-    return params.get("opencode_data_dir") or None
+    return None
 
 
 def _query(agent: str, params: dict[str, str]) -> str | None:
@@ -158,12 +154,13 @@ def _dashboard_context(request: Request) -> dict[str, Any]:
     for agent, label in AGENTS.items():
         source_path = _source_path(agent, params)
         sessions = _list_sessions(agent, params)
+        source = _source_info(agent, source_path)
         panels[agent] = {
             "agent": agent,
             "label": label,
             "active": params["tab"] == agent,
             "tab_href": _href("/", params, tab=agent),
-            "source": _source_info(agent, source_path),
+            "source": source,
             "query": _query(agent, params) or "",
             "directory": _directory(agent, params) or "",
             "source_value": source_path or "",
@@ -1113,8 +1110,8 @@ def _portfolio_type_tabs(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _portfolio_cards(params: dict[str, str]) -> dict[str, Any]:
-    source_path = params.get("claude_home") or None
-    sessions = claude_store.list_sessions(source_path=source_path)
+    source_path = None
+    sessions = claude_store.list_sessions()
     design_entries = _load_detail_design_entries()
     cards_by_key: dict[str, dict[str, Any]] = {}
     sample_files: set[str] = set()
@@ -1181,18 +1178,14 @@ async def api_sessions(
     agent: str = Query("claude"),
     q: str | None = Query(None),
     directory: str | None = Query(None),
-    claude_home: str | None = Query(None),
-    opencode_data_dir: str | None = Query(None),
 ):
     agent = _agent_or_404(agent)
     params = {
         "tab": agent,
         "claude_q": q if agent == "claude" else "",
         "claude_directory": directory if agent == "claude" else "",
-        "claude_home": claude_home or "",
         "opencode_q": q if agent == "opencode" else "",
         "opencode_directory": directory if agent == "opencode" else "",
-        "opencode_data_dir": opencode_data_dir or "",
     }
     return JSONResponse(content=[s.model_dump(by_alias=True) for s in _list_sessions(agent, params)])
 
@@ -1200,12 +1193,9 @@ async def api_sessions(
 @app.get("/api/directories")
 async def api_directories(
     agent: str = Query("claude"),
-    claude_home: str | None = Query(None),
-    opencode_data_dir: str | None = Query(None),
 ):
     agent = _agent_or_404(agent)
-    source_path = claude_home if agent == "claude" else opencode_data_dir
-    return JSONResponse(content=_list_directories(agent, source_path=source_path))
+    return JSONResponse(content=_list_directories(agent))
 
 
 @app.get("/conversation/{agent}/{session_id}", response_class=HTMLResponse)
@@ -1239,23 +1229,17 @@ async def conversation(request: Request, session_id: str):
 async def api_conversation_agent(
     agent: str,
     session_id: str,
-    claude_home: str | None = Query(None),
-    opencode_data_dir: str | None = Query(None),
 ):
     agent = _agent_or_404(agent)
-    source_path = claude_home if agent == "claude" else opencode_data_dir
-    data = _load_conversation(agent, session_id, source_path=source_path)
+    data = _load_conversation(agent, session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return JSONResponse(content=data.model_dump(mode="json"))
 
 
 @app.get("/api/conversation/{session_id}")
-async def api_conversation(
-    session_id: str,
-    claude_home: str | None = Query(None),
-):
-    data = _load_conversation("claude", session_id, source_path=claude_home)
+async def api_conversation(session_id: str):
+    data = _load_conversation("claude", session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return JSONResponse(content=data.model_dump(mode="json"))

@@ -1942,7 +1942,8 @@ function layoutGraph(viewportWidth = 0) {
 function getLayoutFromUrl() {
   const layout = new URLSearchParams(location.search).get("layout");
   if (["waterfall", "focus", "reader"].includes(layout)) return "reader";
-  return "graph";
+  if (["timeline", "graph"].includes(layout)) return "graph";
+  return els.workbench?.dataset.defaultLayout === "reader" ? "reader" : "graph";
 }
 
 function setLinkStatus(message = "") {

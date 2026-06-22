@@ -187,23 +187,6 @@ pre {
   display: none;
 }
 
-.source-card {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
-  justify-content: space-between;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel);
-  padding: 14px;
-}
-
-.source-card h2 {
-  margin: 0 0 4px;
-  font-size: 15px;
-  line-height: 1.25;
-}
-
 h1 {
   margin: 0 0 6px;
   font-size: 24px;
@@ -227,7 +210,6 @@ h1 {
 
 .tabbed-session-search {
   grid-template-columns:
-    minmax(220px, 1.1fr)
     minmax(180px, 1fr)
     minmax(160px, 0.8fr)
     auto;
@@ -291,6 +273,15 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.session-meta span {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  padding-block: 0;
+  line-height: 1;
+}
+
 .problem-pill,
 .problem-tag {
   color: var(--danger);
@@ -312,14 +303,10 @@ h1 {
     grid-template-columns: 1fr;
   }
 
-  .agent-tabs,
-  .source-card {
+  .agent-tabs {
     justify-content: flex-start;
   }
 
-  .source-card {
-    flex-direction: column;
-  }
 }
 
 .workbench-shell {
