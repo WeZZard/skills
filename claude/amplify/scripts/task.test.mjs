@@ -106,6 +106,8 @@ test("init: state is written under AMPLIFY_STATE_DIR, not elsewhere", () => {
 const invalidCases = {
   "missing required field (acceptance_criteria)": { version: 1, nodes: [{ id: "A", name: "A", deps: [], max_attempts: 1 }] },
   "impl.executor with invalid grammar": { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(bogus)" } })] },
+  "external driver (codex) as implementer": { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(amplify:codex-driver)" } })] },
+  "external driver (kimi) as implementer": { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(amplify:kimi-driver)" } })] },
   "stale audit field rejected": { version: 1, nodes: [task("A", [], { audit: { executor: "subagent(general-purpose)" } })] },
   "duplicate id": { version: 1, nodes: [task("A"), task("A")] },
   "unknown dependency": { version: 1, nodes: [task("A", ["ghost"])] },
@@ -123,6 +125,27 @@ for (const [label, graph] of Object.entries(invalidCases)) {
     assert.match(r.stderr, /task: /);
   });
 }
+
+test("init: external-agent driver as implementer is rejected with an audit-only error and writes no state", () => {
+  const { dir, stateDir } = ws();
+  const bad = init(stateDir, dir, { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(amplify:codex-driver)" } })] });
+  assert.notEqual(bad.status, 0, "external driver as implementer must be rejected");
+  assert.match(bad.stderr, /audit-only|implementer/i);
+  assert.equal(
+    readdirSync(stateDir).filter((f) => f.endsWith(".json")).length, 0,
+    "no state file is written on a rejected graph",
+  );
+});
+
+test("resolve: an external-agent driver is still accepted as an auditor (audit-only, not impl)", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A")] }).stdout.trim();
+  run(stateDir, ["complete", "--id", id, "--node", "A.impl"]);
+  const ok = run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel",
+    panel([{ focus: "semantic", executor: "subagent(amplify:kimi-driver)" }])]);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.deepEqual(ids(ok.stdout), ["A.audit.0"]);
+});
 
 test("scheduling: ready returns only dependency-free .impl", () => {
   const { dir, stateDir } = ws();
@@ -453,6 +476,15 @@ test("field parity: a graph built from the schema's required keys is accepted", 
   const { dir, stateDir } = ws();
   const r = init(stateDir, dir, { version: 1, nodes: [node] });
   assert.equal(r.status, 0, r.stderr);
+});
+
+test("schema: external-agent drivers are excluded from the impl executor pattern", () => {
+  const schema = JSON.parse(readFileSync(SCHEMA, "utf8"));
+  const pattern = schema.$defs.executor.pattern;
+  assert.doesNotMatch(pattern, /codex-driver/, "codex-driver must not be a valid implementer");
+  assert.doesNotMatch(pattern, /kimi-driver/, "kimi-driver must not be a valid implementer");
+  // ordinary implementers stay valid
+  assert.match(pattern, /general-purpose/);
 });
 
 // --- flock holder verbs (hold / release / holds) ---------------------------

@@ -62,6 +62,18 @@ const EXCLUSIVE = {
 };
 function resourceOf(executor) { return EXCLUSIVE[executor] || null; }
 
+// External-agent drivers run as their own process with their own git behavior,
+// which is not synchronized with this repository's state and cannot be bounded.
+// They are therefore audit-only and MUST NOT be an implementer (an implementer
+// writes the working tree). This set is the single source of truth for that
+// restriction; it gates the impl slot only -- the audit panel (cmdResolve) still
+// accepts these executors as read-only auditors.
+const EXTERNAL_IMPL = {
+  "subagent(amplify:codex-driver)": true,
+  "subagent(amplify:kimi-driver)": true,
+};
+function isExternalImpl(executor) { return Boolean(EXTERNAL_IMPL[executor]); }
+
 // ---------------------------------------------------------------------------
 // argument parsing
 // ---------------------------------------------------------------------------
@@ -198,8 +210,13 @@ function validateGraph(graph) {
     if ("impl" in node) {
       if (!node.impl || typeof node.impl !== "object" || Array.isArray(node.impl)) {
         errors.push(`${where}.impl must be an object`);
-      } else if ("executor" in node.impl && (typeof node.impl.executor !== "string" || !EXECUTOR_RE.test(node.impl.executor))) {
-        errors.push(`${where}.impl.executor must match ${EXECUTOR_RE}`);
+      } else if ("executor" in node.impl) {
+        const ex = node.impl.executor;
+        if (typeof ex !== "string" || !EXECUTOR_RE.test(ex)) {
+          errors.push(`${where}.impl.executor must match ${EXECUTOR_RE}`);
+        } else if (isExternalImpl(ex)) {
+          errors.push(`${where}.impl.executor "${ex}" is an external-agent driver, which is audit-only and cannot be an implementer`);
+        }
       }
     }
     if (!Number.isInteger(node.max_attempts) || node.max_attempts < 1) {

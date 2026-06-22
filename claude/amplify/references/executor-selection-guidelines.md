@@ -43,22 +43,21 @@ You **MUST NOT** select `amplify:codex-driver` unless `codex` installed (`$AMPLI
 **When to Use:**
 
 1. **Implementation stage:**
-    1. Building complex modules.
-    2. Involving image generation.
+    1. **NOT ALLOWED.** You **MUST NOT** select an external agent driver (`amplify:codex-driver`, `amplify:kimi-driver`) as an implementer. An external agent runs as its own process with its own, unsynchronized git behavior that can corrupt this repository's git state, so it is read-only / audit-only; the engine rejects an external driver in a task's `impl` slot. Use `subagent(general-purpose)` to implement instead.
 2. **Auditing stage:**
     1. Auditing code edits not limited to compiling tool results but contain semantics understanding.
 
 **How to Use:**
 
-1. You **MUST** prepend the special control-line template. You **MUST** compose its spawning prompt in this exact shape, with the `ROLE` line prepended above the `---` separator and the task or audit prompt below it:
+1. You **MUST** prepend the special control-line template. You **MUST** compose its spawning prompt in this exact shape, with the `ROLE: audit` line prepended above the `---` separator and the audit prompt below it:
 
     ```text
-    ROLE: audit | impl
+    ROLE: audit
     ---
-    <the task or audit prompt for Codex>
+    <the audit prompt for Codex>
     ```
 
-2. **Choose `ROLE`.** Set it from the stage: `audit` for an auditing-stage selection, `impl` for an implementation-stage selection; the driver maps the role to Codex's sandbox internally (see `${CLAUDE_PLUGIN_ROOT}/agents/codex-driver.md`). If omitted or invalid, the driver falls back to `audit` (read-only). There is no model line — Codex runs its own single model.
+2. **`ROLE` is always `audit`.** The driver runs Codex read-only (see `${CLAUDE_PLUGIN_ROOT}/agents/codex-driver.md`); there is no implementation mode. There is no model line — Codex runs its own single model.
 
 ## subagent(amplify:kimi-driver)
 
@@ -67,21 +66,21 @@ You **MUST NOT** select `amplify:kimi-driver` unless `kimi` installed (`$AMPLIFY
 **When to Use:**
 
 1. **Implementation stage:**
-    1. Building things with image understanding.
+    1. **NOT ALLOWED.** You **MUST NOT** select an external agent driver (`amplify:codex-driver`, `amplify:kimi-driver`) as an implementer — for the same reason as `amplify:codex-driver` above; the engine rejects an external driver in a task's `impl` slot. Use `subagent(general-purpose)` to implement instead.
 2. **Auditing stage:**
     1. Auditing with image understanding.
 
 **How to Use:**
 
-1. You **MUST** prepend the special control-line template. You **MUST** compose its spawning prompt in this exact shape, with the `ROLE` line prepended above the `---` separator and the task or audit prompt below it:
+1. You **MUST** prepend the special control-line template. You **MUST** compose its spawning prompt in this exact shape, with the `ROLE: audit` line prepended above the `---` separator and the audit prompt below it:
 
     ```text
-    ROLE: audit | impl
+    ROLE: audit
     ---
-    <the task or audit prompt for Kimi>
+    <the audit prompt for Kimi>
     ```
 
-2. **Choose `ROLE`.** Set it from the stage: `audit` for an auditing-stage selection, `impl` for an implementation-stage selection; the driver maps the role to Kimi's permissions internally (see `${CLAUDE_PLUGIN_ROOT}/agents/kimi-driver.md`). If omitted or invalid, the driver falls back to `audit` (read-only). There is no model line — Kimi runs its own single model.
+2. **`ROLE` is always `audit`.** The driver runs Kimi read-only (see `${CLAUDE_PLUGIN_ROOT}/agents/kimi-driver.md`); there is no implementation mode. There is no model line — Kimi runs its own single model.
 
 ## MCP-use Agents
 

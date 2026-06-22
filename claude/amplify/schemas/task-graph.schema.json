@@ -79,9 +79,9 @@
       }
     },
     "executor": {
-      "description": "Names the subagent that runs a subnode. Grammar: subagent(<name>). The subagent(...) wrapper reserves room for future executor kinds.",
+      "description": "Names the subagent that runs the implementer subnode. Grammar: subagent(<name>). The external-agent drivers (amplify:codex-driver, amplify:kimi-driver) are audit-only and are intentionally excluded here, so a plan cannot assign them as an implementer; auditor executors are chosen at runtime by the amplify:audit-resolver agent, not in this graph. The subagent(...) wrapper reserves room for future executor kinds.",
       "type": "string",
-      "pattern": "^subagent\\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:computer-use-cua|amplify:audit-resolver)\\)$"
+      "pattern": "^subagent\\((general-purpose|explore|plan|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:computer-use-cua|amplify:audit-resolver)\\)$"
     }
   }
 }
