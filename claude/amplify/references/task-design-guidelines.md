@@ -15,9 +15,9 @@
 3. You **MUST** identify which tasks require human verification.
 4. You **MUST** attach a human gate only to a task that is a **source** (no dependencies — its gate is raised at the start of execution) or a **sink** (no other task depends on it — its gate is raised at the end). A start gate verifies a precondition; an end gate verifies a final result.
 5. You **MUST** identify assumptions in the plan and develop the task dependencies based on the dependencies of the assumptions.
-6. You **MUST** sort tasks to match the **testing strategy**.
-7. You **MUST** sort tasks to match the **write-write serialization principle**.
-7. You **MUST** trace each task's **Acceptance Criteria** to the **design aspect** it realizes and the **Verification** case(s) it satisfies, attaching cases by **Scope** per **Appendix B** (Unit → the implementing task; Integration / System / End-to-end(E2E) / Regression → a sink task or the plan's end-to-end check).
+6. You **MUST** decide the tasks' **dependency order** to honor the **testing strategy**.
+7. You **MUST** decide the tasks' **dependency order** to honor the **resource-exclusivity principle**.
+8. You **MUST** trace each task's **Acceptance Criteria** to the **design aspect** it realizes and the **Verification** case(s) it satisfies, attaching cases by **Scope** per **Appendix B** (Unit → the implementing task; Integration / System / End-to-end(E2E) / Regression → a sink task or the plan's end-to-end check).
 
 <TESTING_STRATEGY_EXAMPLES>
 
@@ -26,10 +26,18 @@
 
 </TESTING_STRATEGY_EXAMPLES>
 
-<WRITE_WRITE_SERIALIZATION>
-**Write-write Serialization**
-Any two tasks whose FILES-IN-SCOPE intersect on a path both write MUST have a dependency edge (direct or transitive), so the engine never runs them concurrently — it schedules by declared dependencies, not file locks, and parallel writers clobber. Derive these edges by intersecting each task's written-file set; chain by logical need where one exists, else any fixed order. Omit only when the writes are provably disjoint regions reconciled by a defined merge step.
-</WRITE_WRITE_SERIALIZATION>
+<RESOURCE_EXCLUSIVITY>
+
+**Resource Exclusivity:**
+
+Two tasks contend on an exclusive resource when they cannot run at the same time without corrupting each other's work. Any two such tasks MUST have a dependency edge (direct or transitive), so the engine never runs them concurrently — it schedules by declared dependencies, not by file locks, and concurrent contenders clobber. This is mutual exclusion: either order is acceptable and only overlap is forbidden, so chain by logical need where one exists, else impose any fixed order.
+
+A shared exclusive resource takes two forms:
+
+1. **Write-write conflict** — the tasks' FILES-IN-SCOPE intersect on a path both write. Derive these edges by intersecting each task's written-file set. Omit only when the writes are provably disjoint regions reconciled by a defined merge step.
+2. **Shared workspace under a global lock** — the tasks invoke a tool or workspace that holds a single global lock, so they serialize even when their written files are disjoint. For example a shared build directory: a Cargo target directory (`.cargo-build-lock`) or Xcode DerivedData (`build.db`) serializes every build that uses it. Other cases: one fixed port, one test database, or one simulator/device.
+
+</RESOURCE_EXCLUSIVITY>
 
 **MUST NOT:**
 
