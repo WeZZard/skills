@@ -98,6 +98,19 @@ async function copyPortfolioRaw() {
   }
 }
 
+async function copyPortfolioCardJson(card) {
+  const data = portfolioCardData(card);
+  const rawText = JSON.stringify(data.raw || data, null, 2);
+  if (!rawText) return;
+  try {
+    await navigator.clipboard.writeText(rawText);
+    portfolioStatus(`Copied JSON for ${data.title || card?.dataset.portfolioCardTitle || "portfolio card"}`);
+  } catch {
+    openPortfolioRaw(card);
+    portfolioStatus("Opened raw specimen because clipboard access was unavailable");
+  }
+}
+
 function switchPortfolioDetailTab(button) {
   const card = button.closest(".portfolio-detail-window");
   const target = button.dataset.portfolioDetailTab;
@@ -189,6 +202,7 @@ document.addEventListener("click", (event) => {
   if (action === "raw") openPortfolioRaw(portfolioCardFor(actionElement));
   if (action === "close-raw") closePortfolioRaw();
   if (action === "copy-raw") copyPortfolioRaw();
+  if (action === "copy-card-json") copyPortfolioCardJson(portfolioCardFor(actionElement));
   if (action === "select-card") selectPortfolioCard(portfolioCardFor(actionElement));
   if (action === "toggle-section") togglePortfolioSection(actionElement);
   if (action === "pin-detail") togglePortfolioPin(actionElement);

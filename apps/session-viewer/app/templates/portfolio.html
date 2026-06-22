@@ -5,9 +5,73 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Portfolio Wall | Session Viewer</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/css/base.css?v=20260622-detail-panel-v15" />
+    <link rel="stylesheet" href="/static/css/base.css?v=20260622-waterfall-plan-v16" />
   </head>
   <body>
+    {% macro portfolio_form_blocks(blocks, card) -%}
+      {% if blocks %}
+        <div class="portfolio-detail-form">
+          {% for block in blocks %}
+            {% if block.kind == "image" %}
+              <section class="portfolio-form-block portfolio-form-image">
+                <header><strong>{{ block.label }}</strong></header>
+                <figure>
+                  <img src="{{ block.src }}" alt="{{ card.subtype_label }} attachment preview" loading="lazy" />
+                </figure>
+                {% if block.rows %}
+                  <dl class="portfolio-meta">
+                    {% for row in block.rows %}
+                      <dt>{{ row.label }}</dt>
+                      <dd>{{ row.text }}</dd>
+                    {% endfor %}
+                  </dl>
+                {% endif %}
+              </section>
+            {% elif block.kind == "table" %}
+              <section class="portfolio-form-block portfolio-form-table">
+                <header>
+                  <strong>{{ block.label }}</strong>
+                  {% if block.count_label %}<span>{{ block.count_label }}</span>{% endif %}
+                </header>
+                {% if block.rows %}
+                  <div class="portfolio-table-scroll">
+                    <table>
+                      <thead>
+                        <tr>
+                          {% for column in block.columns %}
+                            <th>{{ column }}</th>
+                          {% endfor %}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {% for row in block.rows %}
+                          <tr>
+                            {% for value in row %}
+                              <td>{{ value }}</td>
+                            {% endfor %}
+                          </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                {% else %}
+                  <p class="portfolio-empty-value">{{ block.empty or "None" }}</p>
+                {% endif %}
+              </section>
+            {% else %}
+              <section class="portfolio-form-row{% if block.multiline %} multiline{% endif %}">
+                <header>
+                  <strong>{{ block.label }}</strong>
+                </header>
+                <pre>{{ block.full }}</pre>
+              </section>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="portfolio-empty-value">No derived content fields are present in this sample.</p>
+      {% endif %}
+    {%- endmacro %}
     <main class="portfolio-shell" data-testid="portfolio-wall">
       <header class="portfolio-header">
         <div>
@@ -146,29 +210,14 @@
                                     <span class="portfolio-subtype-badge {{ card.category }} {{ card.subtype_class }}">{{ card.subtype_label }}</span>
                                   {% endif %}
                                 </div>
-                                <button type="button" class="portfolio-mini-button" data-portfolio-action="raw">Raw</button>
-                              </header>
-                              <div class="portfolio-card-body">
-                                <div class="portfolio-card-title-row">
-                                  <h2>{{ card.title }}</h2>
-                                  <span>{{ card.key }}</span>
+                                <div class="portfolio-card-header-actions">
+                                  <span class="portfolio-card-time">{{ card.time_label }}</span>
+                                  <button type="button" class="portfolio-mini-button" data-portfolio-action="raw">Raw</button>
+                                  <button type="button" class="portfolio-mini-button" data-portfolio-action="copy-card-json">Copy JSON</button>
                                 </div>
-                                <p class="portfolio-summary">{{ card.summary }}</p>
-                                <dl class="portfolio-meta">
-                                  {% for label, value in card.rows %}
-                                    <dt>{{ label }}</dt>
-                                    <dd>{{ value }}</dd>
-                                  {% endfor %}
-                                </dl>
-                                {% for section in card.sections %}
-                                  <section class="portfolio-section">
-                                    <header>
-                                      <span>{{ section.label }}</span>
-                                      <button type="button" data-portfolio-action="toggle-section" aria-expanded="false">Expand</button>
-                                    </header>
-                                    <pre>{{ section.text }}</pre>
-                                  </section>
-                                {% endfor %}
+                              </header>
+                              <div class="portfolio-card-body portfolio-card-form-body">
+                                {{ portfolio_form_blocks(card.waterfall_content_blocks, card) }}
                               </div>
                             </section>
                             <script type="application/json" data-portfolio-card-data>{{ card.interaction | tojson }}</script>
@@ -186,6 +235,7 @@
                             role="button"
                             tabindex="0"
                           >
+                            <div class="portfolio-nav-line">
                               <div class="portfolio-nav-kind">
                                 <span class="portfolio-kind-badge {{ card.category }}">{{ card.category_label }}</span>
                                 {% if card.subtype_label %}
@@ -193,9 +243,9 @@
                                   <span class="portfolio-subtype-badge {{ card.category }} {{ card.subtype_class }}">{{ card.subtype_label }}</span>
                                 {% endif %}
                               </div>
-                              <span class="portfolio-nav-time">Line {{ card.source.line or "?" }}</span>
-                              <strong>{{ card.title }}</strong>
-                              <p>{{ card.summary }}</p>
+                              <span class="portfolio-nav-time">{{ card.time_label }}</span>
+                            </div>
+                              <p>{{ card.waterfall_summary }}</p>
                               <script type="application/json" data-portfolio-card-data>{{ card.interaction | tojson }}</script>
                           </article>
                         {% elif surface.id == "timeline_block" %}
@@ -257,68 +307,7 @@
                               </section>
                               <section class="portfolio-detail-active-panel" data-detail-section="active-panel">
                                 <div class="portfolio-detail-panel" data-portfolio-detail-panel="contents">
-                                  {% if card.content_blocks %}
-                                    <div class="portfolio-detail-form">
-                                      {% for block in card.content_blocks %}
-                                        {% if block.kind == "image" %}
-                                          <section class="portfolio-form-block portfolio-form-image">
-                                            <header><strong>{{ block.label }}</strong></header>
-                                            <figure>
-                                              <img src="{{ block.src }}" alt="{{ card.subtype_label }} attachment preview" loading="lazy" />
-                                            </figure>
-                                            {% if block.rows %}
-                                              <dl class="portfolio-meta">
-                                                {% for row in block.rows %}
-                                                  <dt>{{ row.label }}</dt>
-                                                  <dd>{{ row.text }}</dd>
-                                                {% endfor %}
-                                              </dl>
-                                            {% endif %}
-                                          </section>
-                                        {% elif block.kind == "table" %}
-                                          <section class="portfolio-form-block portfolio-form-table">
-                                            <header>
-                                              <strong>{{ block.label }}</strong>
-                                              {% if block.count_label %}<span>{{ block.count_label }}</span>{% endif %}
-                                            </header>
-                                            {% if block.rows %}
-                                              <div class="portfolio-table-scroll">
-                                                <table>
-                                                  <thead>
-                                                    <tr>
-                                                      {% for column in block.columns %}
-                                                        <th>{{ column }}</th>
-                                                      {% endfor %}
-                                                    </tr>
-                                                  </thead>
-                                                  <tbody>
-                                                    {% for row in block.rows %}
-                                                      <tr>
-                                                        {% for value in row %}
-                                                          <td>{{ value }}</td>
-                                                        {% endfor %}
-                                                      </tr>
-                                                    {% endfor %}
-                                                  </tbody>
-                                                </table>
-                                              </div>
-                                            {% else %}
-                                              <p class="portfolio-empty-value">{{ block.empty or "None" }}</p>
-                                            {% endif %}
-                                          </section>
-                                        {% else %}
-                                          <section class="portfolio-form-row{% if block.multiline %} multiline{% endif %}">
-                                            <header>
-                                              <strong>{{ block.label }}</strong>
-                                            </header>
-                                            <pre>{{ block.full }}</pre>
-                                          </section>
-                                        {% endif %}
-                                      {% endfor %}
-                                    </div>
-                                  {% else %}
-                                    <p class="portfolio-empty-value">No derived content fields are present in this sample.</p>
-                                  {% endif %}
+                                  {{ portfolio_form_blocks(card.content_blocks, card) }}
                                 </div>
                                 <div class="portfolio-detail-panel" data-portfolio-detail-panel="metadata" hidden>
                                   <dl class="portfolio-meta">
@@ -366,6 +355,6 @@
         <pre data-portfolio-raw-output></pre>
       </section>
     </div>
-    <script src="/static/js/portfolio_wall.js?v=20260622-detail-panel-v15"></script>
+    <script src="/static/js/portfolio_wall.js?v=20260622-waterfall-plan-v16"></script>
   </body>
 </html>

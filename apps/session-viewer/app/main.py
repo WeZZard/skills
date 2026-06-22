@@ -36,6 +36,7 @@ DETAIL_DESIGN_ARRAY_PATH = (
     / "message-type-design-array-2026-06-22.json"
 )
 DETAIL_PLAN_DIR = Config.ROOT_DIR / ".plan" / "claude-detail-popup-content-design"
+WATERFALL_PLAN_DIR = Config.ROOT_DIR / ".plan" / "waterfall-message-card-navigation-design"
 PLAN_FIELD_ROW_RE = re.compile(
     r"^\|\s*(?P<label>[^|]+?)\s*\|\s*`(?P<path>[^`]+)`\s*\|.*\|\s*(?P<key>true|false)\s*\|\s*$",
     re.IGNORECASE,
@@ -259,33 +260,112 @@ def _load_detail_design_entries() -> list[dict[str, Any]]:
     return [entry for entry in data if isinstance(entry, dict)]
 
 
-def _plan_key_fields(category: str, subtype: str | None) -> list[dict[str, str]]:
-    if not subtype:
+def _markdown_table_cells(line: str) -> list[str]:
+    stripped = line.strip()
+    if not stripped.startswith("|") or not stripped.endswith("|"):
         return []
-    plan_file = DETAIL_PLAN_DIR / category / f"{subtype}.md"
+    return [cell.strip() for cell in stripped.strip("|").split("|")]
+
+
+def _unquote_field_path(value: str) -> str:
+    value = value.strip()
+    if value.startswith("`") and value.endswith("`") and len(value) >= 2:
+        return value[1:-1]
+    return value
+
+
+def _field_label_from_path(path: str) -> str:
+    parts = [part for part in re.split(r"[.]", path) if part]
+    if not parts:
+        return "Value"
+    leaf = parts[-1].replace("[]", "")
+    if leaf.startswith("<") and leaf.endswith(">") and len(parts) > 1:
+        leaf = parts[-2].replace("[]", "")
+    return _human_label(leaf)
+
+
+def _plan_fields_from_dir(category: str, subtype: str | None, plan_dir: Any) -> list[dict[str, str]]:
+    filename = f"{subtype or 'raw_event'}.md"
+    plan_file = plan_dir / category / filename
     try:
         text = plan_file.read_text(encoding="utf-8")
     except OSError:
         return []
-    fields = []
+
+    fields: list[dict[str, str]] = []
     in_fields = False
     for line in text.splitlines():
-        if line.strip() == "## Fields":
+        stripped = line.strip()
+        if stripped == "## Fields":
             in_fields = True
             continue
-        if in_fields and line.startswith("## "):
+        if in_fields and stripped.startswith("## "):
             break
-        if not in_fields or "Raw Path" in line or re.match(r"^\|\s*-", line):
+        if not in_fields or re.match(r"^\|\s*-", stripped):
             continue
+
+        cells = _markdown_table_cells(line)
+        if not cells:
+            continue
+        normalized = [cell.lower() for cell in cells]
+        if normalized[:2] == ["field", "purpose"]:
+            continue
+
+        if len(cells) >= 5:
+            path = _unquote_field_path(cells[0])
+            key = cells[-2].lower()
+            summary = cells[-1].lower()
+            if key in {"true", "false"} and summary in {"true", "false"}:
+                fields.append(
+                    {
+                        "label": _field_label_from_path(path),
+                        "path": path,
+                        "key": key,
+                        "summary": summary,
+                    }
+                )
+                continue
+
         match = PLAN_FIELD_ROW_RE.match(line)
-        if match and match.group("key").lower() == "true":
+        if match:
             fields.append(
                 {
                     "label": match.group("label").strip(),
                     "path": match.group("path").strip(),
+                    "key": match.group("key").lower(),
+                    "summary": "false",
                 }
             )
     return fields
+
+
+def _plan_key_fields(category: str, subtype: str | None) -> list[dict[str, str]]:
+    if not subtype:
+        return []
+    return [
+        {"label": field["label"], "path": field["path"]}
+        for field in _plan_fields_from_dir(category, subtype, DETAIL_PLAN_DIR)
+        if field.get("key") == "true"
+    ]
+
+
+def _waterfall_plan_fields(category: str, subtype: str | None) -> list[dict[str, str]]:
+    return _plan_fields_from_dir(category, subtype, WATERFALL_PLAN_DIR)
+
+
+def _waterfall_key_fields(category: str, subtype: str | None) -> list[dict[str, str]]:
+    return [
+        {"label": field["label"], "path": field["path"]}
+        for field in _waterfall_plan_fields(category, subtype)
+        if field.get("key") == "true"
+    ]
+
+
+def _waterfall_summary_field(category: str, subtype: str | None) -> dict[str, str] | None:
+    for field in _waterfall_plan_fields(category, subtype):
+        if field.get("summary") == "true":
+            return {"label": field["label"], "path": field["path"]}
+    return None
 
 
 def _entry_sample(entry: dict[str, Any]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
@@ -455,6 +535,51 @@ def _display_value(value: Any, limit: int = 900) -> dict[str, Any]:
     }
 
 
+def _summary_value_for_field(payload: dict[str, Any], field: dict[str, str] | None) -> str:
+    if not field:
+        return ""
+    value = _value_at_path(payload, field["path"])
+    if isinstance(value, list):
+        if not value:
+            return "None"
+        first = value[0]
+        if isinstance(first, dict):
+            return _compact_text(json.dumps(first, ensure_ascii=False, default=str), 180)
+        return _compact_text(first, 180)
+    if isinstance(value, dict):
+        return _compact_text(json.dumps(value, ensure_ascii=False, default=str), 180)
+    return _compact_text(value, 180)
+
+
+def _waterfall_summary_for_plan(
+    category: str,
+    subtype: str | None,
+    payload: dict[str, Any],
+    field: dict[str, str] | None,
+) -> str:
+    if category == "user" and subtype == "image":
+        source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+        media_type = source.get("media_type") or "image"
+        source_type = source.get("type") or "source"
+        data = source.get("data")
+        size = f"{len(data):,} chars" if isinstance(data, str) else "no data"
+        return f"{media_type} | {source_type} | {size}"
+    return _summary_value_for_field(payload, field)
+
+
+def _portfolio_time_label(raw: dict[str, Any] | None, sample: dict[str, Any]) -> str:
+    timestamp = raw.get("timestamp") if isinstance(raw, dict) else None
+    if isinstance(timestamp, str) and timestamp:
+        match = re.search(r"T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?", timestamp)
+        if match:
+            return match.group(1)
+        match = re.search(r"\b(\d{1,2}:\d{2})(?::\d{2})?\b", timestamp)
+        if match:
+            return match.group(1)
+    line = sample.get("line")
+    return f"Line {line}" if line else "Line ?"
+
+
 def _table_cell(value: Any) -> str:
     if value is None:
         return "Not provided"
@@ -480,7 +605,7 @@ def _content_blocks_for_design(payload: dict[str, Any], fields: list[dict[str, s
         blocks.append(
             {
                 "kind": "image",
-                "label": "Data",
+                "label": "Image",
                 "src": f"data:{source.get('media_type')};base64,{source.get('data')}",
                 "rows": [
                     {"label": "Media Type", **_display_value(source.get("media_type"), 120)},
@@ -642,9 +767,11 @@ def _portfolio_interaction_data(card: dict[str, Any], raw: Any) -> dict[str, Any
         "subtypeLabel": card["subtype_label"],
         "title": card["title"],
         "summary": card["summary"],
+        "waterfallSummary": card.get("waterfall_summary", card["summary"]),
         "rows": card["rows"],
         "sections": card["sections"],
         "contentBlocks": card.get("content_blocks", []),
+        "waterfallContentBlocks": card.get("waterfall_content_blocks", []),
         "source": card["source"],
         "raw": _portfolio_json_sample(raw),
     }
@@ -791,8 +918,12 @@ def _portfolio_card_from_part(
         "detail_subtype_label": detail_subtype_label,
         "title": title,
         "summary": summary or "Parsed sample from a real session",
+        "waterfall_summary": summary or "Parsed sample from a real session",
         "rows": rows[:8],
         "sections": sections[:2],
+        "content_blocks": [],
+        "waterfall_content_blocks": [],
+        "time_label": _portfolio_time_label(raw if isinstance(raw, dict) else None, {"line": part.nav.lineNumber if part.nav else None}),
         "source": {
             "session": export.summary.title or export.summary.id,
             "line": part.nav.lineNumber if part.nav else None,
@@ -818,6 +949,8 @@ def _design_entry_card(entry: dict[str, Any]) -> dict[str, Any] | None:
     subtype_label = str(labels.get("subtype") or _human_label(subtype)) if subtype else ""
     key = f"{category}/{subtype}" if subtype else category
     fields = _plan_key_fields(category, subtype)
+    waterfall_fields = _waterfall_key_fields(category, subtype)
+    waterfall_summary_field = _waterfall_summary_field(category, subtype)
     content_blocks = _content_blocks_for_design(payload, fields)
     if fields and not content_blocks:
         alternate_raw, alternate_sample = _find_sample_with_content(entry, fields, sample)
@@ -826,6 +959,15 @@ def _design_entry_card(entry: dict[str, Any]) -> dict[str, Any] | None:
             sample = alternate_sample
             payload = _design_payload(entry, raw)
             content_blocks = _content_blocks_for_design(payload, fields)
+    waterfall_content_blocks = _content_blocks_for_design(payload, waterfall_fields)
+    if waterfall_fields and not waterfall_content_blocks:
+        alternate_raw, alternate_sample = _find_sample_with_content(entry, waterfall_fields, sample)
+        if alternate_raw is not None:
+            raw = alternate_raw
+            sample = alternate_sample
+            payload = _design_payload(entry, raw)
+            content_blocks = _content_blocks_for_design(payload, fields)
+            waterfall_content_blocks = _content_blocks_for_design(payload, waterfall_fields)
     summary_seed = (
         payload.get("text")
         or payload.get("thinking")
@@ -847,6 +989,13 @@ def _design_entry_card(entry: dict[str, Any]) -> dict[str, Any] | None:
     ]
     if isinstance(payload, dict):
         rows.extend(_scalar_rows(payload, omit={"type", "text", "thinking", "content", "stdout", "stderr", "data"}, limit=4))
+    time_label = _portfolio_time_label(raw if isinstance(raw, dict) else None, sample)
+    waterfall_summary = (
+        _waterfall_summary_for_plan(category, subtype, payload, waterfall_summary_field)
+        if isinstance(payload, dict)
+        else ""
+    )
+    waterfall_summary = waterfall_summary or _compact_text(summary_seed) or f"{category_label} sample"
     sections = []
     for block in content_blocks:
         if block.get("kind") == "row" and block.get("multiline"):
@@ -872,9 +1021,12 @@ def _design_entry_card(entry: dict[str, Any]) -> dict[str, Any] | None:
         "detail_subtype_label": detail_subtype_label,
         "title": subtype_label or category_label,
         "summary": _compact_text(summary_seed) or f"{category_label} sample",
+        "waterfall_summary": waterfall_summary,
         "rows": [(label, value) for label, value in rows if value],
         "sections": sections,
         "content_blocks": content_blocks,
+        "waterfall_content_blocks": waterfall_content_blocks,
+        "time_label": time_label,
         "source": {
             "session": sample.get("file", "").split("/")[-1],
             "line": sample.get("line"),
@@ -929,8 +1081,12 @@ def _portfolio_card_from_raw_event(export: ConversationExport, event: Any) -> di
         "detail_subtype_label": "",
         "title": _human_label(raw_type),
         "summary": _compact_text(summary_seed) or "Raw event sample from a real session",
+        "waterfall_summary": _compact_text(summary_seed) or "Raw event sample from a real session",
         "rows": rows[:8],
         "sections": [section for section in sections if section][:2],
+        "content_blocks": [],
+        "waterfall_content_blocks": [],
+        "time_label": _portfolio_time_label(raw, {"line": event.nav.lineNumber}),
         "source": {
             "session": export.summary.title or export.summary.id,
             "line": event.nav.lineNumber,

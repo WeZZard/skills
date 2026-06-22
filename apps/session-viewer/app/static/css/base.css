@@ -839,11 +839,11 @@ h1 {
 }
 
 .portfolio-panel-waterfall_card .portfolio-grid {
-  grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(540px, 1fr));
 }
 
 .portfolio-panel-waterfall_navigation_item .portfolio-grid {
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
 }
 
 .portfolio-panel-timeline_block .portfolio-grid {
@@ -909,7 +909,9 @@ h1 {
 
 .portfolio-kind-stack {
   display: inline-flex;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 5px;
   overflow: hidden;
@@ -918,8 +920,13 @@ h1 {
 .portfolio-kind-badge,
 .portfolio-subtype-badge {
   display: inline-flex;
+  flex: 0 1 auto;
+  width: auto;
+  max-width: 100%;
+  height: 18px;
   min-height: 18px;
   align-items: center;
+  justify-content: center;
   border: 0;
   border-radius: 4px;
   padding: 0 6px;
@@ -995,11 +1002,35 @@ h1 {
   font-weight: 700;
 }
 
+.portfolio-card-header-actions {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: end;
+  gap: 6px;
+}
+
+.portfolio-card-time {
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .portfolio-card-body {
   display: grid;
   align-content: start;
   gap: 10px;
   padding: 12px;
+}
+
+.portfolio-card-form-body {
+  gap: 0;
+}
+
+.portfolio-card-form-body .portfolio-detail-form {
+  gap: 10px;
 }
 
 .portfolio-card-title-row {
@@ -1108,10 +1139,12 @@ h1 {
 
 .portfolio-navigation-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   align-content: start;
-  gap: 5px 8px;
-  min-height: 150px;
+  gap: 8px;
+  height: 74px;
+  min-height: 74px;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border);
@@ -1127,16 +1160,28 @@ h1 {
 
 .portfolio-nav-kind {
   display: inline-flex;
+  flex: 0 1 auto;
   min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 5px;
   overflow: hidden;
 }
 
+.portfolio-nav-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
 .portfolio-nav-time {
   color: var(--faint);
   font-size: 11px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .portfolio-navigation-item strong {
@@ -1148,11 +1193,15 @@ h1 {
 }
 
 .portfolio-navigation-item p {
-  grid-column: 1 / -1;
+  min-width: 0;
   margin: 0;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .portfolio-timeline-specimen {
@@ -1862,7 +1911,7 @@ h1 {
   gap: 5px;
 }
 
-.message {
+article.message {
   position: relative;
   display: grid;
   grid-template-columns: 74px minmax(0, 1fr);
@@ -1889,15 +1938,15 @@ h1 {
   background: var(--border-strong);
 }
 
-.message.user .role-dot {
+article.message.user .role-dot {
   background: #327a55;
 }
 
-.message.assistant .role-dot {
+article.message.assistant .role-dot {
   background: var(--accent);
 }
 
-.message.system .role-dot {
+article.message.system .role-dot {
   background: var(--warning);
 }
 
@@ -1908,13 +1957,13 @@ h1 {
   background: var(--panel);
 }
 
-.message.active > .message-card,
+article.message.active > .message-card,
 .part.active {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.message.selected > .message-card,
+article.message.selected > .message-card,
 .part.selected {
   background: var(--selected);
 }
@@ -1966,7 +2015,7 @@ h1 {
 
 .part.tool.error,
 .part.tool-result.error,
-.message.has-problem > .message-card {
+article.message.has-problem > .message-card {
   border-color: #f1b8b2;
   background: var(--danger-soft);
 }
@@ -2481,8 +2530,12 @@ h1 {
 .message-index-item .message-preview {
   grid-column: 1 / -1;
   grid-row: 2;
+  min-width: 0;
+  overflow: hidden;
   font-size: 12px;
   line-height: 1.28;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .message-index-item.has-problem .message-preview {
@@ -4410,7 +4463,7 @@ h1 {
   }
 
   .nav-item,
-  .message,
+  article.message,
   .part {
     scroll-margin-top: 260px;
   }
@@ -4419,7 +4472,7 @@ h1 {
     position: static;
   }
 
-  .message {
+  article.message {
     grid-template-columns: 44px minmax(0, 1fr);
   }
 
