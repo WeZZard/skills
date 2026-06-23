@@ -137,6 +137,7 @@ class ConversationExport(BaseModel):
     relationship_hint: str | None = None
     relationship_basis: str | None = None
     agent_type: str | None = None
+    agent_description: str | None = None
     raw_events: list[RawEvent] = Field(default_factory=list)
     parser_diagnostics: list[ParserDiagnostic] = Field(default_factory=list)
     problem_flags: list[ProblemFlag] = Field(default_factory=list)

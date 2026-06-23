@@ -121,30 +121,62 @@ def write_opencode_db(data_dir: Path) -> Path:
                 "ses_opencode",
                 1760000000001,
                 1760000000001,
-                {"role": "user", "agent": "build", "modelID": "gpt-5.5", "providerID": "openai"},
+                {
+                    "role": "user",
+                    "agent": "build",
+                    "modelID": "gpt-5.5",
+                    "providerID": "openai",
+                },
             ),
             (
                 "msg_assistant",
                 "ses_opencode",
                 1760000001000,
                 1760000002000,
-                {"role": "assistant", "agent": "build", "modelID": "gpt-5.5", "providerID": "openai", "finish": "stop"},
+                {
+                    "role": "assistant",
+                    "agent": "build",
+                    "modelID": "gpt-5.5",
+                    "providerID": "openai",
+                    "finish": "stop",
+                },
             ),
             (
                 "msg_child",
                 "ses_opencode_child",
                 1760000001200,
                 1760000002000,
-                {"role": "assistant", "agent": "reviewer", "modelID": "gpt-5.5", "providerID": "openai", "finish": "stop"},
+                {
+                    "role": "assistant",
+                    "agent": "reviewer",
+                    "modelID": "gpt-5.5",
+                    "providerID": "openai",
+                    "finish": "stop",
+                },
             ),
         ]
         connection.executemany(
             "insert into message (id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?)",
-            [(mid, sid, created, updated, json.dumps(data)) for mid, sid, created, updated, data in messages],
+            [
+                (mid, sid, created, updated, json.dumps(data))
+                for mid, sid, created, updated, data in messages
+            ],
         )
         parts = [
-            ("part_user_text", "msg_user", "ses_opencode", 1760000000001, {"type": "text", "text": "Investigate OpenCode parser"}),
-            ("part_reasoning", "msg_assistant", "ses_opencode", 1760000001000, {"type": "reasoning", "text": "Need inspect the database rows."}),
+            (
+                "part_user_text",
+                "msg_user",
+                "ses_opencode",
+                1760000000001,
+                {"type": "text", "text": "Investigate OpenCode parser"},
+            ),
+            (
+                "part_reasoning",
+                "msg_assistant",
+                "ses_opencode",
+                1760000001000,
+                {"type": "reasoning", "text": "Need inspect the database rows."},
+            ),
             (
                 "part_tool",
                 "msg_assistant",
@@ -184,14 +216,21 @@ def write_opencode_db(data_dir: Path) -> Path:
                 "msg_assistant",
                 "ses_opencode",
                 1760000001200,
-                {"type": "patch", "patch": "--- a/app/main.py\n+++ b/app/main.py\n@@\n+OpenCode"},
+                {
+                    "type": "patch",
+                    "patch": "--- a/app/main.py\n+++ b/app/main.py\n@@\n+OpenCode",
+                },
             ),
             (
                 "part_file",
                 "msg_assistant",
                 "ses_opencode",
                 1760000001300,
-                {"type": "file", "path": "app/main.py", "content": "from fastapi import FastAPI"},
+                {
+                    "type": "file",
+                    "path": "app/main.py",
+                    "content": "from fastapi import FastAPI",
+                },
             ),
             (
                 "part_compaction",
@@ -224,7 +263,10 @@ def write_opencode_db(data_dir: Path) -> Path:
         ]
         connection.executemany(
             "insert into part (id, message_id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?, ?)",
-            [(pid, mid, sid, created, created, json.dumps(data)) for pid, mid, sid, created, data in parts],
+            [
+                (pid, mid, sid, created, created, json.dumps(data))
+                for pid, mid, sid, created, data in parts
+            ],
         )
         connection.commit()
     finally:
@@ -232,7 +274,15 @@ def write_opencode_db(data_dir: Path) -> Path:
     return db_path
 
 
-def user_event(uuid: str, parent: str | None, session: str, text: str, *, ts: str = "2026-01-01T00:00:00.000Z", agent_id: str | None = None) -> dict[str, Any]:
+def user_event(
+    uuid: str,
+    parent: str | None,
+    session: str,
+    text: str,
+    *,
+    ts: str = "2026-01-01T00:00:00.000Z",
+    agent_id: str | None = None,
+) -> dict[str, Any]:
     return {
         "type": "user",
         "uuid": uuid,
@@ -247,7 +297,15 @@ def user_event(uuid: str, parent: str | None, session: str, text: str, *, ts: st
     }
 
 
-def assistant_tool(uuid: str, parent: str | None, session: str, tool_id: str, name: str = "Task", *, agent_id: str | None = None) -> dict[str, Any]:
+def assistant_tool(
+    uuid: str,
+    parent: str | None,
+    session: str,
+    tool_id: str,
+    name: str = "Task",
+    *,
+    agent_id: str | None = None,
+) -> dict[str, Any]:
     return {
         "type": "assistant",
         "uuid": uuid,
@@ -274,7 +332,17 @@ def assistant_tool(uuid: str, parent: str | None, session: str, tool_id: str, na
     }
 
 
-def tool_result(uuid: str, parent: str | None, session: str, tool_id: str, text: str, *, agent_id: str | None = None, is_error: bool = False, sidechain_agent: str | None = None) -> dict[str, Any]:
+def tool_result(
+    uuid: str,
+    parent: str | None,
+    session: str,
+    tool_id: str,
+    text: str,
+    *,
+    agent_id: str | None = None,
+    is_error: bool = False,
+    sidechain_agent: str | None = None,
+) -> dict[str, Any]:
     event: dict[str, Any] = {
         "type": "user",
         "uuid": uuid,
@@ -288,7 +356,12 @@ def tool_result(uuid: str, parent: str | None, session: str, tool_id: str, text:
         "message": {
             "role": "user",
             "content": [
-                {"type": "tool_result", "tool_use_id": tool_id, "content": text, "is_error": is_error}
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
+                    "content": text,
+                    "is_error": is_error,
+                }
             ],
         },
     }
@@ -333,6 +406,17 @@ def populated_projects(claude_projects: Path) -> Path:
                 sidechain_agent="agent-a",
             ),
         ],
+    )
+    (project / session / "subagents" / "agent-agent-a.meta.json").write_text(
+        json.dumps(
+            {
+                "agentType": "Explore",
+                "description": "Inspect nested task graph behavior",
+                "toolUseId": "toolu_task",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
     )
     write_jsonl(
         project / session / "subagents" / "agent-agent-b.jsonl",

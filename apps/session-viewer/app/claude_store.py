@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.claude_parser import ParsedTranscript, explicit_title_from_event, parse_jsonl_file, title_candidate_from_text
+from app.claude_parser import (
+    ParsedTranscript,
+    explicit_title_from_event,
+    parse_jsonl_file,
+    title_candidate_from_text,
+)
 from app.config import resolve_projects_dir, source_info
 from app.models import (
     ConversationExport,
@@ -26,7 +31,9 @@ class SessionRef:
 
     @property
     def opaque_id(self) -> str:
-        payload = json.dumps({"project": self.project_key, "session": self.session_id}, separators=(",", ":"))
+        payload = json.dumps(
+            {"project": self.project_key, "session": self.session_id}, separators=(",", ":")
+        )
         return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
 
 
@@ -109,13 +116,23 @@ def _summary_from_file(projects_dir: Path, path: Path) -> ConversationSummary:
                 title = title_candidate_from_text(content, raw)
             if title is None and message.get("role") == "user" and isinstance(content, list):
                 for item in content:
-                    if isinstance(item, dict) and item.get("type") == "text" and item.get("text"):
+                    if (
+                        isinstance(item, dict)
+                        and item.get("type") == "text"
+                        and item.get("text")
+                    ):
                         title = title_candidate_from_text(item["text"], raw)
                         if title:
                             break
     subagent_dir = path.parent / session_uuid / "subagents"
-    subagent_count = len(list(subagent_dir.glob("agent-*.jsonl"))) if subagent_dir.exists() else 0
-    subagent_count += len(list(subagent_dir.glob("workflows/*/agent-*.jsonl"))) if subagent_dir.exists() else 0
+    subagent_count = (
+        len(list(subagent_dir.glob("agent-*.jsonl"))) if subagent_dir.exists() else 0
+    )
+    subagent_count += (
+        len(list(subagent_dir.glob("workflows/*/agent-*.jsonl")))
+        if subagent_dir.exists()
+        else 0
+    )
     updated = int(path.stat().st_mtime * 1000)
     latest_ai_title = _latest_ai_title(path)
     return ConversationSummary(
@@ -152,7 +169,9 @@ def list_sessions(
         for path in sorted(project.glob("*.jsonl")):
             # Only root JSONL files are main sessions; subagents live under session folders.
             summary = _summary_from_file(projects_dir, path)
-            haystack = " ".join([summary.title or "", summary.directory or "", summary.model or "", summary.id]).lower()
+            haystack = " ".join(
+                [summary.title or "", summary.directory or "", summary.model or "", summary.id]
+            ).lower()
             if query and query.lower() not in haystack:
                 continue
             if directory and directory.lower() not in (summary.directory or "").lower():
@@ -165,16 +184,20 @@ def list_directories(source_path: str | Path | None = None) -> list[str]:
     return sorted({s.directory for s in list_sessions(source_path=source_path) if s.directory})
 
 
-def _load_meta_type(path: Path) -> str | None:
+def _load_meta(path: Path) -> dict[str, str]:
     meta = path.with_suffix(".meta.json")
     if not meta.exists():
-        return None
+        return {}
     try:
         data = json.loads(meta.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return None
-    value = data.get("agentType")
-    return value if isinstance(value, str) else None
+        return {}
+    out: dict[str, str] = {}
+    for key in ("agentType", "description", "toolUseId"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            out[key] = value.strip()
+    return out
 
 
 def _part_input(part: GenericPart) -> dict[str, Any]:
@@ -192,7 +215,9 @@ def _iter_tool_parts(export: ConversationExport) -> list[tuple[str | None, Gener
     return pairs
 
 
-def _make_export(parsed: ParsedTranscript, *, opaque_id: str, task_link: dict[str, str] | None = None) -> ConversationExport:
+def _make_export(
+    parsed: ParsedTranscript, *, opaque_id: str, task_link: dict[str, str] | None = None
+) -> ConversationExport:
     times = [m.time_created for m in parsed.messages if m.time_created]
     summary = ConversationSummary(
         id=opaque_id if parsed.scope == "main" else f"{opaque_id}:{parsed.agent_path}",
@@ -213,29 +238,43 @@ def _make_export(parsed: ParsedTranscript, *, opaque_id: str, task_link: dict[st
         task_part_id=task_link.get("task_part_id"),
         task_message_id=task_link.get("task_message_id"),
         agent_type=task_link.get("agent_type") or parsed.agent_type or parsed.agent_id,
+        agent_description=task_link.get("agent_description"),
         raw_events=parsed.raw_events,
         parser_diagnostics=parsed.diagnostics,
         nav_index=parsed.nav_index,
     )
 
 
-def _discover_subagents(session_dir: Path, session_uuid: str) -> list[tuple[str, Path, str, str]]:
+def _discover_subagents(
+    session_dir: Path, session_uuid: str
+) -> list[tuple[str, Path, str, str, str | None]]:
     root = session_dir / session_uuid / "subagents"
-    discovered: list[tuple[str, Path, str, str]] = []
+    discovered: list[tuple[str, Path, str, str, str | None]] = []
     if not root.exists():
         return discovered
     for path in sorted(root.glob("agent-*.jsonl")):
         agent_id = path.stem.removeprefix("agent-")
-        discovered.append((agent_id, path, f"main/{agent_id}", _load_meta_type(path) or "subagent"))
+        meta = _load_meta(path)
+        discovered.append(
+            (
+                agent_id,
+                path,
+                f"main/{agent_id}",
+                meta.get("agentType") or "subagent",
+                meta.get("description"),
+            )
+        )
     for path in sorted(root.glob("workflows/*/agent-*.jsonl")):
         agent_id = path.stem.removeprefix("agent-")
         workflow_id = path.parent.name
+        meta = _load_meta(path)
         discovered.append(
             (
                 agent_id,
                 path,
                 f"main/workflow:{workflow_id}/{agent_id}",
-                _load_meta_type(path) or "workflow-subagent",
+                meta.get("agentType") or "workflow-subagent",
+                meta.get("description"),
             )
         )
     return discovered
@@ -248,7 +287,10 @@ def _tool_spawn_agent_id(parsed: ParsedTranscript, part: GenericPart) -> tuple[s
     metadata = state.get("metadata")
     if isinstance(metadata, dict):
         metadata_keys = ("agentId", "sessionId", "session_id")
-        value = next((metadata.get(key) for key in metadata_keys if isinstance(metadata.get(key), str)), None)
+        value = next(
+            (metadata.get(key) for key in metadata_keys if isinstance(metadata.get(key), str)),
+            None,
+        )
         if isinstance(value, str):
             return value, "inferred tool metadata agent id"
     return None
@@ -285,7 +327,11 @@ def _attach_children(
         parent_nav = _first_nav(export)
         child_nav = _first_nav(child)
         if parent_nav and child_nav:
-            new_agent_path = f"{parent_nav.agentPath}/{agent_id}" if parent_nav.agentPath != "main" else f"main/{agent_id}"
+            new_agent_path = (
+                f"{parent_nav.agentPath}/{agent_id}"
+                if parent_nav.agentPath != "main"
+                else f"main/{agent_id}"
+            )
             _rebase_agent_path(child, child_nav.agentPath, new_agent_path)
         child.task_part_id = part.id
         child.task_message_id = message_id
@@ -294,13 +340,24 @@ def _attach_children(
         child.relationship_basis = basis
         child.relationship_hint = f"attached by {basis}"
         child.agent_type = _part_input(part).get("subagent_type") or child.agent_type
+        child.agent_description = (
+            _part_input(part).get("description") or child.agent_description
+        )
         export.subagent_transcripts.append(child)
         used.add(agent_id)
-        _attach_children(child, parsed_by_agent[agent_id], parsed_by_agent, exports_by_agent, used, opaque_id)
+        _attach_children(
+            child, parsed_by_agent[agent_id], parsed_by_agent, exports_by_agent, used, opaque_id
+        )
 
 
 def _first_nav(export: ConversationExport) -> NavAddress | None:
-    return export.messages[0].nav if export.messages else export.raw_events[0].nav if export.raw_events else None
+    return (
+        export.messages[0].nav
+        if export.messages
+        else export.raw_events[0].nav
+        if export.raw_events
+        else None
+    )
 
 
 def _rebase_agent_path(export: ConversationExport, old_prefix: str, new_prefix: str) -> None:
@@ -311,7 +368,7 @@ def _rebase_agent_path(export: ConversationExport, old_prefix: str, new_prefix: 
         if nav and nav.agentPath == old_prefix:
             nav.agentPath = new_prefix
         elif nav and nav.agentPath.startswith(f"{old_prefix}/"):
-            nav.agentPath = f"{new_prefix}{nav.agentPath[len(old_prefix):]}"
+            nav.agentPath = f"{new_prefix}{nav.agentPath[len(old_prefix) :]}"
 
     rewrite(export.parent_task_nav)
     rewrite(export.parent_result_nav)
@@ -345,7 +402,9 @@ def _assign_workflow_siblings(export: ConversationExport) -> None:
 
     visit(export)
     for siblings in workflow_groups.values():
-        ordered = sorted(siblings, key=lambda child: _first_nav(child).agentPath if _first_nav(child) else "")
+        ordered = sorted(
+            siblings, key=lambda child: _first_nav(child).agentPath if _first_nav(child) else ""
+        )
         for index, child in enumerate(ordered):
             previous_child = ordered[index - 1] if index > 0 else None
             next_child = ordered[index + 1] if index + 1 < len(ordered) else None
@@ -369,7 +428,9 @@ def load_conversation(
     main = parse_jsonl_file(main_path, session_id=opaque_id)
     parsed_by_agent: dict[str, ParsedTranscript] = {}
     exports_by_agent: dict[str, ConversationExport] = {}
-    for agent_id, path, agent_path, agent_type in _discover_subagents(main_path.parent, ref.session_id):
+    for agent_id, path, agent_path, agent_type, agent_description in _discover_subagents(
+        main_path.parent, ref.session_id
+    ):
         parsed = parse_jsonl_file(
             path,
             session_id=opaque_id,
@@ -379,7 +440,14 @@ def load_conversation(
         )
         parsed.agent_id = parsed.agent_id or agent_id
         parsed_by_agent[agent_id] = parsed
-        exports_by_agent[agent_id] = _make_export(parsed, opaque_id=opaque_id)
+        exports_by_agent[agent_id] = _make_export(
+            parsed,
+            opaque_id=opaque_id,
+            task_link={
+                "agent_type": agent_type,
+                "agent_description": agent_description or "",
+            },
+        )
 
     root = _make_export(main, opaque_id=opaque_id)
     used: set[str] = set()
@@ -390,7 +458,9 @@ def load_conversation(
             continue
         child.agent_type = child.agent_type or "unattached"
         child.relationship_basis = "no parent match"
-        child.relationship_hint = "unattached transcript; no matching parent Task/Agent result was found"
+        child.relationship_hint = (
+            "unattached transcript; no matching parent Task/Agent result was found"
+        )
         if child.agent_type and "workflow" in child.agent_type:
             child.summary.title = f"Workflow {child.summary.title}"
         root.subagent_transcripts.append(child)

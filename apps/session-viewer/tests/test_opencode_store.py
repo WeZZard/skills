@@ -61,6 +61,70 @@ def test_opencode_loads_readable_conversation(opencode_data_dir: Path):
     assert any(part.nav and part.nav.jsonlFile.endswith("opencode.db") for part in parts)
 
 
+def test_opencode_part_state_is_enriched(opencode_data_dir: Path):
+    export = load_conversation("ses_opencode", source_path=opencode_data_dir)
+    parts = [part for message in export.messages for part in message.parts]
+    by_type = {part.type: part for part in parts}
+
+    text_part = by_type["text"]
+    assert text_part.state["kind"] == "opencode_text"
+    assert "preview" in text_part.state
+
+    reasoning_part = by_type["reasoning"]
+    assert reasoning_part.state["kind"] == "opencode_reasoning"
+    assert "preview" in reasoning_part.state
+
+    tool_parts = [part for part in parts if part.type == "tool"]
+    read_tool = next(part for part in tool_parts if part.state["toolName"] == "read")
+    assert read_tool.state["kind"] == "opencode_tool"
+    assert read_tool.state["callID"] == "call_read_1"
+    assert read_tool.state["title"] == "Read app/main.py"
+    assert read_tool.state["status"] == "completed"
+    assert read_tool.state["input"] == {"filePath": "app/main.py"}
+    assert read_tool.state["output"] == "main.py contents"
+
+    task_tool = next(part for part in tool_parts if part.state["toolName"] == "task")
+    assert task_tool.state["kind"] == "opencode_tool"
+    assert task_tool.state["callID"] == "call_task_1"
+
+    result_parts = [part for part in parts if part.type == "tool_result"]
+    read_result = next(part for part in result_parts if part.state["tool_use_id"] == "call_read_1")
+    assert read_result.state["kind"] == "opencode_tool_result"
+    assert read_result.state["is_error"] is False
+    assert read_result.state["toolName"] == "read"
+
+    patch_part = by_type["patch"]
+    assert patch_part.state["kind"] == "opencode_patch"
+    assert patch_part.state["path"] == "app/main.py"
+    assert patch_part.state["language"] == "py"
+    assert "+OpenCode" in patch_part.state["diff"]
+    assert patch_part.state["added"] == 1
+    assert patch_part.state["removed"] == 0
+
+    file_part = by_type["file"]
+    assert file_part.state["kind"] == "opencode_file"
+    assert file_part.state["path"] == "app/main.py"
+    assert file_part.state["language"] == "py"
+    assert "FastAPI" in file_part.state["content"]
+    assert file_part.state["lineCount"] == 1
+
+    compaction_part = by_type["compaction"]
+    assert compaction_part.state["kind"] == "opencode_compaction"
+    assert compaction_part.state["summary"] == "Compacted prior context"
+
+    step_start = next(part for part in parts if part.type == "step-start")
+    assert step_start.state["kind"] == "opencode_step"
+    assert step_start.state["stepType"] == "start"
+    assert step_start.state["title"] == "Implement parser"
+    assert step_start.state["status"] == "started"
+
+    step_finish = next(part for part in parts if part.type == "step-finish")
+    assert step_finish.state["kind"] == "opencode_step"
+    assert step_finish.state["stepType"] == "finish"
+    assert step_finish.state["title"] == "Parser done"
+    assert step_finish.state["status"] == "completed"
+
+
 def test_opencode_missing_db_source_info(tmp_path: Path):
     source = get_source_info(tmp_path / "missing")
 

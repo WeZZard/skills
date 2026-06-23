@@ -19,6 +19,7 @@ const state = {
   timelineBlockKey: "",
   timelineDetailKey: "",
   pinnedTimelineDetailKeys: [],
+  timelineDetailWindowLayout: null,
   readerRawCapsuleKey: "",
   graphStatusText: "",
   timelineHeaderRenderCount: 0,
@@ -46,12 +47,12 @@ const model = {
   spawnEdges: [],
   width: 1200,
   height: 640,
-  trackWidth: 166,
+  trackWidth: 208,
   blockWidth: 118,
   blockHeight: 26,
   blockStepY: 40,
   timelinePadLeft: 36,
-  timelinePadTop: 96,
+  timelinePadTop: 140,
   timelinePadRight: 560,
   timelinePadBottom: 180,
   timelineLayoutVersion: 0,
@@ -243,6 +244,7 @@ function partText(part) {
   if (!part) return "";
   if (isAttachmentPart(part)) return attachmentSummary(part, eventAddress(part.nav));
   if (isSystemPart(part)) return systemSummary(part, eventAddress(part.nav));
+  if (window.OpenCodeRenderer?.isOpenCodePart(part)) return window.OpenCodeRenderer.openCodePartSummary(part);
   if (part.text) return part.text;
   if (part.state?.input) return text(part.state.input);
   if (part.state?.output) return text(part.state.output);
@@ -1210,6 +1212,9 @@ function partContentKind(part, lineKind) {
     const label = humanSystemSubtype(subtype);
     return { key: subtype || "system", label, compact: compactKindLabel(label, "SYS") };
   }
+  if (window.OpenCodeRenderer?.isOpenCodePart(part)) {
+    return window.OpenCodeRenderer.openCodeContentKind(part, lineKind);
+  }
   if (part?.type === "tool_result") return { key: "tool_result", label: "tool result", compact: "RESULT" };
   if (part?.type === "tool") return { key: "tool", label: "tool call", compact: "TOOL" };
   if (part?.type === "reasoning") return { key: "reasoning", label: "reasoning", compact: "REASON" };
@@ -1734,6 +1739,8 @@ function collectTranscripts(transcript = SESSION_DATA, depth = 0, parentTrackId 
     subagents: transcript.subagent_transcripts || [],
     title: transcriptTitle(transcript, depth === 0 ? "Main transcript" : "Agent transcript"),
     agentType: transcript.agent_type || (depth === 0 ? "main" : "subagent"),
+    agentDescription: transcript.agent_description || "",
+    modelName: transcript.summary?.model || "",
     taskPartId: transcript.task_part_id || "",
     taskMessageId: transcript.task_message_id || "",
     parentTaskNav: transcript.parent_task_nav || null,
@@ -1902,7 +1909,9 @@ function layoutGraph(viewportWidth = 0) {
   model.tracks.forEach((track, laneIndex) => {
     const parentKey = navKeyToCapsuleKey.get(navKey(track.parentTaskNav));
     const parentCapsule = capsuleByKey.get(parentKey);
-    const startY = parentCapsule ? parentCapsule.y : model.timelinePadTop;
+    const startY = parentCapsule
+      ? parentCapsule.y + model.blockStepY
+      : model.timelinePadTop;
     const trackLeft = trackGroupLeft + laneIndex * model.trackWidth;
     track.x = trackLeft;
     track.y = startY;
@@ -2562,6 +2571,30 @@ function renderPart(part, context) {
   const pairedKey = navKeyToCapsuleKey.get(navKey(pairedNav(part))) || "";
   const hasRawPayload = attachment && rawEventByAddress.has(rawEventKey);
   const partHeaderLabel = attachment || system ? "Details" : part.type === "tool" ? part.tool || partKind.label : partKind.label;
+  if (window.OpenCodeRenderer?.isOpenCodePart(part)) {
+    const ocClass = window.OpenCodeRenderer.openCodePartClass(part);
+    const ocKindStack = window.OpenCodeRenderer.renderOpenCodeKindStack(part);
+    const ocBody = window.OpenCodeRenderer.renderOpenCodePart(part, { showInlineResult: true });
+    const ocActions = window.OpenCodeRenderer.renderOpenCodePartHeaderActions(part);
+    const ocTime = part.time_created || context?.message?.time_created;
+    return `
+      <section class="reader-part ${escAttr(ocClass)} ${part.state?.is_error ? "error" : ""}" data-nav-key="${escAttr(key)}" data-raw-event-key="${escAttr(rawEventKey)}" data-opencode-kind="${escAttr(part.state?.kind || "")}" data-testid="${testId}">
+        <header class="part-header opencode-part-header">
+          <div class="part-header-left">
+            ${ocKindStack}
+            ${ocActions}
+          </div>
+          <div class="part-header-actions opencode-part-header-actions">
+            ${ocTime ? `<span class="portfolio-card-time">${esc(formatTime(ocTime))}</span>` : ""}
+            <button type="button" class="portfolio-mini-button opencode-raw-button" data-action="open-reader-raw">Raw</button>
+            <button type="button" class="portfolio-mini-button opencode-copy-button" data-action="copy-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}">Copy JSON</button>
+            ${pairedKey ? `<button data-action="focus-capsule" data-capsule-key="${escAttr(pairedKey)}">${part.type === "tool" ? "Result" : "Call"}</button>` : ""}
+          </div>
+        </header>
+        ${ocBody}
+        ${childTrack ? renderSpawnReference(childTrack, context) : ""}
+      </section>`;
+  }
   const partBody = attachment
     ? renderAttachmentPartBody(part, rawEventKey)
     : system
@@ -2652,17 +2685,52 @@ function scheduleGraphRender() {
 
 function timelineTrackLabel(track, index = 0) {
   if (!track) return "Track";
-  if (track.depth === 0) return "Main";
-  const idSuffix = (track.id || "").split("/").filter(Boolean).at(-1) || "";
-  const agentSuffix = idSuffix.replace(/^agent-/, "").replace(/^subagent-/, "");
-  return agentSuffix ? `Agent ${agentSuffix.slice(0, 8)}` : `Agent ${index}`;
+  if (track.depth === 0) return "MAIN";
+  const genericNames = new Set(["", "agent transcript", "subagent", "workflow-subagent"]);
+  const agentType = String(track.agentType || "").trim();
+  if (!genericNames.has(agentType.toLowerCase())) return agentType;
+  const title = String(trackTitle(track) || "").trim();
+  if (!genericNames.has(title.toLowerCase())) return title;
+  return `Subagent ${index}`;
 }
 
 function timelineTrackMeta(track) {
   if (!track) return "";
   const count = track.capsuleKeys.length.toLocaleString();
-  const problemText = track.problemCount ? ` · ${track.problemCount}` : "";
-  return `${count} blocks${problemText}`;
+  return `${count} blocks`;
+}
+
+function timelineTrackProblemLabel(track) {
+  if (!track?.problemCount) return "";
+  const count = track.problemCount.toLocaleString();
+  return `${count} ${track.problemCount === 1 ? "problem" : "problems"}`;
+}
+
+function timelineTrackDescription(track) {
+  if (!track) return "";
+  if (track.depth === 0) return "";
+  return track.agentDescription || track.title || "";
+}
+
+function compactModelName(value) {
+  const modelName = String(value || "").trim();
+  if (!modelName || modelName.toLowerCase() === "unknown") return "model unavailable";
+  const parts = modelName
+    .replace(/^claude-/, "")
+    .replace(/-\d{8}$/, "")
+    .split("-")
+    .filter(Boolean);
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    if (/^\d+$/.test(parts[index]) && /^\d+$/.test(parts[index + 1])) {
+      parts.splice(index, 2, `${parts[index]}.${parts[index + 1]}`);
+      break;
+    }
+  }
+  return parts.join(" ");
+}
+
+function timelineTrackModel(track) {
+  return compactModelName(track?.modelName || track?.transcript?.summary?.model || "");
 }
 
 function timelineTrackKind(track) {
@@ -2731,13 +2799,27 @@ function renderTimelineHeader() {
   els.timelineHeader.innerHTML = compactHtml(model.tracks
     .map((track, index) => {
       const selected = track.id === state.selectedTrackId;
-      const showKicker = track.depth > 0;
+      const isMainTrack = track.depth === 0;
+      const label = timelineTrackLabel(track, index);
+      const description = timelineTrackDescription(track);
+      const modelLabel = timelineTrackModel(track);
+      const problemLabel = timelineTrackProblemLabel(track);
+      const titleParts = [label, description, modelLabel, problemLabel].filter(Boolean);
       return `
         <div class="timeline-header-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}" style="left:${track.x}px;width:${model.trackWidth}px">
-          <button class="timeline-track-label ${showKicker ? "" : "no-kicker"} ${track.problemCount ? "has-problem" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}" data-testid="timeline-track-label" aria-selected="${selected ? "true" : "false"}" title="${escAttr(timelineTrackLabel(track, index))}">
-            ${showKicker ? `<span class="timeline-track-kicker">${esc(timelineTrackKind(track))}</span>` : ""}
-            <strong>${esc(timelineTrackLabel(track, index))}</strong>
+          <button class="timeline-track-label ${isMainTrack ? "is-main" : ""} ${track.problemCount ? "has-problem" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}" data-testid="timeline-track-label" aria-selected="${selected ? "true" : "false"}" title="${escAttr(titleParts.join(" · "))}">
+            <span class="timeline-track-kicker">${esc(isMainTrack ? "MAIN" : "SUBAGENT")}</span>
+            ${isMainTrack ? "" : `<strong>${esc(label)}</strong>
+            <span class="timeline-track-description">${esc(description || "No description")}</span>`}
+            <span class="timeline-track-model">${esc(modelLabel)}</span>
             <small>${esc(timelineTrackMeta(track))}</small>
+            ${problemLabel ? `<span class="timeline-track-error-icon" aria-label="${escAttr(problemLabel)}" title="${escAttr(problemLabel)}">
+              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                <circle cx="8" cy="8" r="6" />
+                <path d="M8 4.5v4" />
+                <path d="M8 11.5h.01" />
+              </svg>
+            </span>` : ""}
           </button>
         </div>`;
     })
@@ -2831,6 +2913,9 @@ function renderVisibleEdges(left, top, right, bottom) {
       <marker id="timelineArrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
         <path d="M0,0 L0,6 L8,3 z" class="timeline-arrow-head"></path>
       </marker>
+      <marker id="timelineArrowSelected" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L8,3 z" class="timeline-arrow-head selected"></path>
+      </marker>
     </defs>`;
   const paths = model.spawnEdges
     .map((edge) => {
@@ -2838,18 +2923,21 @@ function renderVisibleEdges(left, top, right, bottom) {
       const target = capsuleByKey.get(edge.targetKey);
       if (!source || !target) return "";
       const selected = edge.sourceKey === state.currentCapsuleKey || edge.targetKey === state.currentCapsuleKey || state.selectedGraphKeys.has(edge.sourceKey) || state.selectedGraphKeys.has(edge.targetKey);
-      const edgeLeft = Math.min(source.x, target.x);
-      const edgeRight = Math.max(source.x + source.width, target.x + target.width);
-      const edgeTop = Math.min(source.y, target.y);
-      const edgeBottom = Math.max(source.y + source.height, target.y + target.height);
-      const edgeVisible = edgeRight >= left && edgeLeft <= right && edgeBottom >= top && edgeTop <= bottom;
-      if (!selected && !edgeVisible) return "";
+      const targetTrack = trackById.get(edge.trackId || target.trackId);
       const sx = source.x + source.width;
       const sy = source.y + source.height / 2;
-      const tx = target.x;
-      const ty = target.y + target.height / 2;
-      const curve = Math.max(32, Math.min(96, Math.abs(tx - sx) / 2));
-      return `<path class="timeline-connector ${escAttr(edge.type)} ${selected ? "selected" : ""}" d="M ${sx} ${sy} C ${sx + curve} ${sy}, ${tx - curve} ${ty}, ${tx} ${ty}" marker-end="url(#timelineArrow)" />`;
+      const columnCenterX = targetTrack
+        ? targetTrack.x + targetTrack.width / 2
+        : target.x + target.width / 2;
+      const targetTopCenterY = target.y;
+      const edgeLeft = Math.min(sx, columnCenterX);
+      const edgeRight = Math.max(sx, columnCenterX);
+      const edgeTop = Math.min(sy, targetTopCenterY);
+      const edgeBottom = Math.max(sy, targetTopCenterY);
+      const edgeVisible = edgeRight >= left && edgeLeft <= right && edgeBottom >= top && edgeTop <= bottom;
+      if (!selected && !edgeVisible) return "";
+      const d = `M ${sx} ${sy} L ${columnCenterX} ${sy} L ${columnCenterX} ${targetTopCenterY}`;
+      return `<path class="timeline-connector ${escAttr(edge.type)} ${selected ? "selected" : ""}" data-testid="timeline-spawn-connector" data-source-key="${escAttr(edge.sourceKey)}" data-target-key="${escAttr(edge.targetKey)}" d="${escAttr(d)}" marker-end="url(#${selected ? "timelineArrowSelected" : "timelineArrow"})" />`;
     })
     .join("");
   return defs + paths;
@@ -2884,24 +2972,91 @@ function timelineDetailWindows(capsule) {
   return windows;
 }
 
+function timelineDetailWindowLayoutArea() {
+  const viewportRect = els.graphViewport?.getBoundingClientRect() || {
+    left: 0,
+    top: 0,
+    right: window.innerWidth,
+    width: window.innerWidth,
+  };
+  const headerBeforeHeight = els.timelineHeader
+    ? Number.parseFloat(window.getComputedStyle(els.timelineHeader, "::before").height) || 0
+    : 0;
+  const labelBottoms = [...document.querySelectorAll("[data-testid='timeline-track-label']")]
+    .map((label) => label.getBoundingClientRect().bottom)
+    .filter((value) => Number.isFinite(value));
+  const agentListBottom = Math.max(viewportRect.top + headerBeforeHeight, ...labelBottoms);
+  const gapBelowAgentList = 12;
+  const viewportInset = 24;
+  const left = Math.max(0, viewportRect.left);
+  const right = Math.min(window.innerWidth, Math.max(left, viewportRect.right || window.innerWidth));
+  const top = Math.max(0, agentListBottom + gapBelowAgentList);
+  const height = Math.max(180, window.innerHeight - top - viewportInset);
+  const width = Math.max(0, right - left);
+  return {
+    left,
+    top,
+    right,
+    bottom: top + height,
+    width,
+    height,
+    agentListBottom,
+    gapBelowAgentList,
+  };
+}
+
+function applyTimelineDetailWindowLayout(layout) {
+  if (!els.timelineDetailPanel) return;
+  const { area } = layout;
+  els.timelineDetailPanel.style.setProperty("--timeline-detail-layout-left", `${area.left}px`);
+  els.timelineDetailPanel.style.setProperty("--timeline-detail-layout-top", `${area.top}px`);
+  els.timelineDetailPanel.style.setProperty("--timeline-detail-layout-width", `${area.width}px`);
+  els.timelineDetailPanel.style.setProperty("--timeline-detail-layout-height", `${area.height}px`);
+  els.timelineDetailPanel.style.setProperty("--timeline-detail-window-width", `${layout.panelWidth}px`);
+  els.timelineDetailPanel.style.setProperty("--timeline-detail-window-max-height", `${layout.panelMaxHeight}px`);
+  els.timelineDetailPanel.dataset.columns = String(layout.columns);
+  els.timelineDetailPanel.dataset.rows = String(layout.rows);
+  els.timelineDetailPanel.dataset.windowLayoutAreaLeft = String(Math.round(area.left));
+  els.timelineDetailPanel.dataset.windowLayoutAreaTop = String(Math.round(area.top));
+  els.timelineDetailPanel.dataset.windowLayoutAreaRight = String(Math.round(area.right));
+  els.timelineDetailPanel.dataset.windowLayoutAreaBottom = String(Math.round(area.bottom));
+  els.timelineDetailPanel.dataset.windowLayoutAreaWidth = String(Math.round(area.width));
+  els.timelineDetailPanel.dataset.windowLayoutAreaHeight = String(Math.round(area.height));
+  els.timelineDetailPanel.dataset.windowLayoutAgentListBottom = String(Math.round(area.agentListBottom));
+}
+
 function updateTimelineDetailDockLayout(count = document.querySelectorAll("[data-testid='timeline-detail-panel']").length) {
   if (!els.timelineDetailPanel) return;
   const gap = 12;
   const minPanelWidth = 320;
   const maxPanelWidth = 480;
-  const usableWidth = Math.max(240, window.innerWidth - 48);
-  const usableHeight = Math.max(260, window.innerHeight - 132);
-  const maxColumns = Math.max(1, Math.floor((usableWidth + gap) / (minPanelWidth + gap)));
+  const minPanelHeight = 220;
+  const dockPaddingInline = 24;
+  const dockPaddingBottom = 24;
+  const area = timelineDetailWindowLayoutArea();
+  const usableWidth = Math.max(160, area.width - dockPaddingInline * 2);
+  const usableHeight = Math.max(160, area.height - dockPaddingBottom);
+  const effectiveMinPanelWidth = Math.min(minPanelWidth, Math.max(220, usableWidth));
+  const maxColumns = Math.max(1, Math.floor((usableWidth + gap) / (effectiveMinPanelWidth + gap)));
   const columns = Math.max(1, Math.min(Math.max(count, 1), maxColumns));
   const widthByColumns = Math.floor((usableWidth - gap * (columns - 1)) / columns);
-  const panelWidth = Math.min(maxPanelWidth, Math.max(240, widthByColumns));
+  const panelWidth = Math.min(maxPanelWidth, Math.max(160, widthByColumns));
   const rows = Math.max(1, Math.ceil(Math.max(count, 1) / columns));
   const heightByRows = Math.floor((usableHeight - gap * (rows - 1)) / rows);
-  const panelMaxHeight = Math.min(620, Math.max(240, heightByRows));
-  els.timelineDetailPanel.style.setProperty("--timeline-detail-window-width", `${panelWidth}px`);
-  els.timelineDetailPanel.style.setProperty("--timeline-detail-window-max-height", `${panelMaxHeight}px`);
-  els.timelineDetailPanel.dataset.columns = String(columns);
-  els.timelineDetailPanel.dataset.rows = String(rows);
+  const panelMaxHeight = Math.min(620, Math.max(minPanelHeight, heightByRows));
+  const layout = {
+    area,
+    columns,
+    rows,
+    count,
+    gap,
+    panelWidth,
+    panelMaxHeight,
+    dockPaddingInline,
+    dockPaddingBottom,
+  };
+  state.timelineDetailWindowLayout = layout;
+  applyTimelineDetailWindowLayout(layout);
 }
 
 function renderTimelineDetailPart(part, partIndex) {
@@ -2911,6 +3066,9 @@ function renderTimelineDetailPart(part, partIndex) {
   const lineKind = kindForLineType(rawEventByAddress.get(rawEventKey)?.raw?.type || "");
   const partKind = partContentKind(part, lineKind);
   const partHeaderLabel = attachment || system ? "Details" : part.type === "tool" ? part.tool || partKind.label : partKind.label;
+  if (window.OpenCodeRenderer?.isOpenCodePart(part)) {
+    return window.OpenCodeRenderer.renderOpenCodeTimelinePart(part);
+  }
   if (attachment) return renderPortfolioAttachmentPartBody(part, rawEventKey);
   if (system) return renderPortfolioSystemPartBody(part, rawEventKey);
   if (part.type === "tool") {
@@ -2928,7 +3086,7 @@ function renderTimelineDetailPart(part, partIndex) {
     return renderPortfolioDisplayBody({
       summary: "",
       rows,
-      sections: [textAttachmentSection("output", "Output", partText(part) || "(no payload)", { keepEmpty: true })],
+      sections: [textAttachmentSection("output", part.state?.is_error ? "Error" : "Output", partText(part) || "(no payload)", { keepEmpty: true })],
     }, { includeSummary: false });
   }
   return renderPortfolioFormText(partHeaderLabel || `Part ${partIndex + 1}`, partText(part) || "(empty)", { multiline: true });
@@ -3513,6 +3671,7 @@ function timelineMetrics() {
   const viewportRect = els.graphViewport.getBoundingClientRect();
   const headerRect = els.timelineHeader.getBoundingClientRect();
   const detailDockRect = els.timelineDetailPanel?.getBoundingClientRect() || { left: 0, right: 0, width: 0, height: 0 };
+  const detailWindowLayoutArea = state.timelineDetailWindowLayout?.area || null;
   const mainTrack = model.tracks[0] || null;
   const trackGroupRight = model.timelineTrackGroupLeft + model.timelineTrackSpan;
   const trackGroupCenter = model.timelineTrackGroupLeft + model.timelineTrackSpan / 2;
@@ -3611,6 +3770,7 @@ function timelineMetrics() {
     detailWindows,
     detailDockColumns: Number(els.timelineDetailPanel?.dataset.columns || 0),
     detailDockRows: Number(els.timelineDetailPanel?.dataset.rows || 0),
+    detailWindowLayoutArea,
     pinnedDetailKey: state.pinnedTimelineDetailKeys[0] || "",
     pinnedDetailKeys: [...state.pinnedTimelineDetailKeys],
     detailCapsuleKey: detailWindows[0]?.key || "",

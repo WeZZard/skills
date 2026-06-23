@@ -274,6 +274,55 @@ def _part_label_type(part_type: str) -> str:
     return part_type.replace("_", "-")
 
 
+def _language_from_path(path: str | None) -> str | None:
+    if not path:
+        return None
+    suffix = Path(path).suffix
+    return suffix[1:] if suffix else None
+
+
+def _line_count(value: Any) -> int | None:
+    if isinstance(value, str):
+        return len(value.splitlines())
+    return None
+
+
+def _diff_stats(diff: str) -> dict[str, int]:
+    added = 0
+    removed = 0
+    for line in diff.splitlines():
+        if line.startswith("+") and not line.startswith("+++ "):
+            added += 1
+        elif line.startswith("-") and not line.startswith("--- "):
+            removed += 1
+    return {"added": added, "removed": removed}
+
+
+def _path_from_diff(diff: str) -> str | None:
+    for line in diff.splitlines():
+        if line.startswith("+++ b/"):
+            return line[6:].strip()
+        if line.startswith("+++ "):
+            return line[4:].strip()
+    return None
+
+
+def _patch_path(data: dict[str, Any]) -> str | None:
+    return data.get("path") or data.get("filename") or _path_from_diff(data.get("patch") or "")
+
+
+def _file_path(data: dict[str, Any]) -> str | None:
+    return data.get("path") or data.get("filename") or data.get("name") or None
+
+
+def _compact_text(value: Any, limit: int = 220) -> str:
+    if value is None:
+        return ""
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+    text = " ".join(text.split())
+    return f"{text[: limit - 1]}..." if len(text) > limit else text
+
+
 def _parts_for_row(
     parser: _OpenCodeParser,
     row: dict[str, Any],
@@ -299,6 +348,9 @@ def _parts_for_row(
             }
         )
 
+    def base_state(kind: str, **fields: Any) -> dict[str, Any]:
+        return {"kind": kind, **fields}
+
     if part_type == "text":
         text = _part_text(data, part_type)
         if not text.strip():
@@ -312,19 +364,22 @@ def _parts_for_row(
                 text=text,
                 time_created=row_time,
                 nav=nav,
+                state=base_state("opencode_text", preview=_compact_text(text, 180)),
             )
         ]
 
     if part_type == "reasoning":
+        text = _part_text(data, part_type)
         nav = part_nav("reasoning")
         parser.nav_index.append(nav)
         return [
             GenericPart(
                 id=part_id,
                 type="reasoning",
-                text=_part_text(data, part_type),
+                text=text,
                 time_created=row_time,
                 nav=nav,
+                state=base_state("opencode_reasoning", preview=_compact_text(text, 180)),
             )
         ]
 
@@ -336,6 +391,7 @@ def _parts_for_row(
         output = state.get("output")
         error = state.get("error")
         metadata = state.get("metadata") if isinstance(state.get("metadata"), dict) else data.get("metadata")
+        title = state.get("title") or data.get("title") or tool_name
         tool_nav = part_nav("tool", tool_use_id=tool_call_id)
         parser.nav_index.append(tool_nav)
         parts = [
@@ -345,13 +401,18 @@ def _parts_for_row(
                 tool=tool_name,
                 time_created=row_time,
                 nav=tool_nav,
-                state={
-                    "input": input_data,
-                    "status": status,
-                    "title": state.get("title") or data.get("title") or tool_name,
-                    "rawName": data.get("tool") or tool_name,
-                    "metadata": metadata if isinstance(metadata, dict) else None,
-                },
+                state=base_state(
+                    "opencode_tool",
+                    toolName=tool_name,
+                    callID=tool_call_id,
+                    title=title,
+                    status=status,
+                    input=input_data,
+                    output=output if output is not None else None,
+                    error=error if error is not None else None,
+                    rawName=data.get("tool") or tool_name,
+                    metadata=metadata if isinstance(metadata, dict) else None,
+                ),
             )
         ]
         if output is not None or error is not None or status in {"completed", "error", "failed"}:
@@ -366,15 +427,104 @@ def _parts_for_row(
                     text=result_text if isinstance(result_text, str) else json.dumps(result_text, ensure_ascii=False, indent=2),
                     time_created=row_time,
                     nav=result_nav,
-                    state={
-                        "tool_use_id": tool_call_id,
-                        "is_error": status in {"error", "failed"} or error is not None,
-                        "output": output if error is None else None,
-                        "error": error,
-                    },
+                    state=base_state(
+                        "opencode_tool_result",
+                        tool_use_id=tool_call_id,
+                        toolName=tool_name,
+                        is_error=status in {"error", "failed"} or error is not None,
+                        output=output if error is None else None,
+                        error=error,
+                    ),
                 )
             )
         return parts
+
+    if part_type == "patch":
+        patch_text = data.get("patch") or data.get("diff") or ""
+        path = _patch_path(data)
+        stats = _diff_stats(patch_text) if isinstance(patch_text, str) else {"added": 0, "removed": 0}
+        nav = part_nav("patch")
+        parser.nav_index.append(nav)
+        return [
+            GenericPart(
+                id=part_id,
+                type="patch",
+                text=_part_text(data, part_type),
+                time_created=row_time,
+                nav=nav,
+                state=base_state(
+                    "opencode_patch",
+                    path=path,
+                    language=_language_from_path(path),
+                    diff=patch_text,
+                    added=stats["added"],
+                    removed=stats["removed"],
+                ),
+            )
+        ]
+
+    if part_type == "file":
+        path = _file_path(data)
+        content = data.get("content") or data.get("text") or ""
+        nav = part_nav("file")
+        parser.nav_index.append(nav)
+        return [
+            GenericPart(
+                id=part_id,
+                type="file",
+                text=_part_text(data, part_type),
+                time_created=row_time,
+                nav=nav,
+                state=base_state(
+                    "opencode_file",
+                    path=path,
+                    language=_language_from_path(path),
+                    content=content,
+                    lineCount=_line_count(content),
+                ),
+            )
+        ]
+
+    if part_type == "compaction":
+        nav = part_nav("compaction")
+        parser.nav_index.append(nav)
+        return [
+            GenericPart(
+                id=part_id,
+                type="compaction",
+                text=_part_text(data, part_type),
+                time_created=row_time,
+                nav=nav,
+                state=base_state(
+                    "opencode_compaction",
+                    summary=data.get("summary") or data.get("text") or "",
+                    preTokens=data.get("preTokens"),
+                    postTokens=data.get("postTokens"),
+                ),
+            )
+        ]
+
+    if part_type in {"step-start", "step-finish"}:
+        title = data.get("title") or data.get("name") or data.get("step") or "Step"
+        status = data.get("status") or ("started" if part_type == "step-start" else "finished")
+        nav = part_nav(part_type.replace("_", "-"))
+        parser.nav_index.append(nav)
+        return [
+            GenericPart(
+                id=part_id,
+                type=part_type.replace("_", "-"),
+                text=_part_text(data, part_type),
+                time_created=row_time,
+                nav=nav,
+                state=base_state(
+                    "opencode_step",
+                    stepType="start" if part_type == "step-start" else "finish",
+                    title=title,
+                    status=status,
+                    durationMs=data.get("durationMs"),
+                ),
+            )
+        ]
 
     visible_type = _part_label_type(part_type)
     nav = part_nav(visible_type)
@@ -386,7 +536,7 @@ def _parts_for_row(
             text=_part_text(data, part_type),
             time_created=row_time,
             nav=nav,
-            state={"kind": "opencode_part", "partType": part_type, "payload": data},
+            state=base_state("opencode_part", partType=part_type, payload=data, preview=_compact_text(data, 180)),
         )
     ]
 

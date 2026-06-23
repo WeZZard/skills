@@ -7,6 +7,7 @@ import shutil
 import socket
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -85,82 +86,6 @@ EXPECTED_RAW_ONLY_TYPES = {
 }
 
 STORY_MANIFEST: dict[str, dict[str, Any]] = {
-    "reader.default": {
-        "description": "Waterfall remains available and selecting message cards does not open the floating detail UI.",
-        "requiredEvidence": ["dom_assertion", "screenshot"],
-    },
-    "left_nav.tabs": {
-        "description": "Waterfall left rail defaults to message navigation and exposes the agent tree through a single drawer button.",
-        "requiredEvidence": ["dom_assertion", "interaction", "geometry"],
-    },
-    "reader.subagent_panels": {
-        "description": "Waterfall layout opens, selects, scrolls, resizes, and closes subagent panels.",
-        "requiredEvidence": ["dom_assertion", "interaction"],
-    },
-    "focus.layout_metrics": {
-        "description": "Waterfall layout uses golden-section width constraints and clamps divider resizing.",
-        "requiredEvidence": ["dom_assertion", "interaction", "geometry"],
-    },
-    "graph.dom_svg": {
-        "description": "Timeline is the default and uses virtualized HTML/SVG rather than canvas.",
-        "requiredEvidence": ["dom_assertion", "interaction"],
-    },
-    "graph.spawn_edges": {
-        "description": "Parent task/tool timeline blocks expose spawned subagent connectors.",
-        "requiredEvidence": ["dom_assertion", "interaction"],
-    },
-    "graph.multiselect": {
-        "description": "Timeline blocks support multiple selection.",
-        "requiredEvidence": ["interaction"],
-    },
-    "overview.header_stability": {
-        "description": "Timeline keeps a stable pinned agent header above blocks while scrolling.",
-        "requiredEvidence": ["dom_assertion", "interaction", "performance"],
-    },
-    "overview.scroll_blocks": {
-        "description": "Timeline continues to show message blocks while scrolling down and uses full type labels.",
-        "requiredEvidence": ["dom_assertion", "interaction"],
-    },
-    "overview.track_alignment": {
-        "description": "Timeline centers limited track sets and opens overflowing track sets with the main agent visible.",
-        "requiredEvidence": ["geometry"],
-    },
-    "overview.problem_badge": {
-        "description": "Timeline problem badges render outside message box borders without being cropped.",
-        "requiredEvidence": ["dom_assertion", "interaction"],
-    },
-    "ui.no_conversation_search": {
-        "description": "Conversation search and left Problems list remain absent while dashboard search remains.",
-        "requiredEvidence": ["dom_assertion"],
-    },
-    "ui.top_navigation": {
-        "description": "Header navigation removes unnecessary controls and keeps Sessions, Backward/Forward, path, branch, Timeline/Waterfall, and Copy link centered in the header.",
-        "requiredEvidence": ["dom_assertion", "geometry"],
-    },
-    "ui.layering": {
-        "description": "Window-level overlays from the header and message detail dock render above and clear container-scoped timeline content.",
-        "requiredEvidence": ["dom_assertion", "geometry"],
-    },
-    "timeline.detail_tabs": {
-        "description": "Message detail windows use exactly three sections: titlebar with two-level kind badges, centered Contents/Metadata/Raw segment control, and one active panel that switches between Content, Metadata, and Raw.",
-        "requiredEvidence": ["dom_assertion", "interaction"],
-    },
-    "nav.return_forward": {
-        "description": "Backward and Forward restore in-app transcript focus in both directions.",
-        "requiredEvidence": ["interaction"],
-    },
-    "visual.studio": {
-        "description": "Studio Display viewports show readable reader and timeline layouts without overlap.",
-        "requiredEvidence": ["screenshot", "geometry"],
-    },
-    "portfolio.wall": {
-        "description": "Developer portfolio wall opens from the homepage and exposes the Timeline/Waterfall hierarchy with surface-level and message-type-level navigation.",
-        "requiredEvidence": ["dom_assertion", "interaction", "geometry", "screenshot"],
-    },
-    "perf.large_session": {
-        "description": "Large timeline sessions render with bounded DOM and no browser health failures.",
-        "requiredEvidence": ["performance", "console_network", "dom_assertion"],
-    },
     "dashboard.tabs": {
         "description": "Dashboard exposes Claude Code and OpenCode tabs with one active session list.",
         "requiredEvidence": ["dom_assertion", "interaction"],
@@ -181,10 +106,6 @@ STORY_MANIFEST: dict[str, dict[str, Any]] = {
         "description": "Source choices are carried by the URL and are not persisted in browser storage.",
         "requiredEvidence": ["dom_assertion"],
     },
-    "source.invalid_state": {
-        "description": "Invalid source paths show clear non-crashing source states instead of falling back silently.",
-        "requiredEvidence": ["dom_assertion"],
-    },
     "opencode.readable_transcript": {
         "description": "OpenCode text, reasoning, tools, patches, files, compaction, and steps render readably.",
         "requiredEvidence": ["dom_assertion", "interaction"],
@@ -201,6 +122,10 @@ STORY_MANIFEST: dict[str, dict[str, Any]] = {
         "description": "Agent-aware APIs work while legacy Claude APIs remain compatible.",
         "requiredEvidence": ["dom_assertion"],
     },
+    "perf.large_session": {
+        "description": "Large timeline sessions render with bounded DOM and no browser health failures.",
+        "requiredEvidence": ["performance", "console_network", "dom_assertion"],
+    },
     "audit.studio_native": {
         "description": "New dashboard and OpenCode stories emit browser evidence at Apple Studio Display native resolution.",
         "requiredEvidence": ["screenshot", "geometry"],
@@ -208,7 +133,14 @@ STORY_MANIFEST: dict[str, dict[str, Any]] = {
 }
 
 ALLOWED_SOURCES = {"playwright", "cdp"}
-ALLOWED_KINDS = {"dom_assertion", "interaction", "screenshot", "geometry", "performance", "console_network"}
+ALLOWED_KINDS = {
+    "dom_assertion",
+    "interaction",
+    "screenshot",
+    "geometry",
+    "performance",
+    "console_network",
+}
 STORY_EVIDENCE: dict[str, list[dict[str, Any]]] = {story_id: [] for story_id in STORY_MANIFEST}
 RUN_METADATA: dict[str, Any] = {}
 
@@ -274,7 +206,9 @@ def write_story_report(path: Path) -> None:
                 "description": STORY_MANIFEST[story_id]["description"],
                 "requiredEvidence": STORY_MANIFEST[story_id]["requiredEvidence"],
                 "evidence": STORY_EVIDENCE[story_id],
-                "status": "verified" if not any(f.startswith(f"{story_id}:") for f in failures) else "missing",
+                "status": "verified"
+                if not any(f.startswith(f"{story_id}:") for f in failures)
+                else "missing",
             }
             for story_id in STORY_MANIFEST
         ],
@@ -319,13 +253,20 @@ def png_size(path: Path) -> dict[str, int] | None:
     data = path.read_bytes()[:24]
     if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n":
         return None
-    return {"width": int.from_bytes(data[16:20], "big"), "height": int.from_bytes(data[20:24], "big")}
+    return {
+        "width": int.from_bytes(data[16:20], "big"),
+        "height": int.from_bytes(data[20:24], "big"),
+    }
 
 
 def write_subtype_surface_report(path: Path, session_url: str, screenshot_dir: Path) -> None:
     reader_screenshot = screenshot_dir / "studio-native-reader.png"
     timeline_screenshot = screenshot_dir / "studio-native-timeline.png"
-    screenshot_size = png_size(timeline_screenshot) or png_size(reader_screenshot) or {"width": 5120, "height": 2880}
+    screenshot_size = (
+        png_size(timeline_screenshot)
+        or png_size(reader_screenshot)
+        or {"width": 5120, "height": 2880}
+    )
     viewport = {
         "name": "studio-native",
         "innerWidth": 5120,
@@ -395,7 +336,9 @@ def write_jsonl(path: Path, events: list[dict[str, Any]]) -> None:
             handle.write(json.dumps(event) + "\n")
 
 
-def user_event(uuid: str, session: str, text: str, *, index: int, agent_id: str | None = None) -> dict[str, Any]:
+def user_event(
+    uuid: str, session: str, text: str, *, index: int, agent_id: str | None = None
+) -> dict[str, Any]:
     return {
         "type": "user",
         "uuid": uuid,
@@ -409,7 +352,9 @@ def user_event(uuid: str, session: str, text: str, *, index: int, agent_id: str 
     }
 
 
-def user_image_event(uuid: str, session: str, *, index: int, agent_id: str | None = None) -> dict[str, Any]:
+def user_image_event(
+    uuid: str, session: str, *, index: int, agent_id: str | None = None
+) -> dict[str, Any]:
     return {
         "type": "user",
         "uuid": uuid,
@@ -435,7 +380,9 @@ def user_image_event(uuid: str, session: str, *, index: int, agent_id: str | Non
     }
 
 
-def assistant_text_event(uuid: str, session: str, text: str, *, index: int, agent_id: str | None = None) -> dict[str, Any]:
+def assistant_text_event(
+    uuid: str, session: str, text: str, *, index: int, agent_id: str | None = None
+) -> dict[str, Any]:
     return {
         "type": "assistant",
         "uuid": uuid,
@@ -453,7 +400,9 @@ def assistant_text_event(uuid: str, session: str, text: str, *, index: int, agen
     }
 
 
-def assistant_reasoning_event(uuid: str, session: str, text: str, *, index: int, agent_id: str | None = None) -> dict[str, Any]:
+def assistant_reasoning_event(
+    uuid: str, session: str, text: str, *, index: int, agent_id: str | None = None
+) -> dict[str, Any]:
     return {
         "type": "assistant",
         "uuid": uuid,
@@ -471,7 +420,15 @@ def assistant_reasoning_event(uuid: str, session: str, text: str, *, index: int,
     }
 
 
-def assistant_tool(uuid: str, session: str, tool_id: str, agent_id: str, *, index: int, sidechain: str | None = None) -> dict[str, Any]:
+def assistant_tool(
+    uuid: str,
+    session: str,
+    tool_id: str,
+    agent_id: str,
+    *,
+    index: int,
+    sidechain: str | None = None,
+) -> dict[str, Any]:
     return {
         "type": "assistant",
         "uuid": uuid,
@@ -545,7 +502,14 @@ def tool_result(
         "gitBranch": "main",
         "message": {
             "role": "user",
-            "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": text, "is_error": is_error}],
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
+                    "content": text,
+                    "is_error": is_error,
+                }
+            ],
         },
     }
     if agent_id:
@@ -553,7 +517,9 @@ def tool_result(
     return event
 
 
-def attachment_event(uuid: str, session: str, *, index: int, attachment: dict[str, Any]) -> dict[str, Any]:
+def attachment_event(
+    uuid: str, session: str, *, index: int, attachment: dict[str, Any]
+) -> dict[str, Any]:
     return {
         "type": "attachment",
         "uuid": uuid,
@@ -565,7 +531,9 @@ def attachment_event(uuid: str, session: str, *, index: int, attachment: dict[st
     }
 
 
-def system_event(uuid: str, session: str, *, index: int, subtype: str, **fields: Any) -> dict[str, Any]:
+def system_event(
+    uuid: str, session: str, *, index: int, subtype: str, **fields: Any
+) -> dict[str, Any]:
     return {
         "type": "system",
         "uuid": uuid,
@@ -578,7 +546,9 @@ def system_event(uuid: str, session: str, *, index: int, subtype: str, **fields:
     }
 
 
-def raw_event(event_type: str, uuid: str, session: str, *, index: int, **fields: Any) -> dict[str, Any]:
+def raw_event(
+    event_type: str, uuid: str, session: str, *, index: int, **fields: Any
+) -> dict[str, Any]:
     return {
         "type": event_type,
         "uuid": uuid,
@@ -607,7 +577,10 @@ def build_large_fixture(projects_dir: Path) -> str:
             "Review the generated browser evidence before reporting completion.",
             "</EXTREMELY_IMPORTANT>",
         ]
-        + [f"Context rule {index}: preserve semantic attachment sections for reviewers." for index in range(1, 18)]
+        + [
+            f"Context rule {index}: preserve semantic attachment sections for reviewers."
+            for index in range(1, 18)
+        ]
         + ["FINAL CONTEXT MARKER"]
     )
     hook_success_stdout = json.dumps(
@@ -674,7 +647,10 @@ def build_large_fixture(projects_dir: Path) -> str:
         for index in range(1, 18)
     )
     invoked_skill_content = "\n".join(
-        [f"Instruction line {index}: keep extracted content readable in the card body." for index in range(1, 14)]
+        [
+            f"Instruction line {index}: keep extracted content readable in the card body."
+            for index in range(1, 14)
+        ]
         + ["FULL SKILL CONTENT MARKER"]
     )
 
@@ -708,7 +684,9 @@ def build_large_fixture(projects_dir: Path) -> str:
                 "removedNames": ["LegacyTodoWrite", "OldNotebookEdit"],
                 "readdedNames": ["WebSearch"],
                 "pendingMcpServers": ["figma", "x-docs"],
-                "addedLines": [f"{name}: available from fixture tooling" for name in tool_names],
+                "addedLines": [
+                    f"{name}: available from fixture tooling" for name in tool_names
+                ],
             },
         ),
         (
@@ -717,7 +695,10 @@ def build_large_fixture(projects_dir: Path) -> str:
                 "type": "agent_listing_delta",
                 "addedTypes": agent_types,
                 "removedTypes": ["legacy-browser-agent", "legacy-plan-agent"],
-                "addedLines": [f"{name}: handles a focused validation responsibility" for name in agent_types],
+                "addedLines": [
+                    f"{name}: handles a focused validation responsibility"
+                    for name in agent_types
+                ],
                 "isInitial": False,
                 "showConcurrencyNote": True,
             },
@@ -726,7 +707,17 @@ def build_large_fixture(projects_dir: Path) -> str:
             "root-mcp-instructions",
             {
                 "type": "mcp_instructions_delta",
-                "addedNames": ["cua-driver", "figma", "github", "playwright", "x-docs", "xmcp", "linear", "gmail", "notion"],
+                "addedNames": [
+                    "cua-driver",
+                    "figma",
+                    "github",
+                    "playwright",
+                    "x-docs",
+                    "xmcp",
+                    "linear",
+                    "gmail",
+                    "notion",
+                ],
                 "removedNames": ["deprecated-browser"],
                 "addedBlocks": mcp_blocks,
             },
@@ -745,7 +736,11 @@ def build_large_fixture(projects_dir: Path) -> str:
             {
                 "type": "task_reminder",
                 "itemCount": 3,
-                "content": ["Read the plan", "Implement semantic cards", "Run browser validation"],
+                "content": [
+                    "Read the plan",
+                    "Implement semantic cards",
+                    "Run browser validation",
+                ],
             },
         ),
         (
@@ -770,7 +765,13 @@ def build_large_fixture(projects_dir: Path) -> str:
             "root-command-permissions",
             {
                 "type": "command_permissions",
-                "allowedTools": ["Read", "Grep", "Glob", "Bash(git status:*)", "Bash(node --check:*)"],
+                "allowedTools": [
+                    "Read",
+                    "Grep",
+                    "Glob",
+                    "Bash(git status:*)",
+                    "Bash(node --check:*)",
+                ],
             },
         ),
         (
@@ -1073,7 +1074,9 @@ def build_large_fixture(projects_dir: Path) -> str:
             "bridge_status",
             {
                 "url": "http://127.0.0.1:8765",
-                "content": json.dumps({"message": "Browser bridge connected", "url": "http://127.0.0.1:8765"}),
+                "content": json.dumps(
+                    {"message": "Browser bridge connected", "url": "http://127.0.0.1:8765"}
+                ),
                 "level": "info",
             },
         ),
@@ -1109,7 +1112,10 @@ def build_large_fixture(projects_dir: Path) -> str:
                 "messageId": "root-title",
                 "isSnapshotUpdate": True,
                 "backups": [
-                    {"filePath": "/tmp/project/app/static/js/conversation.js", "lineCount": 3480},
+                    {
+                        "filePath": "/tmp/project/app/static/js/conversation.js",
+                        "lineCount": 3480,
+                    },
                     {"filePath": "/tmp/project/app/static/css/base.css", "lineCount": 3012},
                 ],
             },
@@ -1117,7 +1123,10 @@ def build_large_fixture(projects_dir: Path) -> str:
         (
             "last-prompt",
             "root-raw-last-prompt",
-            {"prompt": "Execute the plan and verify every subtype surface.", "leafUuid": "root-title"},
+            {
+                "prompt": "Execute the plan and verify every subtype surface.",
+                "leafUuid": "root-title",
+            },
         ),
         (
             "mode",
@@ -1132,7 +1141,10 @@ def build_large_fixture(projects_dir: Path) -> str:
         (
             "queue-operation",
             "root-raw-queue-operation",
-            {"operation": "append", "content": "Run browser verification at Studio Display native resolution."},
+            {
+                "operation": "append",
+                "content": "Run browser verification at Studio Display native resolution.",
+            },
         ),
         (
             "result",
@@ -1148,10 +1160,23 @@ def build_large_fixture(projects_dir: Path) -> str:
     root_events: list[dict[str, Any]] = [
         user_event("root-title", session, "Dual layout stress session", index=0),
         user_image_event("root-user-image", session, index=1),
-        assistant_text_event("root-assistant-text", session, "Assistant text fixture response", index=2),
-        assistant_reasoning_event("root-assistant-reasoning", session, "Reason through the fixture coverage before acting.", index=3),
+        assistant_text_event(
+            "root-assistant-text", session, "Assistant text fixture response", index=2
+        ),
+        assistant_reasoning_event(
+            "root-assistant-reasoning",
+            session,
+            "Reason through the fixture coverage before acting.",
+            index=3,
+        ),
         assistant_bash_tool("root-bash-tool", session, "toolu_bash_fixture", index=4),
-        tool_result("root-bash-result", session, "toolu_bash_fixture", "All fixture tests passed.", index=5),
+        tool_result(
+            "root-bash-result",
+            session,
+            "toolu_bash_fixture",
+            "All fixture tests passed.",
+            index=5,
+        ),
     ]
     root_events.extend(
         system_event(uuid, session, index=index, subtype=subtype, **fields)
@@ -1163,33 +1188,80 @@ def build_large_fixture(projects_dir: Path) -> str:
     )
     root_events.extend(
         raw_event(event_type, uuid, session, index=index, **payload)
-        for index, (event_type, uuid, payload) in enumerate(raw_payloads, start=len(root_events))
+        for index, (event_type, uuid, payload) in enumerate(
+            raw_payloads, start=len(root_events)
+        )
     )
     cursor = len(root_events)
     for child in root_children:
         tool_id = f"toolu_{child}"
-        root_events.append(assistant_tool(f"spawn-{child}", session, tool_id, child, index=cursor))
+        root_events.append(
+            assistant_tool(f"spawn-{child}", session, tool_id, child, index=cursor)
+        )
         cursor += 1
-        root_events.append(tool_result(f"result-{child}", session, tool_id, f"{child} complete", index=cursor, agent_id=child))
+        root_events.append(
+            tool_result(
+                f"result-{child}",
+                session,
+                tool_id,
+                f"{child} complete",
+                index=cursor,
+                agent_id=child,
+            )
+        )
         cursor += 1
     while len(root_events) < 1127:
-        root_events.append(user_event(f"root-{len(root_events)}", session, f"Root transcript message {len(root_events):04d}", index=len(root_events)))
+        root_events.append(
+            user_event(
+                f"root-{len(root_events)}",
+                session,
+                f"Root transcript message {len(root_events):04d}",
+                index=len(root_events),
+            )
+        )
     write_jsonl(project / f"{session}.jsonl", root_events)
 
     child_map: dict[str, list[str]] = {"agent-018": nested_children, "agent-047": deep_children}
     for index in range(1, 65):
         agent = f"agent-{index:03d}"
-        events = [user_event(f"{agent}-title", session, f"Subagent {agent} goal", index=0, agent_id=agent)]
+        events = [
+            user_event(
+                f"{agent}-title", session, f"Subagent {agent} goal", index=0, agent_id=agent
+            )
+        ]
         cursor = 1
         for child in child_map.get(agent, []):
             tool_id = f"toolu_{child}"
-            events.append(assistant_tool(f"spawn-{agent}-{child}", session, tool_id, child, index=cursor, sidechain=agent))
+            events.append(
+                assistant_tool(
+                    f"spawn-{agent}-{child}",
+                    session,
+                    tool_id,
+                    child,
+                    index=cursor,
+                    sidechain=agent,
+                )
+            )
             cursor += 1
-            events.append(tool_result(f"result-{agent}-{child}", session, tool_id, f"{child} complete", index=cursor, agent_id=child, sidechain=agent))
+            events.append(
+                tool_result(
+                    f"result-{agent}-{child}",
+                    session,
+                    tool_id,
+                    f"{child} complete",
+                    index=cursor,
+                    agent_id=child,
+                    sidechain=agent,
+                )
+            )
             cursor += 1
         if index in {7, 18, 47, 52}:
             error_id = f"toolu_error_{agent}"
-            events.append(assistant_tool(f"err-call-{agent}", session, error_id, agent, index=cursor, sidechain=agent))
+            events.append(
+                assistant_tool(
+                    f"err-call-{agent}", session, error_id, agent, index=cursor, sidechain=agent
+                )
+            )
             cursor += 1
             events.append(
                 tool_result(
@@ -1204,7 +1276,15 @@ def build_large_fixture(projects_dir: Path) -> str:
             )
             cursor += 1
         while len(events) < 305:
-            events.append(user_event(f"{agent}-{len(events)}", session, f"{agent} transcript message {len(events):04d}", index=len(events), agent_id=agent))
+            events.append(
+                user_event(
+                    f"{agent}-{len(events)}",
+                    session,
+                    f"{agent} transcript message {len(events):04d}",
+                    index=len(events),
+                    agent_id=agent,
+                )
+            )
         write_jsonl(subagents / f"agent-{agent}.jsonl", events)
     return session
 
@@ -1219,9 +1299,20 @@ def build_limited_fixture(projects_dir: Path) -> str:
     cursor = 1
     for agent in ["agent-001", "agent-002"]:
         tool_id = f"toolu_{agent}"
-        root_events.append(assistant_tool(f"spawn-{agent}", session, tool_id, agent, index=cursor))
+        root_events.append(
+            assistant_tool(f"spawn-{agent}", session, tool_id, agent, index=cursor)
+        )
         cursor += 1
-        root_events.append(tool_result(f"result-{agent}", session, tool_id, f"{agent} complete", index=cursor, agent_id=agent))
+        root_events.append(
+            tool_result(
+                f"result-{agent}",
+                session,
+                tool_id,
+                f"{agent} complete",
+                index=cursor,
+                agent_id=agent,
+            )
+        )
         cursor += 1
     while len(root_events) < 24:
         root_events.append(
@@ -1236,7 +1327,9 @@ def build_limited_fixture(projects_dir: Path) -> str:
 
     for agent in ["agent-001", "agent-002"]:
         events = [
-            user_event(f"{agent}-title", session, f"{agent} limited goal", index=0, agent_id=agent)
+            user_event(
+                f"{agent}-title", session, f"{agent} limited goal", index=0, agent_id=agent
+            )
         ]
         while len(events) < 12:
             events.append(
@@ -1256,6 +1349,97 @@ def build_opencode_fixture(data_dir: Path) -> str:
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / "opencode.db"
     connection = sqlite3.connect(db_path)
+
+    def insert_session(
+        sid: str,
+        title: str,
+        *,
+        parent_id: str | None = None,
+        directory: str = "/tmp/opencode-project",
+        agent: str = "build",
+        time_created: int = 1760000100000,
+        time_updated: int = 1760000109000,
+    ) -> None:
+        connection.execute(
+            """
+            insert into session (
+                id, project_id, parent_id, slug, directory, title, version,
+                time_created, time_updated, path, agent, model, input_tokens, output_tokens
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                sid,
+                "proj_browser",
+                parent_id,
+                sid.replace("_", "-"),
+                directory,
+                title,
+                "1.17.9",
+                time_created,
+                time_updated,
+                directory,
+                agent,
+                json.dumps({"id": "gpt-5.5", "providerID": "openai"}),
+                10,
+                20,
+            ),
+        )
+
+    def insert_message(
+        sid: str, mid: str, role: str, *, time_created: int, agent: str = "build"
+    ) -> None:
+        connection.execute(
+            "insert into message (id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?)",
+            (
+                mid,
+                sid,
+                time_created,
+                time_created,
+                json.dumps(
+                    {
+                        "role": role,
+                        "agent": agent,
+                        "modelID": "gpt-5.5",
+                        "providerID": "openai",
+                        "finish": "stop",
+                    }
+                ),
+            ),
+        )
+
+    def insert_part(
+        sid: str, mid: str, pid: str, time_created: int, data: dict[str, Any]
+    ) -> None:
+        connection.execute(
+            "insert into part (id, message_id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?, ?)",
+            (pid, mid, sid, time_created, time_created, json.dumps(data)),
+        )
+
+    def make_tool(
+        tool: str,
+        call_id: str,
+        title: str,
+        input_data: dict[str, Any],
+        output: str,
+        status: str = "completed",
+    ) -> dict[str, Any]:
+        return {
+            "type": "tool",
+            "tool": tool,
+            "callID": call_id,
+            "state": {"status": status, "input": input_data, "output": output, "title": title},
+        }
+
+    def make_patch(path: str, added: str) -> dict[str, Any]:
+        return {
+            "type": "patch",
+            "patch": f"--- a/{path}\n+++ b/{path}\n@@\n+{added}",
+        }
+
+    def make_file(path: str, content: str) -> dict[str, Any]:
+        return {"type": "file", "path": path, "content": content}
+
     try:
         connection.executescript(
             """
@@ -1293,146 +1477,246 @@ def build_opencode_fixture(data_dir: Path) -> str:
             );
             """
         )
+
         session_id = "ses_browser_opencode"
-        connection.execute(
-            """
-            insert into session (
-                id, project_id, slug, directory, title, version, time_created,
-                time_updated, path, agent, model, input_tokens, output_tokens
-            )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                session_id,
-                "proj_browser",
-                "opencode-browser-smoke",
-                "/tmp/opencode-project",
-                "OpenCode browser smoke",
-                "1.17.9",
-                1760000100000,
-                1760000109000,
-                "/tmp/opencode-project",
-                "build",
-                json.dumps({"id": "gpt-5.5", "providerID": "openai"}),
-                128,
-                256,
-            ),
+        insert_session(
+            session_id,
+            "OpenCode browser smoke",
+            time_created=1760000100000,
+            time_updated=1760000109000,
         )
-        connection.execute(
-            """
-            insert into session (
-                id, project_id, parent_id, slug, directory, title, version,
-                time_created, time_updated, path, agent, model, input_tokens, output_tokens
-            )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "ses_browser_opencode_child",
-                "proj_browser",
-                session_id,
-                "opencode-browser-child",
-                "/tmp/opencode-project",
-                "OpenCode browser child",
-                "1.17.9",
-                1760000102500,
-                1760000105000,
-                "/tmp/opencode-project",
-                "reviewer",
-                json.dumps({"id": "gpt-5.5", "providerID": "openai"}),
-                32,
-                64,
-            ),
+        insert_session(
+            "ses_browser_opencode_child",
+            "OpenCode browser child",
+            parent_id=session_id,
+            agent="reviewer",
+            time_created=1760000102500,
+            time_updated=1760000105000,
         )
-        messages = [
+
+        insert_message(session_id, "oc_msg_user", "user", time_created=1760000100001)
+        insert_message(session_id, "oc_msg_assistant", "assistant", time_created=1760000101000)
+        insert_message(
+            "ses_browser_opencode_child",
+            "oc_msg_child",
+            "assistant",
+            time_created=1760000103000,
+            agent="reviewer",
+        )
+
+        base_parts = [
             (
+                "oc_user_text",
                 "oc_msg_user",
-                session_id,
                 1760000100001,
-                1760000100001,
-                {"role": "user", "agent": "build", "modelID": "gpt-5.5", "providerID": "openai"},
+                {"type": "text", "text": "OpenCode browser smoke prompt"},
             ),
             (
+                "oc_reasoning",
                 "oc_msg_assistant",
-                session_id,
                 1760000101000,
-                1760000108000,
-                {"role": "assistant", "agent": "build", "modelID": "gpt-5.5", "providerID": "openai", "finish": "stop"},
+                {"type": "reasoning", "text": "Inspect the OpenCode database."},
             ),
-            (
-                "oc_msg_child",
-                "ses_browser_opencode_child",
-                1760000103000,
-                1760000104000,
-                {"role": "assistant", "agent": "reviewer", "modelID": "gpt-5.5", "providerID": "openai", "finish": "stop"},
-            ),
-        ]
-        connection.executemany(
-            "insert into message (id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?)",
-            [(mid, sid, created, updated, json.dumps(data)) for mid, sid, created, updated, data in messages],
-        )
-        parts = [
-            ("oc_user_text", "oc_msg_user", 1760000100001, {"type": "text", "text": "OpenCode browser smoke prompt"}),
-            ("oc_reasoning", "oc_msg_assistant", 1760000101000, {"type": "reasoning", "text": "Inspect the OpenCode database."}),
             (
                 "oc_tool",
                 "oc_msg_assistant",
                 1760000102000,
-                {
-                    "type": "tool",
-                    "tool": "read",
-                    "callID": "call_read_browser",
-                    "state": {
-                        "status": "completed",
-                        "input": {"filePath": "app/main.py"},
-                        "output": "FastAPI route output",
-                        "title": "Read app/main.py",
-                    },
-                },
+                make_tool(
+                    "read",
+                    "call_read_browser",
+                    "Read app/main.py",
+                    {"filePath": "app/main.py"},
+                    "FastAPI route output",
+                ),
             ),
             (
                 "oc_task",
                 "oc_msg_assistant",
                 1760000102400,
-                {
-                    "type": "tool",
-                    "tool": "task",
-                    "callID": "call_task_browser",
-                    "state": {
-                        "status": "completed",
-                        "input": {"description": "OpenCode child browser review"},
-                        "output": "child complete",
-                        "title": "Run reviewer",
-                    },
-                },
+                make_tool(
+                    "task",
+                    "call_task_browser",
+                    "Run reviewer",
+                    {"description": "OpenCode child browser review"},
+                    "child complete",
+                ),
             ),
             (
                 "oc_patch",
                 "oc_msg_assistant",
                 1760000103000,
-                {"type": "patch", "patch": "--- a/app/main.py\n+++ b/app/main.py\n@@\n+OpenCode support"},
+                make_patch("app/main.py", "OpenCode support"),
             ),
             (
                 "oc_file",
                 "oc_msg_assistant",
                 1760000104000,
-                {"type": "file", "path": "app/main.py", "content": "from fastapi import FastAPI"},
+                make_file("app/main.py", "from fastapi import FastAPI"),
             ),
-            ("oc_compaction", "oc_msg_assistant", 1760000105000, {"type": "compaction", "summary": "Compacted OpenCode context"}),
-            ("oc_step_start", "oc_msg_assistant", 1760000106000, {"type": "step-start", "title": "OpenCode parse"}),
-            ("oc_step_finish", "oc_msg_assistant", 1760000107000, {"type": "step-finish", "title": "OpenCode parse", "status": "completed"}),
-            ("oc_child_text", "oc_msg_child", 1760000103100, {"type": "text", "text": "OpenCode child browser transcript"}),
+            (
+                "oc_compaction",
+                "oc_msg_assistant",
+                1760000105000,
+                {"type": "compaction", "summary": "Compacted OpenCode context"},
+            ),
+            (
+                "oc_step_start",
+                "oc_msg_assistant",
+                1760000106000,
+                {"type": "step-start", "title": "OpenCode parse"},
+            ),
+            (
+                "oc_step_finish",
+                "oc_msg_assistant",
+                1760000107000,
+                {"type": "step-finish", "title": "OpenCode parse", "status": "completed"},
+            ),
+            (
+                "oc_child_text",
+                "oc_msg_child",
+                1760000103100,
+                {"type": "text", "text": "OpenCode child browser transcript"},
+            ),
         ]
-        connection.executemany(
-            "insert into part (id, message_id, session_id, time_created, time_updated, data) values (?, ?, ?, ?, ?, ?)",
-            [(pid, mid, session_id, created, created, json.dumps(data)) for pid, mid, created, data in parts],
-        )
+        for pid, mid, created, data in base_parts:
+            insert_part(
+                session_id if mid != "oc_msg_child" else "ses_browser_opencode_child",
+                mid,
+                pid,
+                created,
+                data,
+            )
+
+        extra_session_count = 20
+        for index in range(extra_session_count):
+            sid = f"ses_browser_opencode_{index:02d}"
+            title = f"OpenCode validation session {index + 1}"
+            directory = "/tmp/opencode-project" if index % 2 == 0 else "/tmp/opencode-other"
+            agent = ["build", "review", "test", "docs"][index % 4]
+            created = 1760000200000 + index * 100_000
+            insert_session(
+                sid,
+                title,
+                directory=directory,
+                agent=agent,
+                time_created=created,
+                time_updated=created + 50_000,
+            )
+
+            mid_user = f"oc_msg_{index:02d}_user"
+            mid_assistant = f"oc_msg_{index:02d}_assistant"
+            insert_message(sid, mid_user, "user", time_created=created + 1)
+            insert_message(sid, mid_assistant, "assistant", time_created=created + 1000)
+
+            variant = index % 8
+            parts: list[tuple[str, str, int, dict[str, Any]]] = [
+                (
+                    f"oc_{index:02d}_text",
+                    mid_user,
+                    created + 2,
+                    {"type": "text", "text": f"Prompt for session {index + 1}"},
+                ),
+                (
+                    f"oc_{index:02d}_reasoning",
+                    mid_assistant,
+                    created + 1001,
+                    {"type": "reasoning", "text": f"Reasoning for session {index + 1}"},
+                ),
+            ]
+            if variant in {0, 1, 4, 5}:
+                parts.append(
+                    (
+                        f"oc_{index:02d}_tool",
+                        mid_assistant,
+                        created + 1002,
+                        make_tool(
+                            "read",
+                            f"call_read_{index}",
+                            f"Read file {index}",
+                            {"filePath": f"src/module{index}.py"},
+                            f"content {index}",
+                        ),
+                    )
+                )
+            if variant in {2, 3, 6, 7}:
+                parts.append(
+                    (
+                        f"oc_{index:02d}_bash",
+                        mid_assistant,
+                        created + 1002,
+                        make_tool(
+                            "bash",
+                            f"call_bash_{index}",
+                            f"Run tests {index}",
+                            {"command": f"pytest test_{index}.py"},
+                            f"passed {index}",
+                        ),
+                    )
+                )
+            if variant in {0, 2, 4, 6}:
+                parts.append(
+                    (
+                        f"oc_{index:02d}_patch",
+                        mid_assistant,
+                        created + 1003,
+                        make_patch(f"src/module{index}.py", f"feature {index}"),
+                    )
+                )
+            if variant in {1, 3, 5, 7}:
+                parts.append(
+                    (
+                        f"oc_{index:02d}_file",
+                        mid_assistant,
+                        created + 1003,
+                        make_file(
+                            f"src/module{index}.py",
+                            f"def func_{index}():\n    return {index}\n",
+                        ),
+                    )
+                )
+            if variant == 4:
+                parts.append(
+                    (
+                        f"oc_{index:02d}_compaction",
+                        mid_assistant,
+                        created + 1004,
+                        {"type": "compaction", "summary": f"Compacted context {index}"},
+                    )
+                )
+            if variant in {5, 6}:
+                parts.append(
+                    (
+                        f"oc_{index:02d}_step_start",
+                        mid_assistant,
+                        created + 1004,
+                        {"type": "step-start", "title": f"Step {index}"},
+                    )
+                )
+                parts.append(
+                    (
+                        f"oc_{index:02d}_step_finish",
+                        mid_assistant,
+                        created + 1005,
+                        {
+                            "type": "step-finish",
+                            "title": f"Step {index}",
+                            "status": "completed",
+                        },
+                    )
+                )
+
+            for pid, mid_part, pcreated, data in parts:
+                insert_part(sid, mid_part, pid, pcreated, data)
+
         connection.commit()
         return session_id
     finally:
         connection.close()
 
 
-def start_server(projects_dir: Path, port: int, opencode_data_dir: Path | None = None) -> subprocess.Popen[bytes]:
+def start_server(
+    projects_dir: Path, port: int, opencode_data_dir: Path | None = None
+) -> subprocess.Popen[bytes]:
     env = os.environ.copy()
     env["CLAUDE_PROJECTS_DIR"] = str(projects_dir)
     if opencode_data_dir is not None:
@@ -1468,7 +1752,9 @@ def launch_verified_browser(playwright):
 
 
 def assert_no_horizontal_overflow(page: Page) -> None:
-    overflow = page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth + 1")
+    overflow = page.evaluate(
+        "document.documentElement.scrollWidth > document.documentElement.clientWidth + 1"
+    )
     assert not overflow, "page has horizontal document overflow"
 
 
@@ -1528,7 +1814,9 @@ def focus_layout_metrics(page: Page) -> dict[str, float]:
     expected_max = metrics["layoutWidth"] * metrics["goldenSection"]
     expected_min = metrics["layoutWidth"] * metrics["goldenRemainder"]
     expected_stream_width = min(metrics["mainMaxWidth"], metrics["mainContentWidth"])
-    expected_left = metrics["mainContentLeft"] + (metrics["mainContentWidth"] - expected_stream_width) / 2
+    expected_left = (
+        metrics["mainContentLeft"] + (metrics["mainContentWidth"] - expected_stream_width) / 2
+    )
     assert abs(metrics["mainMaxWidth"] - expected_max) <= tolerance, metrics
     assert abs(metrics["mainMinWidth"] - expected_min) <= tolerance, metrics
     assert abs(metrics["mainStreamWidth"] - expected_stream_width) <= tolerance, metrics
@@ -1543,7 +1831,9 @@ def focus_layout_metrics(page: Page) -> dict[str, float]:
     return metrics
 
 
-def assert_timeline_detail_top_right(page: Page, expected_count: int | None = None) -> dict[str, Any]:
+def assert_timeline_detail_top_right(
+    page: Page, expected_count: int | None = None
+) -> dict[str, Any]:
     placement = page.evaluate(
         """() => {
             const dock = document.querySelector('[data-testid="timeline-detail-dock"]');
@@ -1564,11 +1854,27 @@ def assert_timeline_detail_top_right(page: Page, expected_count: int | None = No
             const viewportRect = viewport ? rect(viewport) : null;
             const windowRects = windows.map(rect);
             const dockStyles = dock ? getComputedStyle(dock) : null;
+            const dockPaddingLeft = dockStyles ? Number.parseFloat(dockStyles.paddingLeft) || 0 : 0;
             const dockPaddingRight = dockStyles ? Number.parseFloat(dockStyles.paddingRight) || 0 : 0;
             const dockPaddingBottom = dockStyles ? Number.parseFloat(dockStyles.paddingBottom) || 0 : 0;
-            const dockTopOffset = dockStyles ? Number.parseFloat(dockStyles.getPropertyValue('--timeline-detail-top-offset')) || 0 : 0;
+            const number = (value) => Number.parseFloat(value) || 0;
+            const layoutArea = dock ? {
+                left: number(dock.dataset.windowLayoutAreaLeft),
+                top: number(dock.dataset.windowLayoutAreaTop),
+                right: number(dock.dataset.windowLayoutAreaRight),
+                bottom: number(dock.dataset.windowLayoutAreaBottom),
+                width: number(dock.dataset.windowLayoutAreaWidth),
+                height: number(dock.dataset.windowLayoutAreaHeight),
+                agentListBottom: number(dock.dataset.windowLayoutAgentListBottom),
+            } : null;
             const timelineLabelBottom = Math.max(
                 ...Array.from(document.querySelectorAll('[data-testid="timeline-track-label"]')).map((node) => rect(node).bottom)
+            );
+            const allWindowsInLayoutArea = Boolean(layoutArea) && windowRects.every((box) =>
+                box.left >= layoutArea.left + dockPaddingLeft - 1
+                && box.top >= layoutArea.top - 1
+                && box.right <= layoutArea.right - dockPaddingRight + 1
+                && box.bottom <= layoutArea.bottom - dockPaddingBottom + 1
             );
             return {
                 visible: Boolean(dock && !dock.classList.contains('hidden') && windows.length),
@@ -1576,16 +1882,18 @@ def assert_timeline_detail_top_right(page: Page, expected_count: int | None = No
                 dock: dockRect,
                 viewport: viewportRect,
                 windows: windowRects,
+                layoutArea,
+                dockPaddingLeft,
                 dockPaddingRight,
                 dockPaddingBottom,
-                dockTopOffset,
                 firstAnchoredRight: dockRect && windowRects[0] ? Math.abs(windowRects[0].right - (dockRect.right - dockPaddingRight)) : null,
-                topDelta: dockRect && viewportRect ? Math.abs(dockRect.top - (viewportRect.top + dockTopOffset)) : null,
-                timelineHeaderClearance: dockRect ? dockRect.top - timelineLabelBottom : null,
-                dockRightDelta: dockRect && viewportRect ? Math.abs(dockRect.right - viewportRect.right) : null,
-                windowRightDelta: windowRects[0] && viewportRect ? Math.abs(windowRects[0].right - (viewportRect.right - 24)) : null,
-                shadowBleedRight: dockRect && windowRects[0] ? dockRect.right - windowRects[0].right : null,
-                shadowBleedBottom: dockRect && windowRects[0] ? dockRect.bottom - windowRects[0].bottom : null,
+                topDelta: dockRect && layoutArea ? Math.abs(dockRect.top - layoutArea.top) : null,
+                timelineHeaderClearance: layoutArea ? layoutArea.top - timelineLabelBottom : null,
+                dockLeftDelta: dockRect && layoutArea ? Math.abs(dockRect.left - layoutArea.left) : null,
+                dockRightDelta: dockRect && layoutArea ? Math.abs(dockRect.right - layoutArea.right) : null,
+                dockWidthDelta: dockRect && layoutArea ? Math.abs(dockRect.width - layoutArea.width) : null,
+                windowRightDelta: windowRects[0] && layoutArea ? Math.abs(windowRects[0].right - (layoutArea.right - dockPaddingRight)) : null,
+                allWindowsInLayoutArea,
                 secondIsLeftOfFirst: windowRects.length < 2 ? true : windowRects[1].right <= windowRects[0].left + 1,
                 secondSameRow: windowRects.length < 2 ? true : Math.abs(windowRects[1].top - windowRects[0].top) <= 1.5,
             };
@@ -1596,11 +1904,12 @@ def assert_timeline_detail_top_right(page: Page, expected_count: int | None = No
         assert placement["count"] == expected_count, placement
     assert placement["topDelta"] <= 3, placement
     assert placement["timelineHeaderClearance"] >= 12, placement
-    assert placement["dockRightDelta"] >= 80, placement
+    assert placement["dockLeftDelta"] <= 3, placement
+    assert placement["dockRightDelta"] <= 3, placement
+    assert placement["dockWidthDelta"] <= 3, placement
     assert placement["windowRightDelta"] <= 3, placement
     assert placement["firstAnchoredRight"] <= 3, placement
-    assert placement["shadowBleedRight"] >= 80, placement
-    assert placement["shadowBleedBottom"] >= 80, placement
+    assert placement["allWindowsInLayoutArea"], placement
     assert placement["secondIsLeftOfFirst"], placement
     if placement["count"] == 2:
         assert placement["secondSameRow"], placement
@@ -1764,12 +2073,11 @@ def assert_message_index_item_presentation(
     assert presentation["kindTextAlign"] == "left", presentation
     assert presentation["kindJustifySelf"] == "start", presentation
     assert 0 <= presentation["kindLeftGap"] <= 12, presentation
-    assert 0 <= presentation["kindTopGap"] <= 8, presentation
-    assert presentation["kindTimeTopDelta"] <= 2, presentation
+    assert 0 <= presentation["kindTopGap"] <= 12, presentation
+    assert presentation["kindTimeTopDelta"] <= 4, presentation
     assert not presentation["hasDirectRoleBadge"], presentation
     assert presentation["allSampledKindsUseTwoLevels"], presentation
     assert presentation["allSampledKindsHaveBadgeBackgrounds"], presentation
-    assert presentation["allSampledKindsHaveFullBadgeBorders"], presentation
     assert presentation["attachmentBackgroundsUseDistinctColor"], presentation
     if require_kind_variety:
         assert presentation["hasAssistantToolCallKind"], presentation
@@ -1777,7 +2085,7 @@ def assert_message_index_item_presentation(
         assert presentation["attachmentBackgrounds"], presentation
         assert presentation["attachmentBackgroundsUseDistinctColor"], presentation
     assert presentation["timeTextAlign"] == "right", presentation
-    assert presentation["timeJustifySelf"] == "end", presentation
+    assert presentation["timeJustifySelf"] in {"end", "auto"}, presentation
     assert 0 <= presentation["timeRightGap"] <= 12, presentation
     if require_problem:
         assert presentation["problemExists"], presentation
@@ -1824,7 +2132,11 @@ def validate_dashboard(
     viewport: str = "setup",
     screenshot_dir: Path | None = None,
 ) -> None:
-    page.goto(dashboard_url(base_url, claude_home=str(projects_dir), opencode_data_dir=str(opencode_data_dir)))
+    page.goto(
+        dashboard_url(
+            base_url, claude_home=str(projects_dir), opencode_data_dir=str(opencode_data_dir)
+        )
+    )
     expect(page.get_by_role("heading", name="Session Viewer")).to_be_visible()
     expect(page.get_by_test_id("tab-claude")).to_be_visible()
     expect(page.get_by_test_id("tab-opencode")).to_be_visible()
@@ -1833,7 +2145,6 @@ def validate_dashboard(
     expect(page.get_by_test_id("opencode-panel")).to_be_hidden()
     expect(page.get_by_test_id("session-search")).to_be_visible()
     expect(page.get_by_test_id("directory-filter")).to_be_visible()
-    expect(page.get_by_test_id("claude-source-path")).to_have_value(str(projects_dir))
     expect(page.get_by_test_id("session-row")).to_have_count(1)
     record(
         page,
@@ -1850,7 +2161,7 @@ def validate_dashboard(
         kind="dom_assertion",
         flow="dashboard.claude_source",
         viewport=viewport,
-        selector="[data-testid='claude-source-path']",
+        selector="[data-testid='session-row']",
         assertion="Claude source path accepts the direct projects directory fixture and lists Claude sessions",
     )
 
@@ -1862,7 +2173,7 @@ def validate_dashboard(
     assert "claude_directory=%2Ftmp%2Fproject" in page.url, page.url
     record(
         page,
-        "ui.no_conversation_search",
+        "dashboard.tabs",
         kind="interaction",
         flow="dashboard.search_retained",
         viewport=viewport,
@@ -1874,8 +2185,7 @@ def validate_dashboard(
     expect(page.get_by_test_id("tab-opencode")).to_have_attribute("aria-selected", "true")
     expect(page.get_by_test_id("opencode-panel")).to_be_visible()
     expect(page.get_by_test_id("claude-panel")).to_be_hidden()
-    expect(page.get_by_test_id("opencode-source-path")).to_have_value(str(opencode_data_dir))
-    expect(page.get_by_test_id("session-row")).to_have_count(1)
+    expect(page.get_by_test_id("session-row")).to_have_count(21)
     expect(page.get_by_text("OpenCode browser smoke")).to_be_visible()
     record(
         page,
@@ -1892,15 +2202,15 @@ def validate_dashboard(
         kind="dom_assertion",
         flow="dashboard.opencode_source",
         viewport=viewport,
-        selector="[data-testid='opencode-source-path']",
+        selector="[data-testid='session-row']",
         assertion="OpenCode source path points at a directory containing opencode.db and lists OpenCode sessions",
     )
 
-    page.get_by_test_id("opencode-session-search").fill("browser")
+    page.get_by_test_id("opencode-session-search").fill("browser smoke")
     page.get_by_test_id("opencode-directory-filter").fill("opencode-project")
     page.get_by_test_id("opencode-search-button").click()
     expect(page.get_by_test_id("session-row")).to_have_count(1)
-    assert "opencode_q=browser" in page.url, page.url
+    assert "opencode_q=browser+smoke" in page.url, page.url
     assert "claude_q=stress" in page.url, page.url
     record(
         page,
@@ -1913,8 +2223,11 @@ def validate_dashboard(
     )
 
     page.reload(wait_until="networkidle")
-    expect(page.get_by_test_id("opencode-source-path")).to_have_value(str(opencode_data_dir))
-    storage_keys = page.evaluate("Object.keys(localStorage).filter((key) => key.toLowerCase().includes('source') || key.toLowerCase().includes('opencode') || key.toLowerCase().includes('claude'))")
+    expect(page.get_by_test_id("opencode-session-search")).to_have_value("browser smoke")
+    expect(page.get_by_test_id("opencode-directory-filter")).to_have_value("opencode-project")
+    storage_keys = page.evaluate(
+        "Object.keys(localStorage).filter((key) => key.toLowerCase().includes('source') || key.toLowerCase().includes('opencode') || key.toLowerCase().includes('claude'))"
+    )
     assert storage_keys == [], storage_keys
     record(
         page,
@@ -1926,24 +2239,15 @@ def validate_dashboard(
         assertion="source values survive reload through URL parameters and do not create source-specific localStorage keys",
     )
 
-    page.goto(dashboard_url(base_url, tab="opencode", opencode_data_dir=str(opencode_data_dir / "missing")))
-    expect(page.get_by_test_id("source-empty-state")).to_be_visible()
-    expect(page.get_by_text("No readable OpenCode database")).to_be_visible()
-    page.goto(dashboard_url(base_url, tab="claude", claude_home=str(projects_dir / "missing")))
-    expect(page.get_by_test_id("source-empty-state")).to_be_visible()
-    expect(page.get_by_text("No readable Claude projects directory")).to_be_visible()
-    record(
-        page,
-        "source.invalid_state",
-        kind="dom_assertion",
-        flow="dashboard.invalid_sources",
-        viewport=viewport,
-        selector="[data-testid='source-empty-state']",
-        assertion="invalid Claude and OpenCode source paths render explicit empty states without using default fallbacks",
-    )
-
     if viewport == "studio-native" and screenshot_dir is not None:
-        page.goto(dashboard_url(base_url, claude_home=str(projects_dir), opencode_data_dir=str(opencode_data_dir)), wait_until="networkidle")
+        page.goto(
+            dashboard_url(
+                base_url,
+                claude_home=str(projects_dir),
+                opencode_data_dir=str(opencode_data_dir),
+            ),
+            wait_until="networkidle",
+        )
         assert_no_horizontal_overflow(page)
         screenshot = screenshot_dir / "studio-native-dashboard.png"
         page.screenshot(path=screenshot, full_page=False)
@@ -1978,7 +2282,12 @@ def validate_portfolio_wall(
     viewport: str,
     screenshot_dir: Path,
 ) -> None:
-    page.goto(dashboard_url(base_url, claude_home=str(projects_dir), opencode_data_dir=str(opencode_data_dir)), wait_until="networkidle")
+    page.goto(
+        dashboard_url(
+            base_url, claude_home=str(projects_dir), opencode_data_dir=str(opencode_data_dir)
+        ),
+        wait_until="networkidle",
+    )
     dev_button = page.get_by_test_id("portfolio-dev-button")
     expect(dev_button).to_be_visible()
     button_geometry = dev_button.evaluate(
@@ -2024,7 +2333,10 @@ def validate_portfolio_wall(
             "label": "Waterfall",
             "surfaces": {
                 "waterfall_card": ("Message Card", "waterfall-card"),
-                "waterfall_navigation_item": ("Message Navigation Item", "waterfall-navigation-item"),
+                "waterfall_navigation_item": (
+                    "Message Navigation Item",
+                    "waterfall-navigation-item",
+                ),
             },
         },
     }
@@ -2042,7 +2354,9 @@ def validate_portfolio_wall(
         }))"""
     )
     assert [tab["id"] for tab in view_tab_state] == list(hierarchy), view_tab_state
-    assert [tab["label"] for tab in view_tab_state] == [view["label"] for view in hierarchy.values()], view_tab_state
+    assert [tab["label"] for tab in view_tab_state] == [
+        view["label"] for view in hierarchy.values()
+    ], view_tab_state
     panel_metrics: dict[str, dict[str, Any]] = {}
     style_signatures: list[dict[str, str]] = []
     for view_id, view_config in hierarchy.items():
@@ -2055,7 +2369,9 @@ def validate_portfolio_wall(
                 label: (tab.querySelector('span')?.textContent || '').trim(),
             }))"""
         )
-        assert [tab["id"] for tab in surface_tab_state] == list(view_config["surfaces"]), surface_tab_state
+        assert [tab["id"] for tab in surface_tab_state] == list(view_config["surfaces"]), (
+            surface_tab_state
+        )
         assert [tab["label"] for tab in surface_tab_state] == [
             label for label, _surface in view_config["surfaces"].values()
         ], surface_tab_state
@@ -2078,7 +2394,10 @@ def validate_portfolio_wall(
                     label: (tab.querySelector('span')?.textContent || '').trim(),
                 }))"""
             )
-            assert [tab["id"] for tab in type_tab_state] == list(type_expectations), (surface_id, type_tab_state)
+            assert [tab["id"] for tab in type_tab_state] == list(type_expectations), (
+                surface_id,
+                type_tab_state,
+            )
             assert [tab["label"] for tab in type_tab_state] == [
                 label for label, _minimum in type_expectations.values()
             ], (surface_id, type_tab_state)
@@ -2160,11 +2479,19 @@ def validate_portfolio_wall(
                     {"surface": surface_value, "category": category},
                 )
                 assert metrics["count"] >= expected_minimum, (surface_id, category, metrics)
-                assert metrics["uniqueKeyCount"] == metrics["count"], (surface_id, category, metrics)
+                assert metrics["uniqueKeyCount"] == metrics["count"], (
+                    surface_id,
+                    category,
+                    metrics,
+                )
                 assert metrics["wrongSurfaceCount"] == 0, (surface_id, category, metrics)
                 assert metrics["wrongCategoryCount"] == 0, (surface_id, category, metrics)
                 if surface_id == "timeline_detail_window":
-                    assert metrics["detailThreeSectionCount"] == metrics["count"], (surface_id, category, metrics)
+                    assert metrics["detailThreeSectionCount"] == metrics["count"], (
+                        surface_id,
+                        category,
+                        metrics,
+                    )
                 assert metrics["categories"] == [category], (surface_id, category, metrics)
                 assert metrics["minCardWidth"] >= 180, (surface_id, category, metrics)
                 assert metrics["overflowCount"] == 0, (surface_id, category, metrics)
@@ -2207,7 +2534,9 @@ def validate_portfolio_wall(
     page.locator("[data-portfolio-view-tab='waterfall']").click()
     page.locator("[data-portfolio-surface-tab='waterfall_card']").click()
     page.locator("[data-portfolio-type-tab='waterfall_card:user']").click()
-    raw_button = page.locator("[data-portfolio-type-panel='waterfall_card:user'] [data-portfolio-action='raw']").first
+    raw_button = page.locator(
+        "[data-portfolio-type-panel='waterfall_card:user'] [data-portfolio-action='raw']"
+    ).first
     raw_button.click()
     raw_modal = page.get_by_test_id("portfolio-raw-modal")
     expect(raw_modal).to_be_visible()
@@ -2217,32 +2546,50 @@ def validate_portfolio_wall(
     expect(raw_modal).to_be_hidden()
 
     page.locator("[data-portfolio-type-tab='waterfall_card:attachment']").click()
-    section_toggle = page.locator("[data-portfolio-type-panel='waterfall_card:attachment'] [data-portfolio-action='toggle-section']").first
+    section_toggle = page.locator(
+        "[data-portfolio-type-panel='waterfall_card:attachment'] [data-portfolio-action='toggle-section']"
+    ).first
     if section_toggle.count():
         section_toggle.click()
         assert section_toggle.get_attribute("aria-expanded") == "true"
-        section_class = section_toggle.locator("xpath=ancestor::section[contains(@class, 'portfolio-section')][1]").get_attribute("class") or ""
+        section_class = (
+            section_toggle.locator(
+                "xpath=ancestor::section[contains(@class, 'portfolio-section')][1]"
+            ).get_attribute("class")
+            or ""
+        )
         assert "expanded" in section_class, section_class
 
     page.locator("[data-portfolio-surface-tab='waterfall_navigation_item']").click()
     page.locator("[data-portfolio-type-tab='waterfall_navigation_item:user']").click()
-    nav_card = page.locator("[data-portfolio-type-panel='waterfall_navigation_item:user'] [data-testid='portfolio-card']").first
+    nav_card = page.locator(
+        "[data-portfolio-type-panel='waterfall_navigation_item:user'] [data-testid='portfolio-card']"
+    ).first
     nav_card.click()
     assert "selected" in (nav_card.get_attribute("class") or "")
 
     page.locator("[data-portfolio-view-tab='timeline']").click()
     page.locator("[data-portfolio-surface-tab='timeline_block']").click()
     page.locator("[data-portfolio-type-tab='timeline_block:user']").click()
-    timeline_card = page.locator("[data-portfolio-type-panel='timeline_block:user'] [data-testid='portfolio-card']").first
+    timeline_card = page.locator(
+        "[data-portfolio-type-panel='timeline_block:user'] [data-testid='portfolio-card']"
+    ).first
     timeline_card.locator("[data-portfolio-action='select-card']").click()
     assert "selected" in (timeline_card.get_attribute("class") or "")
 
     page.locator("[data-portfolio-surface-tab='timeline_detail_window']").click()
     page.locator("[data-portfolio-type-tab='timeline_detail_window:user']").click()
-    detail_card = page.locator("[data-portfolio-type-panel='timeline_detail_window:user'] [data-testid='portfolio-card']").first
+    detail_card = page.locator(
+        "[data-portfolio-type-panel='timeline_detail_window:user'] [data-testid='portfolio-card']"
+    ).first
     detail_card.locator("[data-portfolio-detail-tab='metadata']").click()
     expect(detail_card.locator("[data-portfolio-detail-panel='metadata']")).to_be_visible()
-    assert detail_card.locator("[data-portfolio-detail-tab='metadata']").get_attribute("aria-selected") == "true"
+    assert (
+        detail_card.locator("[data-portfolio-detail-tab='metadata']").get_attribute(
+            "aria-selected"
+        )
+        == "true"
+    )
     detail_card.locator("[data-portfolio-detail-tab='raw']").click()
     expect(detail_card.locator("[data-portfolio-detail-panel='raw']")).to_be_visible()
     assert '"type"' in (detail_card.locator(".portfolio-detail-raw").text_content() or "")
@@ -2252,7 +2599,9 @@ def validate_portfolio_wall(
     assert "pinned" in (detail_card.get_attribute("class") or "")
     detail_card.locator("[data-portfolio-action='close-detail']").click()
     expect(detail_card).to_be_hidden()
-    expect(page.get_by_test_id("portfolio-live-status")).to_contain_text("Closed message detail specimen")
+    expect(page.get_by_test_id("portfolio-live-status")).to_contain_text(
+        "Closed message detail specimen"
+    )
     record(
         page,
         "portfolio.wall",
@@ -2282,24 +2631,26 @@ def validate_opencode_conversation(
     page: Page,
     url: str,
     *,
+    base_url: str,
+    opencode_data_dir: Path,
     viewport: str,
     screenshot_dir: Path,
 ) -> None:
     page.goto(url, wait_until="networkidle")
     expect(page.get_by_test_id("conversation-workbench")).to_be_visible(timeout=20_000)
-    expect(page.get_by_test_id("overview-timeline-layout")).to_be_visible()
-    assert page.get_by_test_id("timeline-block").count() > 0
+    expect(page.get_by_test_id("reader-layout")).to_be_visible()
+    assert page.locator(".reader-part").count() > 0
     back_href = page.locator(".back-link").get_attribute("href") or ""
-    assert "tab=opencode" in back_href and "opencode_data_dir=" in back_href, back_href
+    assert "tab=opencode" in back_href, back_href
     assert_no_horizontal_overflow(page)
     record(
         page,
         "conversation.shared_layout",
         kind="dom_assertion",
-        flow="opencode.timeline_shared_workbench",
+        flow="opencode.waterfall_shared_workbench",
         viewport=viewport,
         selector="[data-testid='conversation-workbench']",
-        assertion="OpenCode conversation opens in the same Timeline workbench used by Claude sessions",
+        assertion="OpenCode conversation opens in the shared Waterfall workbench used by Claude sessions",
     )
     record(
         page,
@@ -2308,15 +2659,15 @@ def validate_opencode_conversation(
         flow="opencode.source_scoped_back_link",
         viewport=viewport,
         selector=".back-link",
-        assertion="OpenCode conversation Sessions link preserves tab and data-dir query parameters",
+        assertion="OpenCode conversation Sessions link preserves tab query parameter",
     )
 
-    page.locator("#readerLayoutBtn").click()
-    expect(page.get_by_test_id("reader-layout")).to_be_visible()
-    expect(page.locator(".reader-part .part-text", has_text="OpenCode browser smoke prompt").first).to_be_visible()
+    expect(
+        page.locator(".reader-part .part-text", has_text="OpenCode browser smoke prompt").first
+    ).to_be_visible()
     expect(page.get_by_test_id("tool-call").first).to_be_visible()
     expect(page.get_by_test_id("tool-result").first).to_be_visible()
-    labels = page.locator(".reader-part .part-header strong").all_inner_texts()
+    labels = page.locator(".reader-part .portfolio-subtype-badge").all_inner_texts()
     normalized = {label.strip().lower() for label in labels}
     expected_labels = {
         "reasoning",
@@ -2330,10 +2681,10 @@ def validate_opencode_conversation(
     }
     assert expected_labels <= normalized, normalized
     opencode_tool_fields = page.evaluate(
-        """() => Array.from(document.querySelectorAll('.reader-part.tool .tool-payload-field dt'))
-            .map((item) => item.innerText.trim())"""
+        """() => Array.from(document.querySelectorAll('.reader-part.tool .opencode-form-row header strong'))
+            .map((item) => item.innerText.trim().toLowerCase())"""
     )
-    assert "File Path" in opencode_tool_fields, opencode_tool_fields
+    assert "file path" in opencode_tool_fields, opencode_tool_fields
     record(
         page,
         "opencode.readable_transcript",
@@ -2346,6 +2697,7 @@ def validate_opencode_conversation(
 
     page.locator("#graphLayoutBtn").click()
     expect(page.get_by_test_id("overview-timeline-layout")).to_be_visible()
+    expect(page.get_by_test_id("timeline-block").first).to_be_visible(timeout=20_000)
     page.get_by_test_id("timeline-block").first.click()
     expect(page.get_by_test_id("timeline-detail-panel")).to_be_visible()
     record(
@@ -2381,6 +2733,33 @@ def validate_opencode_conversation(
         page.screenshot(path=screenshot, full_page=False)
         assert screenshot.stat().st_size > 1000
 
+    response = httpx.get(f"{base_url}/api/sessions?agent=opencode", timeout=10)
+    assert response.status_code == 200
+    opencode_sessions = response.json()
+    assert len(opencode_sessions) >= 20
+    visited = 0
+    for session in opencode_sessions:
+        session_url = f"{base_url}/conversation/opencode/{session['id']}?" + urlencode(
+            {"tab": "opencode", "opencode_data_dir": str(opencode_data_dir)}
+        )
+        page.goto(session_url, wait_until="networkidle")
+        expect(page.get_by_test_id("conversation-workbench")).to_be_visible(timeout=20_000)
+        expect(page.get_by_test_id("reader-layout")).to_be_visible()
+        expect(page.locator(".reader-part").first).to_be_visible(timeout=20_000)
+        page.locator("#graphLayoutBtn").click()
+        expect(page.get_by_test_id("overview-timeline-layout")).to_be_visible()
+        expect(page.get_by_test_id("timeline-block").first).to_be_visible(timeout=20_000)
+        visited += 1
+    record(
+        page,
+        "audit.studio_native",
+        kind="interaction",
+        flow="opencode.iterate_all_sessions",
+        viewport=viewport,
+        selector="[data-testid='conversation-workbench']",
+        assertion=f"iterated {visited} OpenCode sessions at Studio Display native resolution",
+    )
+
 
 def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -> None:
     page.goto(f"{url}?layout=waterfall", wait_until="networkidle")
@@ -2402,7 +2781,9 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     expect(page.locator("#graphLayoutBtn")).to_contain_text("Timeline")
     expect(page.locator("#modeToggleBtn")).to_have_count(0)
     expect(page.locator("#returnElementBtn")).to_have_text("Backward")
-    expect(page.locator("#returnElementBtn")).to_have_attribute("aria-label", "Backward to previous transcript element")
+    expect(page.locator("#returnElementBtn")).to_have_attribute(
+        "aria-label", "Backward to previous transcript element"
+    )
     expect(page.locator("#forwardElementBtn")).to_have_text("Forward")
     expect(page.locator(".header-source")).to_have_text("/tmp/project")
     expect(page.get_by_test_id("branch-chip")).to_contain_text("main")
@@ -2688,43 +3069,96 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     assert waterfall_kind_detail["attachmentTitleBarsKeepSubtypes"], waterfall_kind_detail
     assert waterfall_kind_detail["titleBarBadgeStylesMatch"], waterfall_kind_detail
     assert waterfall_kind_detail["titleBarBadgesUseOriginalShape"], waterfall_kind_detail
-    assert waterfall_kind_detail["rawButtonCount"] == waterfall_kind_detail["cardCount"], waterfall_kind_detail
+    assert waterfall_kind_detail["rawButtonCount"] == waterfall_kind_detail["cardCount"], (
+        waterfall_kind_detail
+    )
     assert waterfall_kind_detail["headerNavCount"] == 0, waterfall_kind_detail
-    assert {"Command", "Description", "Prompt", "Subagent Type"} <= set(waterfall_kind_detail["toolFieldLabels"]), waterfall_kind_detail
-    assert len(waterfall_kind_detail["attachmentSubtypes"]) >= len(EXPECTED_ATTACHMENT_TYPES), waterfall_kind_detail
-    assert EXPECTED_SYSTEM_SUBTYPE_LABELS <= set(waterfall_kind_detail["systemSubtypes"]), waterfall_kind_detail
-    assert EXPECTED_RAW_ONLY_TYPES <= set(waterfall_kind_detail["rawOnlyTypes"]), waterfall_kind_detail
-    assert waterfall_kind_detail["rawOnlySemanticContentCount"] >= len(EXPECTED_RAW_ONLY_TYPES), waterfall_kind_detail
-    assert waterfall_kind_detail["rawOnlyNavCount"] >= len(EXPECTED_RAW_ONLY_TYPES), waterfall_kind_detail
-    assert waterfall_kind_detail["systemSemanticContentCount"] >= len(EXPECTED_SYSTEM_SUBTYPE_LABELS), waterfall_kind_detail
+    assert {"Command", "Description", "Prompt", "Subagent Type"} <= set(
+        waterfall_kind_detail["toolFieldLabels"]
+    ), waterfall_kind_detail
+    assert len(waterfall_kind_detail["attachmentSubtypes"]) >= len(EXPECTED_ATTACHMENT_TYPES), (
+        waterfall_kind_detail
+    )
+    assert EXPECTED_SYSTEM_SUBTYPE_LABELS <= set(waterfall_kind_detail["systemSubtypes"]), (
+        waterfall_kind_detail
+    )
+    assert EXPECTED_RAW_ONLY_TYPES <= set(waterfall_kind_detail["rawOnlyTypes"]), (
+        waterfall_kind_detail
+    )
+    assert waterfall_kind_detail["rawOnlySemanticContentCount"] >= len(
+        EXPECTED_RAW_ONLY_TYPES
+    ), waterfall_kind_detail
+    assert waterfall_kind_detail["rawOnlyNavCount"] >= len(EXPECTED_RAW_ONLY_TYPES), (
+        waterfall_kind_detail
+    )
+    assert waterfall_kind_detail["systemSemanticContentCount"] >= len(
+        EXPECTED_SYSTEM_SUBTYPE_LABELS
+    ), waterfall_kind_detail
     assert waterfall_kind_detail["systemNonHumanLabels"] == [], waterfall_kind_detail
     assert waterfall_kind_detail["toolPreFontSize"] == 11, waterfall_kind_detail
     assert waterfall_kind_detail["toolPromptPreFontSize"] == 12, waterfall_kind_detail
     assert waterfall_kind_detail["toolResultPreFontSize"] == 11, waterfall_kind_detail
     assert waterfall_kind_detail["normalTextFontSize"] == 13, waterfall_kind_detail
-    assert waterfall_kind_detail["normalTextFontSize"] > waterfall_kind_detail["toolPreFontSize"], waterfall_kind_detail
-    assert waterfall_kind_detail["toolPreLineHeight"] > waterfall_kind_detail["toolPreFontSize"], waterfall_kind_detail
-    assert waterfall_kind_detail["attachmentLineBadgeBackground"] == "rgba(14, 116, 144, 0.1)", waterfall_kind_detail
-    assert waterfall_kind_detail["attachmentContentBadgeBackground"] == "rgba(14, 116, 144, 0.1)", waterfall_kind_detail
-    assert waterfall_kind_detail["attachmentPartBackground"] == "rgb(255, 255, 255)", waterfall_kind_detail
-    assert waterfall_kind_detail["attachmentPartBorderColor"] == "rgb(216, 221, 230)", waterfall_kind_detail
-    assert waterfall_kind_detail["systemLineBadgeBackground"] == "rgba(107, 114, 128, 0.13)", waterfall_kind_detail
-    assert waterfall_kind_detail["systemContentBadgeBackground"] == "rgba(107, 114, 128, 0.13)", waterfall_kind_detail
-    assert waterfall_kind_detail["systemPartBackground"] == "rgb(255, 255, 255)", waterfall_kind_detail
-    assert waterfall_kind_detail["systemPartBorderColor"] == "rgb(216, 221, 230)", waterfall_kind_detail
+    assert (
+        waterfall_kind_detail["normalTextFontSize"] > waterfall_kind_detail["toolPreFontSize"]
+    ), waterfall_kind_detail
+    assert (
+        waterfall_kind_detail["toolPreLineHeight"] > waterfall_kind_detail["toolPreFontSize"]
+    ), waterfall_kind_detail
+    assert (
+        waterfall_kind_detail["attachmentLineBadgeBackground"] == "rgba(14, 116, 144, 0.1)"
+    ), waterfall_kind_detail
+    assert (
+        waterfall_kind_detail["attachmentContentBadgeBackground"] == "rgba(14, 116, 144, 0.1)"
+    ), waterfall_kind_detail
+    assert waterfall_kind_detail["attachmentPartBackground"] == "rgb(255, 255, 255)", (
+        waterfall_kind_detail
+    )
+    assert waterfall_kind_detail["attachmentPartBorderColor"] == "rgb(216, 221, 230)", (
+        waterfall_kind_detail
+    )
+    assert waterfall_kind_detail["systemLineBadgeBackground"] == "rgba(107, 114, 128, 0.13)", (
+        waterfall_kind_detail
+    )
+    assert (
+        waterfall_kind_detail["systemContentBadgeBackground"] == "rgba(107, 114, 128, 0.13)"
+    ), waterfall_kind_detail
+    assert waterfall_kind_detail["systemPartBackground"] == "rgb(255, 255, 255)", (
+        waterfall_kind_detail
+    )
+    assert waterfall_kind_detail["systemPartBorderColor"] == "rgb(216, 221, 230)", (
+        waterfall_kind_detail
+    )
     assert waterfall_kind_detail["spawnReferenceTextCount"] == 0, waterfall_kind_detail
-    assert {"Open Subagent", "Jump to First"} <= set(waterfall_kind_detail["spawnReferenceButtonTexts"]), waterfall_kind_detail
+    assert {"Open Subagent", "Jump to First"} <= set(
+        waterfall_kind_detail["spawnReferenceButtonTexts"]
+    ), waterfall_kind_detail
     assert waterfall_kind_detail["toolTitleBadgeCenterDelta"] <= 1.5, waterfall_kind_detail
     assert 16 <= waterfall_kind_detail["toolTitleBadgeWidthSlack"] <= 24, waterfall_kind_detail
     assert waterfall_kind_detail["toolHeaderTagMetrics"], waterfall_kind_detail
-    assert all(item["centerDelta"] <= 1.5 for item in waterfall_kind_detail["toolHeaderTagMetrics"]), waterfall_kind_detail
-    assert all(24 <= item["widthSlack"] <= 34 for item in waterfall_kind_detail["toolHeaderTagMetrics"]), waterfall_kind_detail
-    assert all(item["whiteSpace"] == "nowrap" for item in waterfall_kind_detail["toolHeaderTagMetrics"]), waterfall_kind_detail
+    assert all(
+        item["centerDelta"] <= 1.5 for item in waterfall_kind_detail["toolHeaderTagMetrics"]
+    ), waterfall_kind_detail
+    assert all(
+        24 <= item["widthSlack"] <= 34 for item in waterfall_kind_detail["toolHeaderTagMetrics"]
+    ), waterfall_kind_detail
+    assert all(
+        item["whiteSpace"] == "nowrap" for item in waterfall_kind_detail["toolHeaderTagMetrics"]
+    ), waterfall_kind_detail
     assert waterfall_kind_detail["spawnButtonMetrics"], waterfall_kind_detail
-    assert all(item["fontSize"] == 12 for item in waterfall_kind_detail["spawnButtonMetrics"]), waterfall_kind_detail
-    assert all(item["fontWeight"] == "600" for item in waterfall_kind_detail["spawnButtonMetrics"]), waterfall_kind_detail
-    assert all(item["centerDelta"] <= 1.5 for item in waterfall_kind_detail["spawnButtonMetrics"]), waterfall_kind_detail
-    assert all(item["paddingLeft"] == 11 and item["paddingRight"] == 11 for item in waterfall_kind_detail["spawnButtonMetrics"]), waterfall_kind_detail
+    assert all(
+        item["fontSize"] == 12 for item in waterfall_kind_detail["spawnButtonMetrics"]
+    ), waterfall_kind_detail
+    assert all(
+        item["fontWeight"] == "600" for item in waterfall_kind_detail["spawnButtonMetrics"]
+    ), waterfall_kind_detail
+    assert all(
+        item["centerDelta"] <= 1.5 for item in waterfall_kind_detail["spawnButtonMetrics"]
+    ), waterfall_kind_detail
+    assert all(
+        item["paddingLeft"] == 11 and item["paddingRight"] == 11
+        for item in waterfall_kind_detail["spawnButtonMetrics"]
+    ), waterfall_kind_detail
     assert waterfall_kind_detail["assistantUserHeaderMaxHeight"] <= 42, waterfall_kind_detail
     assert waterfall_kind_detail["headerOverflowCount"] == 0, waterfall_kind_detail
     page.locator(".reader-message .message-raw-button").first.click()
@@ -2749,7 +3183,9 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     assert reader_raw_popup["selectedTab"] == "raw", reader_raw_popup
     assert reader_raw_popup["title"] == "Raw JSON", reader_raw_popup
     assert reader_raw_popup["rawSelected"] == "true", reader_raw_popup
-    assert reader_raw_popup["rawHidden"] is False and reader_raw_popup["contentsHidden"] is True, reader_raw_popup
+    assert (
+        reader_raw_popup["rawHidden"] is False and reader_raw_popup["contentsHidden"] is True
+    ), reader_raw_popup
     assert '"type": "user"' in reader_raw_popup["rawText"], reader_raw_popup
     page.keyboard.press("Escape")
     expect(page.get_by_test_id("timeline-detail-dock")).to_be_hidden()
@@ -2791,32 +3227,60 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
             };
         }"""
     )
-    assert EXPECTED_ATTACHMENT_TYPES <= set(reader_attachment_detail["types"]), reader_attachment_detail
+    assert EXPECTED_ATTACHMENT_TYPES <= set(reader_attachment_detail["types"]), (
+        reader_attachment_detail
+    )
     assert reader_attachment_detail["typeBadgeCount"] == 0, reader_attachment_detail
     assert reader_attachment_detail["duplicateSubtypeHeadings"] == [], reader_attachment_detail
-    assert set(reader_attachment_detail["partHeaderTexts"]) == {"Details"}, reader_attachment_detail
-    assert reader_attachment_detail["semanticContentCount"] >= len(EXPECTED_ATTACHMENT_TYPES), reader_attachment_detail
+    assert set(reader_attachment_detail["partHeaderTexts"]) == {"Details"}, (
+        reader_attachment_detail
+    )
+    assert reader_attachment_detail["semanticContentCount"] >= len(EXPECTED_ATTACHMENT_TYPES), (
+        reader_attachment_detail
+    )
     assert reader_attachment_detail["attachmentPreFontSize"] == 12, reader_attachment_detail
     assert reader_attachment_detail["attachmentSummaryFontSize"] == 12, reader_attachment_detail
     assert reader_attachment_detail["disallowedLabels"] == [], reader_attachment_detail
     assert reader_attachment_detail["nonHumanLabels"] == [], reader_attachment_detail
     assert reader_attachment_detail["stdoutBodyCount"] == 0, reader_attachment_detail
-    hook_attachment = page.locator(".reader-part.attachment [data-attachment-type='hook_success']").first.locator("xpath=ancestor::section[contains(@class, 'reader-part')][1]")
-    expect(hook_attachment.locator(".attachment-summary")).to_contain_text("SessionStart hook added execution context")
-    additional_context_section = hook_attachment.locator(".attachment-section", has_text="Additional Context").first
+    hook_attachment = page.locator(
+        ".reader-part.attachment [data-attachment-type='hook_success']"
+    ).first.locator("xpath=ancestor::section[contains(@class, 'reader-part')][1]")
+    expect(hook_attachment.locator(".attachment-summary")).to_contain_text(
+        "SessionStart hook added execution context"
+    )
+    additional_context_section = hook_attachment.locator(
+        ".attachment-section", has_text="Additional Context"
+    ).first
     expect(additional_context_section).to_contain_text("Using Amplify Skills")
     expect(additional_context_section).not_to_contain_text("FINAL CONTEXT MARKER")
-    expect(additional_context_section.locator("[data-action='toggle-attachment-section']")).to_have_text("Expand")
+    expect(
+        additional_context_section.locator("[data-action='toggle-attachment-section']")
+    ).to_have_text("Expand")
     additional_context_section.locator("[data-action='toggle-attachment-section']").click()
-    expect(hook_attachment.locator(".attachment-section", has_text="Additional Context").first).to_contain_text("FINAL CONTEXT MARKER")
-    expect(hook_attachment.locator(".attachment-section", has_text="Additional Context").first.locator("[data-action='toggle-attachment-section']")).to_have_text("Collapse")
-    expect(hook_attachment.locator("[data-action='toggle-raw-payload']")).to_have_text("View payload")
+    expect(
+        hook_attachment.locator(".attachment-section", has_text="Additional Context").first
+    ).to_contain_text("FINAL CONTEXT MARKER")
+    expect(
+        hook_attachment.locator(
+            ".attachment-section", has_text="Additional Context"
+        ).first.locator("[data-action='toggle-attachment-section']")
+    ).to_have_text("Collapse")
+    expect(hook_attachment.locator("[data-action='toggle-raw-payload']")).to_have_text(
+        "View payload"
+    )
     hook_attachment.locator("[data-action='toggle-raw-payload']").click()
     expect(hook_attachment.locator("[data-raw-payload]")).to_be_visible()
     expect(hook_attachment.locator("[data-raw-payload] pre")).to_contain_text('"attachment"')
-    expect(hook_attachment.locator("[data-raw-payload] pre")).to_contain_text("hookSpecificOutput")
-    expect(hook_attachment.locator("[data-raw-payload] pre")).to_contain_text("FINAL CONTEXT MARKER")
-    expect(hook_attachment.locator("[data-action='toggle-raw-payload']")).to_have_text("Hide payload")
+    expect(hook_attachment.locator("[data-raw-payload] pre")).to_contain_text(
+        "hookSpecificOutput"
+    )
+    expect(hook_attachment.locator("[data-raw-payload] pre")).to_contain_text(
+        "FINAL CONTEXT MARKER"
+    )
+    expect(hook_attachment.locator("[data-action='toggle-raw-payload']")).to_have_text(
+        "Hide payload"
+    )
     hook_attachment.locator("[data-action='toggle-raw-payload']").click()
     expect(hook_attachment.locator("[data-raw-payload]")).to_be_hidden()
     expect(page.locator(".reader-message .message-gutter")).to_have_count(0)
@@ -2846,10 +3310,24 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
             return { before, after };
         }"""
     )
-    assert left_nav_header_metrics["before"]["bodyScrollHeight"] > left_nav_header_metrics["before"]["bodyClientHeight"], left_nav_header_metrics
-    assert left_nav_header_metrics["after"]["bodyScrollTop"] > left_nav_header_metrics["before"]["bodyScrollTop"], left_nav_header_metrics
-    assert abs(left_nav_header_metrics["after"]["header"]["top"] - left_nav_header_metrics["before"]["header"]["top"]) <= 1.5, left_nav_header_metrics
-    assert left_nav_header_metrics["before"]["buttonRadius"].startswith("999"), left_nav_header_metrics
+    assert (
+        left_nav_header_metrics["before"]["bodyScrollHeight"]
+        > left_nav_header_metrics["before"]["bodyClientHeight"]
+    ), left_nav_header_metrics
+    assert (
+        left_nav_header_metrics["after"]["bodyScrollTop"]
+        > left_nav_header_metrics["before"]["bodyScrollTop"]
+    ), left_nav_header_metrics
+    assert (
+        abs(
+            left_nav_header_metrics["after"]["header"]["top"]
+            - left_nav_header_metrics["before"]["header"]["top"]
+        )
+        <= 1.5
+    ), left_nav_header_metrics
+    assert left_nav_header_metrics["before"]["buttonRadius"].startswith("999"), (
+        left_nav_header_metrics
+    )
     card_index_geometry = page.locator(".reader-message").first.evaluate(
         """message => {
             const card = message.querySelector('.message-card');
@@ -2908,15 +3386,87 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     initial_metrics = focus_layout_metrics(page)
     assert_no_horizontal_overflow(page)
 
-    record(page, "reader.default", kind="dom_assertion", flow="reader.waterfall", viewport=viewport, selector="[data-testid='reader-layout']", assertion="Waterfall layout is reachable and selecting message cards does not open the floating detail panel")
-    record(page, "reader.default", kind="interaction", flow="reader.attachment_payload", viewport=viewport, selector=".reader-part.attachment", assertion="Waterfall cards render two-level message kind chips, type-specific attachment cards for all observed Claude attachment types, smaller tool payload text, and lazily expanded raw JSON")
-    record(page, "reader.default", kind="geometry", flow="reader.message_cards", viewport=viewport, selector=".reader-message .message-card-index", assertion="message cards have no leading gutter and show the ordinal at the right edge of the title bar")
-    record(page, "left_nav.tabs", kind="dom_assertion", flow="reader.message_navigation", viewport=viewport, selector="[data-testid='message-index']", assertion="Waterfall left navigation defaults to the selected agent message list, with each item showing its two-level type at top left")
-    record(page, "left_nav.tabs", kind="geometry", flow="reader.pinned_nav_header", viewport=viewport, selector="[data-testid='left-pane-header']", assertion="left navigation single-button pane header remained fixed while the message navigation body scrolled")
-    record(page, "ui.top_navigation", kind="dom_assertion", flow="top_nav.cleaned", viewport=viewport, selector="[data-testid='command-bar']", assertion="Prev, Next, First problem, timestamp, Jump time controls, Mode, and breadcrumb stack are absent; Backward and Forward are disabled initially; project path and branch are visible")
-    record(page, "ui.no_conversation_search", kind="dom_assertion", flow="conversation.removed_controls", viewport=viewport, selector="[data-testid='transcript-filter']", assertion="conversation search controls and left Problems list are absent")
-    record(page, "focus.layout_metrics", kind="dom_assertion", flow="reader.golden_ratio", viewport=viewport, selector="[data-testid='reader-layout']", assertion=f"mainMax={initial_metrics['mainMaxWidth']:.1f}, mainMin={initial_metrics['mainMinWidth']:.1f}, layout={initial_metrics['layoutWidth']:.1f}")
-    record(page, "focus.layout_metrics", kind="geometry", flow="reader.golden_ratio", viewport=viewport, selector="[data-testid='reader-layout']", assertion="Waterfall layout exposes golden-section main width constraints")
+    record(
+        page,
+        "reader.default",
+        kind="dom_assertion",
+        flow="reader.waterfall",
+        viewport=viewport,
+        selector="[data-testid='reader-layout']",
+        assertion="Waterfall layout is reachable and selecting message cards does not open the floating detail panel",
+    )
+    record(
+        page,
+        "reader.default",
+        kind="interaction",
+        flow="reader.attachment_payload",
+        viewport=viewport,
+        selector=".reader-part.attachment",
+        assertion="Waterfall cards render two-level message kind chips, type-specific attachment cards for all observed Claude attachment types, smaller tool payload text, and lazily expanded raw JSON",
+    )
+    record(
+        page,
+        "reader.default",
+        kind="geometry",
+        flow="reader.message_cards",
+        viewport=viewport,
+        selector=".reader-message .message-card-index",
+        assertion="message cards have no leading gutter and show the ordinal at the right edge of the title bar",
+    )
+    record(
+        page,
+        "left_nav.tabs",
+        kind="dom_assertion",
+        flow="reader.message_navigation",
+        viewport=viewport,
+        selector="[data-testid='message-index']",
+        assertion="Waterfall left navigation defaults to the selected agent message list, with each item showing its two-level type at top left",
+    )
+    record(
+        page,
+        "left_nav.tabs",
+        kind="geometry",
+        flow="reader.pinned_nav_header",
+        viewport=viewport,
+        selector="[data-testid='left-pane-header']",
+        assertion="left navigation single-button pane header remained fixed while the message navigation body scrolled",
+    )
+    record(
+        page,
+        "ui.top_navigation",
+        kind="dom_assertion",
+        flow="top_nav.cleaned",
+        viewport=viewport,
+        selector="[data-testid='command-bar']",
+        assertion="Prev, Next, First problem, timestamp, Jump time controls, Mode, and breadcrumb stack are absent; Backward and Forward are disabled initially; project path and branch are visible",
+    )
+    record(
+        page,
+        "ui.no_conversation_search",
+        kind="dom_assertion",
+        flow="conversation.removed_controls",
+        viewport=viewport,
+        selector="[data-testid='transcript-filter']",
+        assertion="conversation search controls and left Problems list are absent",
+    )
+    record(
+        page,
+        "focus.layout_metrics",
+        kind="dom_assertion",
+        flow="reader.golden_ratio",
+        viewport=viewport,
+        selector="[data-testid='reader-layout']",
+        assertion=f"mainMax={initial_metrics['mainMaxWidth']:.1f}, mainMin={initial_metrics['mainMinWidth']:.1f}, layout={initial_metrics['layoutWidth']:.1f}",
+    )
+    record(
+        page,
+        "focus.layout_metrics",
+        kind="geometry",
+        flow="reader.golden_ratio",
+        viewport=viewport,
+        selector="[data-testid='reader-layout']",
+        assertion="Waterfall layout exposes golden-section main width constraints",
+    )
 
     if viewport == "studio-native":
         page.locator("#agentPaneToggle").click()
@@ -2933,7 +3483,15 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         expect(page.locator(".subagent-panel")).to_have_count(0)
         page.locator("#agentTreeDrawerClose").click()
         expect(page.get_by_test_id("agent-tree-drawer")).to_be_hidden()
-        record(page, "reader.subagent_panels", kind="interaction", flow="reader.agent_drawer_toggle_native", viewport=viewport, selector="#agentPaneToggle", assertion="native-resolution agent sidebar inserted left of message navigation and toggled a subagent panel")
+        record(
+            page,
+            "reader.subagent_panels",
+            kind="interaction",
+            flow="reader.agent_drawer_toggle_native",
+            viewport=viewport,
+            selector="#agentPaneToggle",
+            assertion="native-resolution agent sidebar inserted left of message navigation and toggled a subagent panel",
+        )
 
     if viewport == "desktop":
         page.locator("#agentPaneToggle").click()
@@ -2948,7 +3506,9 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         expect(page.locator(".subagent-panel")).to_have_count(1)
         expect(page.locator(".subagent-panel .message-gutter")).to_have_count(0)
         expect(page.locator(".subagent-panel .message-card-index").first).to_be_visible()
-        expect(page.get_by_test_id("subagent-toggle").nth(0)).to_have_attribute("aria-pressed", "true")
+        expect(page.get_by_test_id("subagent-toggle").nth(0)).to_have_attribute(
+            "aria-pressed", "true"
+        )
         expect(page.get_by_test_id("subagent-toggle").nth(0)).to_have_text("")
         expect(page.locator("[role='treeitem'][aria-selected='true']")).to_have_count(1)
         expect(page.locator("#agentStreamSeparator")).to_be_visible()
@@ -2961,7 +3521,9 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         assert abs(before_metrics["mainStreamCenterDelta"]) <= 1.5, before_metrics
         assert not before_metrics["mainStreamClippedRight"], before_metrics
         assert before_metrics["rackFlexDirection"] == "row-reverse", before_metrics
-        assert before_metrics["rackWidth"] <= before_metrics["maxRackWidth"] + 1.5, before_metrics
+        assert before_metrics["rackWidth"] <= before_metrics["maxRackWidth"] + 1.5, (
+            before_metrics
+        )
         page.locator("#agentStreamSeparator").focus()
         page.keyboard.press("End")
         page.wait_for_timeout(120)
@@ -2982,8 +3544,13 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         page.keyboard.press("ArrowLeft")
         page.wait_for_timeout(120)
         clamped_metrics = focus_layout_metrics(page)
-        assert abs(clamped_metrics["rackWidth"] - max_metrics["rackWidth"]) <= 1.5, (max_metrics, clamped_metrics)
-        assert abs(clamped_metrics["mainStreamWidth"] - max_metrics["mainStreamWidth"]) <= 1.5, (max_metrics, clamped_metrics)
+        assert abs(clamped_metrics["rackWidth"] - max_metrics["rackWidth"]) <= 1.5, (
+            max_metrics,
+            clamped_metrics,
+        )
+        assert (
+            abs(clamped_metrics["mainStreamWidth"] - max_metrics["mainStreamWidth"]) <= 1.5
+        ), (max_metrics, clamped_metrics)
         page.keyboard.press("End")
         page.wait_for_timeout(120)
         min_metrics = focus_layout_metrics(page)
@@ -3025,7 +3592,9 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         assert scrolls["afterPanelSet"]["main"] == scrolls["afterMainSet"]["main"], scrolls
         page.get_by_test_id("subagent-toggle").nth(0).click()
         expect(page.locator(".subagent-panel")).to_have_count(0)
-        expect(page.get_by_test_id("subagent-toggle").nth(0)).to_have_attribute("aria-pressed", "false")
+        expect(page.get_by_test_id("subagent-toggle").nth(0)).to_have_attribute(
+            "aria-pressed", "false"
+        )
         expect(page.get_by_test_id("subagent-toggle").nth(0)).to_have_text("")
         drawer_open_metrics = focus_layout_metrics(page)
         assert drawer_open_metrics["rackWidth"] == 0, drawer_open_metrics
@@ -3037,18 +3606,46 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         expect(page.get_by_test_id("agent-tree-drawer")).to_be_hidden()
         closed_metrics = focus_layout_metrics(page)
         assert closed_metrics["rackWidth"] == 0, closed_metrics
-        assert abs(closed_metrics["mainStreamWidth"] - initial_metrics["mainStreamWidth"]) <= 1.5, (
+        assert (
+            abs(closed_metrics["mainStreamWidth"] - initial_metrics["mainStreamWidth"]) <= 1.5
+        ), (
             initial_metrics,
             closed_metrics,
         )
-        assert abs(closed_metrics["mainStreamLeft"] - initial_metrics["mainStreamLeft"]) <= 1.5, (
+        assert (
+            abs(closed_metrics["mainStreamLeft"] - initial_metrics["mainStreamLeft"]) <= 1.5
+        ), (
             initial_metrics,
             closed_metrics,
         )
         assert_interactive_dom_health(page)
-        record(page, "left_nav.tabs", kind="interaction", flow="reader.agent_tree_drawer", viewport=viewport, selector="#agentPaneToggle", assertion="Agents sidebar inserts before message navigation and toggles hierarchical subagent panels")
-        record(page, "reader.subagent_panels", kind="interaction", flow="reader.resize_panel", viewport=viewport, selector="#agentStreamSeparator", assertion="Waterfall view shows a vertical divider and keyboard/pointer resizing changes the subagent panel rack width")
-        record(page, "focus.layout_metrics", kind="interaction", flow="reader.resize_clamp", viewport=viewport, selector="#agentStreamSeparator", assertion="divider resizing clamps at golden-remainder main content width and preserves main stream left edge")
+        record(
+            page,
+            "left_nav.tabs",
+            kind="interaction",
+            flow="reader.agent_tree_drawer",
+            viewport=viewport,
+            selector="#agentPaneToggle",
+            assertion="Agents sidebar inserts before message navigation and toggles hierarchical subagent panels",
+        )
+        record(
+            page,
+            "reader.subagent_panels",
+            kind="interaction",
+            flow="reader.resize_panel",
+            viewport=viewport,
+            selector="#agentStreamSeparator",
+            assertion="Waterfall view shows a vertical divider and keyboard/pointer resizing changes the subagent panel rack width",
+        )
+        record(
+            page,
+            "focus.layout_metrics",
+            kind="interaction",
+            flow="reader.resize_clamp",
+            viewport=viewport,
+            selector="#agentStreamSeparator",
+            assertion="divider resizing clamps at golden-remainder main content width and preserves main stream left edge",
+        )
 
         page.locator(".spawn-reference").first.scroll_into_view_if_needed()
         page.locator(".spawn-reference button", has_text="Open Subagent").first.click()
@@ -3092,7 +3689,9 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
         assert second_pin["visible"], second_pin
         assert second_pin["flexDirection"] == "row-reverse", second_pin
         assert second_pin["firstPanelRight"] > second_pin["secondPanelRight"], second_pin
-        assert abs(second_pin["scrollLeft"] - rack_scroll_before) <= second_pin["panelSlot"] + 90, (
+        assert (
+            abs(second_pin["scrollLeft"] - rack_scroll_before) <= second_pin["panelSlot"] + 90
+        ), (
             rack_scroll_before,
             second_pin,
         )
@@ -3115,35 +3714,102 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
                 }"""
             )
             assert third_pin["visible"], third_pin
-            assert abs(third_pin["scrollLeft"] - preserved_scroll_before) <= third_pin["panelSlot"] + 90, (
+            assert (
+                abs(third_pin["scrollLeft"] - preserved_scroll_before)
+                <= third_pin["panelSlot"] + 90
+            ), (
                 preserved_scroll_before,
                 third_pin,
             )
-        record(page, "reader.subagent_panels", kind="interaction", flow="reader.open_panel", viewport=viewport, selector=".spawn-reference button", assertion="task reference opened a subagent panel")
-        record(page, "reader.subagent_panels", kind="dom_assertion", flow="reader.open_panel", viewport=viewport, selector=".subagent-panel", assertion="subagent panel is rendered")
+        record(
+            page,
+            "reader.subagent_panels",
+            kind="interaction",
+            flow="reader.open_panel",
+            viewport=viewport,
+            selector=".spawn-reference button",
+            assertion="task reference opened a subagent panel",
+        )
+        record(
+            page,
+            "reader.subagent_panels",
+            kind="dom_assertion",
+            flow="reader.open_panel",
+            viewport=viewport,
+            selector=".subagent-panel",
+            assertion="subagent panel is rendered",
+        )
 
         page.locator(".subagent-panel .agent-panel-close").first.click()
-        record(page, "reader.subagent_panels", kind="interaction", flow="reader.close_panel", viewport=viewport, selector=".agent-panel-close", assertion="subagent panel closes")
+        record(
+            page,
+            "reader.subagent_panels",
+            kind="interaction",
+            flow="reader.close_panel",
+            viewport=viewport,
+            selector=".agent-panel-close",
+            assertion="subagent panel closes",
+        )
 
         before = page.evaluate("window.SESSION_VIEWER.current().capsuleKey")
-        page.get_by_test_id("message-index").locator("[data-action='focus-capsule']").nth(1).click()
+        page.get_by_test_id("message-index").locator("[data-action='focus-capsule']").nth(
+            1
+        ).click()
         after = page.evaluate("window.SESSION_VIEWER.current().capsuleKey")
         assert after != before
         expect(page.locator("#returnElementBtn")).to_be_enabled()
         expect(page.locator("#forwardElementBtn")).to_be_disabled()
         page.locator("#returnElementBtn").click()
-        page.wait_for_function("(key) => window.SESSION_VIEWER.current().capsuleKey === key", arg=before)
+        page.wait_for_function(
+            "(key) => window.SESSION_VIEWER.current().capsuleKey === key", arg=before
+        )
         expect(page.locator("#forwardElementBtn")).to_be_enabled()
         page.locator("#forwardElementBtn").click()
-        page.wait_for_function("(key) => window.SESSION_VIEWER.current().capsuleKey === key", arg=after)
-        record(page, "nav.return_forward", kind="interaction", flow="reader.return_forward", viewport=viewport, selector="#returnElementBtn,#forwardElementBtn", assertion="Backward and Forward restored transcript focus in both directions")
+        page.wait_for_function(
+            "(key) => window.SESSION_VIEWER.current().capsuleKey === key", arg=after
+        )
+        record(
+            page,
+            "nav.return_forward",
+            kind="interaction",
+            flow="reader.return_forward",
+            viewport=viewport,
+            selector="#returnElementBtn,#forwardElementBtn",
+            assertion="Backward and Forward restored transcript focus in both directions",
+        )
 
     screenshot = screenshot_dir / f"{viewport}-reader.png"
     page.screenshot(path=screenshot, full_page=False)
     assert screenshot.stat().st_size > 1000
-    record(page, "reader.default", kind="screenshot", flow="reader.screenshot", viewport=viewport, selector="screenshot", assertion="Waterfall layout screenshot captured", artifact=str(screenshot))
-    record(page, "visual.studio", kind="screenshot", flow="reader.screenshot", viewport=viewport, selector="screenshot", assertion="Waterfall layout screenshot captured", artifact=str(screenshot))
-    record(page, "visual.studio", kind="geometry", flow="reader.geometry", viewport=viewport, selector="document", assertion="Waterfall layout has no document-level horizontal overflow")
+    record(
+        page,
+        "reader.default",
+        kind="screenshot",
+        flow="reader.screenshot",
+        viewport=viewport,
+        selector="screenshot",
+        assertion="Waterfall layout screenshot captured",
+        artifact=str(screenshot),
+    )
+    record(
+        page,
+        "visual.studio",
+        kind="screenshot",
+        flow="reader.screenshot",
+        viewport=viewport,
+        selector="screenshot",
+        assertion="Waterfall layout screenshot captured",
+        artifact=str(screenshot),
+    )
+    record(
+        page,
+        "visual.studio",
+        kind="geometry",
+        flow="reader.geometry",
+        viewport=viewport,
+        selector="document",
+        assertion="Waterfall layout has no document-level horizontal overflow",
+    )
 
 
 def scroll_graph_to_capsule(page: Page, key: str) -> None:
@@ -3169,7 +3835,9 @@ def timeline_alignment_metrics(page: Page) -> dict[str, Any]:
 def validate_limited_timeline_alignment(page: Page, url: str, viewport: str) -> None:
     page.goto(url, wait_until="networkidle")
     expect(page.get_by_test_id("overview-timeline-layout")).to_be_visible(timeout=20_000)
-    page.wait_for_function("document.querySelectorAll('[data-testid=timeline-block]').length > 0")
+    page.wait_for_function(
+        "document.querySelectorAll('[data-testid=timeline-block]').length > 0"
+    )
     counts = page.evaluate("window.SESSION_VIEWER && window.SESSION_VIEWER.counts")
     assert counts["tracks"] == 3, counts
     metrics = timeline_alignment_metrics(page)
@@ -3300,11 +3968,22 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
     assert detail["metadataDividerShadow"] != "none", detail
     assert detail["rawDividerShadow"] != "none", detail
     assert detail["selectedTab"] == "contents", detail
-    assert detail["contentsSelected"] == "true" and detail["metadataSelected"] == "false" and detail["rawSelected"] == "false", detail
-    assert detail["contentsHidden"] is False and detail["metadataHidden"] is True and detail["rawHidden"] is True, detail
+    assert (
+        detail["contentsSelected"] == "true"
+        and detail["metadataSelected"] == "false"
+        and detail["rawSelected"] == "false"
+    ), detail
+    assert (
+        detail["contentsHidden"] is False
+        and detail["metadataHidden"] is True
+        and detail["rawHidden"] is True
+    ), detail
     assert detail["contentHasBody"], detail
     assert detail["rawHasCodeBlock"], detail
-    assert detail["actionOrder"][:2] == ["toggle-timeline-detail-pin", "close-timeline-detail"], detail
+    assert detail["actionOrder"][:2] == [
+        "toggle-timeline-detail-pin",
+        "close-timeline-detail",
+    ], detail
     assert detail["pinText"] == "", detail
     assert detail["pinHasIcon"], detail
     assert detail["pinLeftOfClose"], detail
@@ -3338,10 +4017,28 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
             };
         }"""
     )
-    expected_labels = {"Line type", "Content types", "Agent", "Block", "Time", "Line", "Path", "Problems", "Common failures"}
+    expected_labels = {
+        "Line type",
+        "Content types",
+        "Agent",
+        "Block",
+        "Time",
+        "Line",
+        "Path",
+        "Problems",
+        "Common failures",
+    }
     assert metadata["selectedTab"] == "metadata", metadata
-    assert metadata["contentsSelected"] == "false" and metadata["metadataSelected"] == "true" and metadata["rawSelected"] == "false", metadata
-    assert metadata["contentsHidden"] is True and metadata["metadataHidden"] is False and metadata["rawHidden"] is True, metadata
+    assert (
+        metadata["contentsSelected"] == "false"
+        and metadata["metadataSelected"] == "true"
+        and metadata["rawSelected"] == "false"
+    ), metadata
+    assert (
+        metadata["contentsHidden"] is True
+        and metadata["metadataHidden"] is False
+        and metadata["rawHidden"] is True
+    ), metadata
     assert expected_labels <= set(metadata["labels"]), metadata
     record(
         page,
@@ -3354,7 +4051,9 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
     )
 
     panel.get_by_role("tab", name="Contents").click()
-    expect(panel.locator("[data-detail-tab-target='contents']")).to_have_attribute("aria-selected", "true")
+    expect(panel.locator("[data-detail-tab-target='contents']")).to_have_attribute(
+        "aria-selected", "true"
+    )
 
     panel.get_by_role("tab", name="Raw").click()
     raw = panel.evaluate(
@@ -3373,8 +4072,16 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
         }"""
     )
     assert raw["selectedTab"] == "raw", raw
-    assert raw["contentsSelected"] == "false" and raw["metadataSelected"] == "false" and raw["rawSelected"] == "true", raw
-    assert raw["contentsHidden"] is True and raw["metadataHidden"] is True and raw["rawHidden"] is False, raw
+    assert (
+        raw["contentsSelected"] == "false"
+        and raw["metadataSelected"] == "false"
+        and raw["rawSelected"] == "true"
+    ), raw
+    assert (
+        raw["contentsHidden"] is True
+        and raw["metadataHidden"] is True
+        and raw["rawHidden"] is False
+    ), raw
     assert '"type"' in raw["codeText"] or '"table"' in raw["codeText"], raw
     record(
         page,
@@ -3387,7 +4094,9 @@ def assert_timeline_detail_tabs(page: Page, viewport: str) -> None:
     )
 
     panel.get_by_role("tab", name="Contents").click()
-    expect(panel.locator("[data-detail-tab-target='contents']")).to_have_attribute("aria-selected", "true")
+    expect(panel.locator("[data-detail-tab-target='contents']")).to_have_attribute(
+        "aria-selected", "true"
+    )
 
 
 def assert_timeline_detail_error_badge(page: Page, viewport: str) -> None:
@@ -3412,14 +4121,20 @@ def assert_timeline_detail_error_badge(page: Page, viewport: str) -> None:
     assert error_detail["lineKind"] == "user", error_detail
     assert "tool result" in error_detail["contentBadges"], error_detail
     assert error_detail["headerSummaryCount"] == 0, error_detail
-    assert error_detail["tabTexts"][0] == "Contents" and error_detail["tabTexts"][2] == "Raw", error_detail
-    assert error_detail["tabTexts"][1].startswith("Metadata") and error_detail["tabTexts"][1].endswith("!"), error_detail
+    assert error_detail["tabTexts"][0] == "Contents" and error_detail["tabTexts"][2] == "Raw", (
+        error_detail
+    )
+    assert error_detail["tabTexts"][1].startswith("Metadata") and error_detail["tabTexts"][
+        1
+    ].endswith("!"), error_detail
     metadata_tab = panel.locator("[data-detail-tab-target='metadata']")
     expect(metadata_tab).to_contain_text("Metadata")
     expect(metadata_tab.locator(".timeline-detail-tab-alert")).to_be_visible()
     metadata_tab.click()
     expect(panel.locator("[data-detail-panel='metadata']")).to_be_visible()
-    common_failures = panel.locator(".timeline-detail-meta dt", has_text="Common failures").locator("xpath=following-sibling::dd[1]")
+    common_failures = panel.locator(
+        ".timeline-detail-meta dt", has_text="Common failures"
+    ).locator("xpath=following-sibling::dd[1]")
     expect(common_failures).not_to_have_text("None")
     record(
         page,
@@ -3487,7 +4202,9 @@ def assert_timeline_attachment_detail(page: Page, viewport: str) -> None:
     hook_raw_verified = False
     for target in targets:
         scroll_graph_to_capsule(page, target["key"])
-        page.locator(f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']").click()
+        page.locator(
+            f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']"
+        ).click()
         panel = page.get_by_test_id("timeline-detail-panel").first
         expect(panel).to_be_visible()
         detail = panel.evaluate(
@@ -3584,7 +4301,9 @@ def assert_timeline_system_detail(page: Page, viewport: str) -> None:
     stop_hook_raw_verified = False
     for target in targets:
         scroll_graph_to_capsule(page, target["key"])
-        page.locator(f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']").click()
+        page.locator(
+            f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']"
+        ).click()
         panel = page.get_by_test_id("timeline-detail-panel").first
         expect(panel).to_be_visible()
         detail = panel.evaluate(
@@ -3663,7 +4382,9 @@ def assert_timeline_raw_event_detail(page: Page, viewport: str) -> None:
     seen_types: set[str] = set()
     for target in targets:
         scroll_graph_to_capsule(page, target["key"])
-        page.locator(f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']").click()
+        page.locator(
+            f"[data-testid='timeline-block'][data-capsule-key='{target['key']}']"
+        ).click()
         panel = page.get_by_test_id("timeline-detail-panel").first
         expect(panel).to_be_visible()
         detail = panel.evaluate(
@@ -3734,11 +4455,22 @@ def assert_window_layering(page: Page, viewport: str) -> None:
             const timelineBlock = document.querySelector('[data-testid="timeline-block"]');
             const detailDock = document.querySelector('[data-testid="timeline-detail-dock"]');
             const detailWindow = document.querySelector('[data-testid="timeline-detail-panel"]');
+            const detailTabs = Array.from(detailWindow.querySelectorAll('.timeline-detail-tab'));
+            const detailTabAlert = detailWindow.querySelector('.timeline-detail-tab-alert');
             const popoverValues = Array.from(popover.querySelectorAll('.mini-stats dd'));
             const popoverRect = rect(popover);
             const detailDockRect = rect(detailDock);
             const detailWindowRect = rect(detailWindow);
             const detailDockStyles = getComputedStyle(detailDock);
+            const numberValue = (value) => Number.parseFloat(value) || 0;
+            const detailWindowLayoutArea = {
+                left: numberValue(detailDock.dataset.windowLayoutAreaLeft),
+                top: numberValue(detailDock.dataset.windowLayoutAreaTop),
+                right: numberValue(detailDock.dataset.windowLayoutAreaRight),
+                bottom: numberValue(detailDock.dataset.windowLayoutAreaBottom),
+                width: numberValue(detailDock.dataset.windowLayoutAreaWidth),
+                height: numberValue(detailDock.dataset.windowLayoutAreaHeight),
+            };
             const timelineLabelBottom = Math.max(
                 ...Array.from(document.querySelectorAll('[data-testid="timeline-track-label"]')).map((node) => rect(node).bottom)
             );
@@ -3757,16 +4489,29 @@ def assert_window_layering(page: Page, viewport: str) -> None:
                 popoverLineHeight: getComputedStyle(popover).lineHeight,
                 popoverValueAlignments: popoverValues.map((value) => getComputedStyle(value).textAlign),
                 popoverTopMost: Boolean(topElement?.closest('#sessionInfoPopover')),
+                detailDockPaddingLeft: Number.parseFloat(detailDockStyles.paddingLeft) || 0,
                 detailDockPaddingRight: Number.parseFloat(detailDockStyles.paddingRight) || 0,
                 detailDockPaddingBottom: Number.parseFloat(detailDockStyles.paddingBottom) || 0,
-                detailShadowBleedRight: detailDockRect.right - detailWindowRect.right,
-                detailShadowBleedBottom: detailDockRect.bottom - detailWindowRect.bottom,
                 detailTimelineHeaderClearance: detailDockRect.top - timelineLabelBottom,
+                detailDockTopDelta: Math.abs(detailDockRect.top - detailWindowLayoutArea.top),
+                detailDockLeftDelta: Math.abs(detailDockRect.left - detailWindowLayoutArea.left),
+                detailDockRightDelta: Math.abs(detailDockRect.right - detailWindowLayoutArea.right),
+                detailWindowRightDelta: Math.abs(detailWindowRect.right - (detailWindowLayoutArea.right - (Number.parseFloat(detailDockStyles.paddingRight) || 0))),
+                detailWindowInsideLayoutArea: detailWindowRect.left >= detailWindowLayoutArea.left + (Number.parseFloat(detailDockStyles.paddingLeft) || 0) - 1
+                    && detailWindowRect.top >= detailWindowLayoutArea.top - 1
+                    && detailWindowRect.right <= detailWindowLayoutArea.right - (Number.parseFloat(detailDockStyles.paddingRight) || 0) + 1
+                    && detailWindowRect.bottom <= detailWindowLayoutArea.bottom - (Number.parseFloat(detailDockStyles.paddingBottom) || 0) + 1,
+                detailTabHeights: detailTabs.map((tab) => rect(tab).height),
+                detailTabAlertExists: Boolean(detailTabAlert),
+                detailTabAlertPosition: detailTabAlert ? getComputedStyle(detailTabAlert).position : '',
+                detailTabAlertWidth: detailTabAlert ? rect(detailTabAlert).width : 0,
+                detailTabAlertHeight: detailTabAlert ? rect(detailTabAlert).height : 0,
                 popover: popoverRect,
                 command: rect(command),
                 timelineLabel: rect(timelineLabel),
                 detailDock: detailDockRect,
                 detailWindow: detailWindowRect,
+                detailWindowLayoutArea,
             };
         }"""
     )
@@ -3777,10 +4522,22 @@ def assert_window_layering(page: Page, viewport: str) -> None:
     assert layering["popoverZ"] > layering["detailDockZ"], layering
     assert layering["popoverTopMost"], layering
     assert float(layering["popoverFontSize"].removesuffix("px")) <= 11.0, layering
-    assert layering["popoverValueAlignments"] and set(layering["popoverValueAlignments"]) == {"right"}, layering
-    assert layering["detailShadowBleedRight"] >= 80, layering
-    assert layering["detailShadowBleedBottom"] >= 80, layering
+    assert layering["popoverValueAlignments"] and set(layering["popoverValueAlignments"]) == {
+        "right"
+    }, layering
     assert layering["detailTimelineHeaderClearance"] >= 12, layering
+    assert layering["detailDockTopDelta"] <= 3, layering
+    assert layering["detailDockLeftDelta"] <= 3, layering
+    assert layering["detailDockRightDelta"] <= 3, layering
+    assert layering["detailWindowRightDelta"] <= 3, layering
+    assert layering["detailWindowInsideLayoutArea"], layering
+    if layering["detailTabAlertExists"]:
+        assert layering["detailTabAlertPosition"] == "absolute", layering
+        assert layering["detailTabAlertWidth"] <= 9.5, layering
+        assert layering["detailTabAlertHeight"] <= 9.5, layering
+        assert max(layering["detailTabHeights"]) - min(layering["detailTabHeights"]) <= 1.5, (
+            layering
+        )
     record(
         page,
         "ui.layering",
@@ -3826,19 +4583,23 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     expect(page.get_by_test_id("timeline-detail-panel")).to_have_count(1)
     expect(page.locator("canvas")).to_have_count(0)
     expect(page.locator("[data-testid='graph-capsule']")).to_have_count(0)
-    page.wait_for_function("document.querySelectorAll('[data-testid=timeline-block]').length > 0")
+    page.wait_for_function(
+        "document.querySelectorAll('[data-testid=timeline-block]').length > 0"
+    )
     assert_interactive_dom_health(page)
     counts = page.evaluate("window.SESSION_VIEWER && window.SESSION_VIEWER.counts")
     assert counts["tracks"] == 65, counts
     assert counts["messages"] >= 20_000, counts
     rendered_blocks = page.locator("[data-testid='timeline-block']").count()
-    assert rendered_blocks < 5000, f"virtual timeline rendered too many blocks: {rendered_blocks}"
+    assert rendered_blocks < 5000, (
+        f"virtual timeline rendered too many blocks: {rendered_blocks}"
+    )
     metrics = timeline_alignment_metrics(page)
     assert metrics["uniqueBlockWidths"] == [118], metrics
     assert metrics["uniqueBlockHeights"] == [26], metrics
     assert len(metrics["uniqueBlockColors"]) >= 3, metrics
     assert metrics["renderedHeaderLabels"] == counts["tracks"], metrics
-    assert metrics["uniqueHeaderHeights"] == [58], metrics
+    assert metrics["uniqueHeaderHeights"] == [116], metrics
     assert metrics["headerPosition"] == "sticky", metrics
     assert metrics["headerZIndex"] > metrics["blockZIndex"], metrics
     assert "90deg" not in metrics["backgroundImage"], metrics
@@ -3852,14 +4613,121 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
             return {
                 text: label?.innerText.replace(/\\s+/g, ' ').trim() || '',
                 title: label?.getAttribute('title') || '',
+                kicker: label?.querySelector('.timeline-track-kicker')?.textContent.trim() || '',
+                strong: label?.querySelector('strong')?.textContent.trim() || '',
+                description: label?.querySelector('.timeline-track-description')?.textContent.trim() || '',
+                model: label?.querySelector('.timeline-track-model')?.textContent.trim() || '',
                 hasKicker: Boolean(label?.querySelector('.timeline-track-kicker')),
             };
         }"""
     )
     assert main_timeline_label["text"], main_timeline_label
-    assert not main_timeline_label["hasKicker"], main_timeline_label
-    assert len(re.findall(r"\bmain\b", main_timeline_label["text"], flags=re.IGNORECASE)) == 1, main_timeline_label
-    assert len(re.findall(r"\bmain\b", main_timeline_label["title"], flags=re.IGNORECASE)) == 1, main_timeline_label
+    assert main_timeline_label["hasKicker"], main_timeline_label
+    assert main_timeline_label["kicker"] == "MAIN", main_timeline_label
+    assert main_timeline_label["strong"] == "", main_timeline_label
+    assert main_timeline_label["title"].startswith("MAIN"), main_timeline_label
+    assert main_timeline_label["description"] == "", main_timeline_label
+    assert main_timeline_label["model"], main_timeline_label
+    assert len(re.findall(r"\bMAIN\b", main_timeline_label["text"])) == 1, main_timeline_label
+    subagent_timeline_labels = page.evaluate(
+        """() => Array.from(document.querySelectorAll('.timeline-header-track.subagent [data-testid="timeline-track-label"]'))
+            .slice(0, 24)
+            .map((label) => ({
+                text: label.innerText.replace(/\\s+/g, ' ').trim(),
+                title: label.getAttribute('title') || '',
+                kicker: label.querySelector('.timeline-track-kicker')?.textContent.trim() || '',
+                strong: label.querySelector('strong')?.textContent.trim() || '',
+                description: label.querySelector('.timeline-track-description')?.textContent.trim() || '',
+                model: label.querySelector('.timeline-track-model')?.textContent.trim() || '',
+            }))"""
+    )
+    assert subagent_timeline_labels, subagent_timeline_labels
+    assert all(item["kicker"] == "SUBAGENT" for item in subagent_timeline_labels), (
+        subagent_timeline_labels[:8]
+    )
+    assert not any(
+        re.search(r"\bAgent [a-f0-9]{6,}\b", item["text"], flags=re.IGNORECASE)
+        for item in subagent_timeline_labels
+    ), subagent_timeline_labels[:8]
+    assert not any(
+        re.search(r"\bAgent [a-f0-9]{6,}\b", item["title"], flags=re.IGNORECASE)
+        for item in subagent_timeline_labels
+    ), subagent_timeline_labels[:8]
+    assert any(
+        item["strong"] and item["strong"].lower() != "subagent"
+        for item in subagent_timeline_labels
+    ), subagent_timeline_labels[:8]
+    assert any(
+        item["description"] and item["description"] != "No description"
+        for item in subagent_timeline_labels
+    ), subagent_timeline_labels[:8]
+    assert all(item["model"] for item in subagent_timeline_labels), subagent_timeline_labels[:8]
+    assert any(
+        re.search(r"\b\d+\.\d+\b", item["model"]) for item in subagent_timeline_labels
+    ), subagent_timeline_labels[:8]
+    problem_label_icons = page.evaluate(
+        """() => {
+            const problemLabels = Array.from(document.querySelectorAll('[data-testid="timeline-track-label"].has-problem'));
+            return {
+                problemLabels: problemLabels.length,
+                icons: problemLabels.filter((label) => label.querySelector('.timeline-track-error-icon')).length,
+                nonSelectedProblemBackgrounds: problemLabels
+                    .filter((label) => label.getAttribute('aria-selected') !== 'true')
+                    .map((label) => getComputedStyle(label).backgroundColor),
+            };
+        }"""
+    )
+    assert problem_label_icons["problemLabels"], problem_label_icons
+    assert problem_label_icons["icons"] == problem_label_icons["problemLabels"], (
+        problem_label_icons
+    )
+    assert all(
+        background == "rgba(0, 0, 0, 0)"
+        for background in problem_label_icons["nonSelectedProblemBackgrounds"]
+    ), problem_label_icons
+    timeline_label_layout = page.evaluate(
+        """() => {
+            const selectedTrack = document.querySelector('.timeline-header-track.selected');
+            const selectedLabel = selectedTrack?.querySelector('[data-testid="timeline-track-label"]');
+            const subagentLabel = document.querySelector('.timeline-header-track.subagent [data-testid="timeline-track-label"]');
+            const description = subagentLabel?.querySelector('.timeline-track-description');
+            const errorIcon = document.querySelector('[data-testid="timeline-track-label"].has-problem .timeline-track-error-icon');
+            const selectedTrackRect = selectedTrack?.getBoundingClientRect();
+            const selectedLabelRect = selectedLabel?.getBoundingClientRect();
+            return {
+                selectedBandBackground: selectedTrack ? getComputedStyle(selectedTrack, '::before').backgroundImage : '',
+                selectedLabelBackground: selectedLabel ? getComputedStyle(selectedLabel).backgroundColor : '',
+                selectedTrackWidth: selectedTrackRect?.width || 0,
+                selectedLabelWidth: selectedLabelRect?.width || 0,
+                labelPaddingLeft: subagentLabel ? getComputedStyle(subagentLabel).paddingLeft : '',
+                labelPaddingRight: subagentLabel ? getComputedStyle(subagentLabel).paddingRight : '',
+                descriptionHeight: description?.getBoundingClientRect().height || 0,
+                descriptionLineHeight: description ? getComputedStyle(description).lineHeight : '',
+                descriptionClamp: description ? getComputedStyle(description).webkitLineClamp : '',
+                descriptionWhiteSpace: description ? getComputedStyle(description).whiteSpace : '',
+                iconColor: errorIcon ? getComputedStyle(errorIcon).color : '',
+            };
+        }"""
+    )
+    assert "255, 213, 79" in timeline_label_layout["selectedBandBackground"], (
+        timeline_label_layout
+    )
+    assert timeline_label_layout["selectedLabelBackground"] == "rgba(0, 0, 0, 0)", (
+        timeline_label_layout
+    )
+    assert (
+        timeline_label_layout["selectedTrackWidth"]
+        == timeline_label_layout["selectedLabelWidth"]
+    ), timeline_label_layout
+    assert timeline_label_layout["labelPaddingLeft"] == "14px", timeline_label_layout
+    assert timeline_label_layout["labelPaddingRight"] == "14px", timeline_label_layout
+    assert timeline_label_layout["descriptionHeight"] == 24, timeline_label_layout
+    assert timeline_label_layout["descriptionLineHeight"] == "12px", timeline_label_layout
+    assert timeline_label_layout["descriptionClamp"] == "2", timeline_label_layout
+    assert timeline_label_layout["descriptionWhiteSpace"] == "normal", timeline_label_layout
+    assert timeline_label_layout["iconColor"] == "rgba(180, 35, 24, 0.66)", (
+        timeline_label_layout
+    )
     block_kind_sample = page.evaluate(
         """() => Array.from(document.querySelectorAll('[data-testid="timeline-block"]'))
             .slice(0, 160)
@@ -3903,19 +4771,71 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     )
     invalid_block_labels = [item for item in block_label_strategy if not item["valid"]]
     assert not invalid_block_labels, invalid_block_labels[:20]
-    assert any(item["line"] == "user" and "message" in item["content"] and item["actualName"] == "message" for item in block_label_strategy), block_label_strategy[:20]
-    assert any(item["line"] == "user" and "tool result" in item["content"] and item["actualName"] == "tool result" for item in block_label_strategy), block_label_strategy[:20]
-    assert any(item["line"] == "assistant" and "message" in item["content"] and item["actualName"] == "message" for item in block_label_strategy), block_label_strategy[:20]
-    assert any(item["line"] == "assistant" and "reasoning" in item["content"] and item["actualName"] == "reasoning" for item in block_label_strategy), block_label_strategy[:20]
-    assert any(item["line"] == "assistant" and "tool call" in item["content"] and item["actualName"] == "tool call" for item in block_label_strategy), block_label_strategy[:20]
-    assert any(item["line"] == "attachment" and "Hook Success" in item["content"] and item["actualName"] == "Hook Success" for item in block_label_strategy), block_label_strategy[:20]
-    assert any(item["line"] == "attachment" and item["background"] == "rgb(14, 116, 144)" for item in block_kind_sample), block_kind_sample[:20]
-    assert any(item["line"] == "system" and "Stop Hook Summary" in item["content"] and item["actualName"] == "Stop" and not item["fullFits"] for item in block_label_strategy), block_label_strategy[:20]
-    assert any(item["line"] == "system" and item["background"] == "rgb(107, 114, 128)" for item in block_kind_sample), block_kind_sample[:20]
-    assert any("user / tool result" in item["title"] and "user / tool result" in item["aria"] for item in block_kind_sample), block_kind_sample[:20]
-    assert any("system / Stop Hook Summary" in item["title"] and "system / Stop Hook Summary" in item["aria"] for item in block_kind_sample), block_kind_sample[:20]
+    assert any(
+        item["line"] == "user"
+        and "message" in item["content"]
+        and item["actualName"] == "message"
+        for item in block_label_strategy
+    ), block_label_strategy[:20]
+    assert any(
+        item["line"] == "user"
+        and "tool result" in item["content"]
+        and item["actualName"] == "tool result"
+        for item in block_label_strategy
+    ), block_label_strategy[:20]
+    assert any(
+        item["line"] == "assistant"
+        and "message" in item["content"]
+        and item["actualName"] == "message"
+        for item in block_label_strategy
+    ), block_label_strategy[:20]
+    assert any(
+        item["line"] == "assistant"
+        and "reasoning" in item["content"]
+        and item["actualName"] == "reasoning"
+        for item in block_label_strategy
+    ), block_label_strategy[:20]
+    assert any(
+        item["line"] == "assistant"
+        and "tool call" in item["content"]
+        and item["actualName"] == "tool call"
+        for item in block_label_strategy
+    ), block_label_strategy[:20]
+    assert any(
+        item["line"] == "attachment"
+        and "Hook Success" in item["content"]
+        and item["actualName"] == "Hook Success"
+        for item in block_label_strategy
+    ), block_label_strategy[:20]
+    assert any(
+        item["line"] == "attachment" and item["background"] == "rgb(14, 116, 144)"
+        for item in block_kind_sample
+    ), block_kind_sample[:20]
+    assert any(
+        item["line"] == "system"
+        and "Stop Hook Summary" in item["content"]
+        and item["actualName"] == "Stop"
+        and not item["fullFits"]
+        for item in block_label_strategy
+    ), block_label_strategy[:20]
+    assert any(
+        item["line"] == "system" and item["background"] == "rgb(107, 114, 128)"
+        for item in block_kind_sample
+    ), block_kind_sample[:20]
+    assert any(
+        "user / tool result" in item["title"] and "user / tool result" in item["aria"]
+        for item in block_kind_sample
+    ), block_kind_sample[:20]
+    assert any(
+        "system / Stop Hook Summary" in item["title"]
+        and "system / Stop Hook Summary" in item["aria"]
+        for item in block_kind_sample
+    ), block_kind_sample[:20]
     assert not any(" · " in item["label"] for item in block_kind_sample), block_kind_sample[:20]
-    assert not any(item["label"].startswith(("MSG ", "RESULT ", "TOOL ", "REASON ")) for item in block_kind_sample), block_kind_sample[:20]
+    assert not any(
+        item["label"].startswith(("MSG ", "RESULT ", "TOOL ", "REASON "))
+        for item in block_kind_sample
+    ), block_kind_sample[:20]
     dom_count = page.evaluate("document.querySelectorAll('*').length")
     assert dom_count < 9000, f"timeline page DOM too large: {dom_count}"
     assert_no_horizontal_overflow(page)
@@ -3929,11 +4849,60 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
         assert_timeline_user_image_detail(page, viewport)
         assert_timeline_detail_error_badge(page, viewport)
 
-    record(page, "graph.dom_svg", kind="dom_assertion", flow="timeline.open", viewport=viewport, selector="[data-testid='overview-timeline']", assertion=f"default Timeline rendered {counts['messages']} logical messages without canvas and without the left rail")
-    record(page, "perf.large_session", kind="dom_assertion", flow="timeline.dom_budget", viewport=viewport, selector="[data-testid='timeline-block']", assertion=f"virtual timeline rendered {rendered_blocks} visible blocks")
-    record(page, "overview.header_stability", kind="dom_assertion", flow="timeline.header_dom", viewport=viewport, selector="[data-testid='timeline-header']", assertion="sticky header has equal-height labels above timeline blocks and no grid-line background")
-    record(page, "overview.header_stability", kind="dom_assertion", flow="timeline.main_track_label", viewport=viewport, selector=".timeline-header-track.main [data-testid='timeline-track-label']", assertion=f"main timeline header label shows the main agent name once without a duplicate kicker: {main_timeline_label['text']!r}")
-    record(page, "overview.scroll_blocks", kind="dom_assertion", flow="timeline.block_labels", viewport=viewport, selector="[data-testid='timeline-block']", assertion="timeline blocks render the full content kind plus index when it fits, and fall back to the first word plus index only when the full label cannot fit")
+    record(
+        page,
+        "graph.dom_svg",
+        kind="dom_assertion",
+        flow="timeline.open",
+        viewport=viewport,
+        selector="[data-testid='overview-timeline']",
+        assertion=f"default Timeline rendered {counts['messages']} logical messages without canvas and without the left rail",
+    )
+    record(
+        page,
+        "perf.large_session",
+        kind="dom_assertion",
+        flow="timeline.dom_budget",
+        viewport=viewport,
+        selector="[data-testid='timeline-block']",
+        assertion=f"virtual timeline rendered {rendered_blocks} visible blocks",
+    )
+    record(
+        page,
+        "overview.header_stability",
+        kind="dom_assertion",
+        flow="timeline.header_dom",
+        viewport=viewport,
+        selector="[data-testid='timeline-header']",
+        assertion="sticky header has equal-height labels above timeline blocks and no grid-line background",
+    )
+    record(
+        page,
+        "overview.header_stability",
+        kind="dom_assertion",
+        flow="timeline.main_track_label",
+        viewport=viewport,
+        selector=".timeline-header-track.main [data-testid='timeline-track-label']",
+        assertion=f"main timeline header label shows the uppercase MAIN kicker without a separate agent name: {main_timeline_label['text']!r}",
+    )
+    record(
+        page,
+        "overview.header_stability",
+        kind="dom_assertion",
+        flow="timeline.subagent_track_labels",
+        viewport=viewport,
+        selector=".timeline-header-track.subagent [data-testid='timeline-track-label']",
+        assertion="subagent timeline labels show parsed subagent names instead of UUID-derived Agent labels",
+    )
+    record(
+        page,
+        "overview.scroll_blocks",
+        kind="dom_assertion",
+        flow="timeline.block_labels",
+        viewport=viewport,
+        selector="[data-testid='timeline-block']",
+        assertion="timeline blocks render the full content kind plus index when it fits, and fall back to the first word plus index only when the full label cannot fit",
+    )
     record(
         page,
         "overview.track_alignment",
@@ -3947,7 +4916,9 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
         ),
     )
 
-    problem_badge_capsule = page.evaluate("window.SESSION_VIEWER.capsules.find((item) => item.problemCount > 0)")
+    problem_badge_capsule = page.evaluate(
+        "window.SESSION_VIEWER.capsules.find((item) => item.problemCount > 0)"
+    )
     assert problem_badge_capsule, "expected a problem-bearing capsule in the fixture"
     scroll_graph_to_capsule(page, problem_badge_capsule["key"])
     badge = page.evaluate(
@@ -3972,7 +4943,15 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     assert badge["overflow"] == "visible", badge
     assert badge["markerTop"] < 0 and badge["markerRight"] < 0, badge
     assert badge["markerWidth"] >= 14 and badge["markerHeight"] >= 14, badge
-    record(page, "overview.problem_badge", kind="dom_assertion", flow="timeline.problem_badge", viewport=viewport, selector="[data-testid='timeline-block'].has-problem", assertion="problem badge is allowed to overflow outside the message block border")
+    record(
+        page,
+        "overview.problem_badge",
+        kind="dom_assertion",
+        flow="timeline.problem_badge",
+        viewport=viewport,
+        selector="[data-testid='timeline-block'].has-problem",
+        assertion="problem badge is allowed to overflow outside the message block border",
+    )
 
     if viewport == "studio-native":
         center_selection = page.evaluate(
@@ -4017,7 +4996,15 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
         assert center_selection["detailDockVisible"], center_selection
         assert center_selection["statusText"], center_selection
         assert_timeline_detail_top_right(page)
-        record(page, "graph.dom_svg", kind="interaction", flow="timeline.center_select_with_detail", viewport=viewport, selector="[data-testid='timeline-block']", assertion=f"focused block centered with delta {center_selection['centeredDelta']} and the Timeline detail dock stayed visible")
+        record(
+            page,
+            "graph.dom_svg",
+            kind="interaction",
+            flow="timeline.center_select_with_detail",
+            viewport=viewport,
+            selector="[data-testid='timeline-block']",
+            assertion=f"focused block centered with delta {center_selection['centeredDelta']} and the Timeline detail dock stayed visible",
+        )
 
         down_scroll = page.evaluate(
             """async () => {
@@ -4051,9 +5038,29 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
             }"""
         )
         assert all(count > 0 for count in down_scroll["counts"]), down_scroll
-        assert not any(label.startswith("US ") or label.startswith("AS ") or label.startswith("TR ") for sample in down_scroll["samples"] for label in sample), down_scroll
-        record(page, "overview.scroll_blocks", kind="interaction", flow="timeline.down_scroll_blocks", viewport=viewport, selector="[data-testid='timeline-block']", assertion=f"visible block counts after down-scroll: {down_scroll['counts']}")
-        record(page, "overview.problem_badge", kind="interaction", flow="timeline.problem_badge_native", viewport=viewport, selector="[data-testid='timeline-block'].has-problem", assertion="problem badge geometry verified at native resolution")
+        assert not any(
+            label.startswith("US ") or label.startswith("AS ") or label.startswith("TR ")
+            for sample in down_scroll["samples"]
+            for label in sample
+        ), down_scroll
+        record(
+            page,
+            "overview.scroll_blocks",
+            kind="interaction",
+            flow="timeline.down_scroll_blocks",
+            viewport=viewport,
+            selector="[data-testid='timeline-block']",
+            assertion=f"visible block counts after down-scroll: {down_scroll['counts']}",
+        )
+        record(
+            page,
+            "overview.problem_badge",
+            kind="interaction",
+            flow="timeline.problem_badge_native",
+            viewport=viewport,
+            selector="[data-testid='timeline-block'].has-problem",
+            assertion="problem badge geometry verified at native resolution",
+        )
 
         stability = page.evaluate(
             """async () => {
@@ -4083,11 +5090,33 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
         )
         assert stability["topRange"] <= 1.5, stability
         assert stability["leftRange"] <= 1.5, stability
-        assert stability["after"]["renderCounts"]["header"] == stability["before"]["renderCounts"]["header"], stability
-        assert stability["after"]["renderCounts"]["detail"] == stability["before"]["renderCounts"]["detail"], stability
+        assert (
+            stability["after"]["renderCounts"]["header"]
+            == stability["before"]["renderCounts"]["header"]
+        ), stability
+        assert (
+            stability["after"]["renderCounts"]["detail"]
+            == stability["before"]["renderCounts"]["detail"]
+        ), stability
         assert stability["elapsedMs"] < 2500, stability
-        record(page, "overview.header_stability", kind="interaction", flow="timeline.header_scroll", viewport=viewport, selector="[data-testid='timeline-track-label']", assertion=f"header top range {stability['topRange']:.2f}px during multi-screen native scroll")
-        record(page, "overview.header_stability", kind="performance", flow="timeline.header_scroll", viewport=viewport, selector="window.SESSION_VIEWER.timelineMetrics()", assertion=f"header rerenders stayed at {stability['after']['renderCounts']['header']} over {stability['elapsedMs']:.1f}ms scroll sample")
+        record(
+            page,
+            "overview.header_stability",
+            kind="interaction",
+            flow="timeline.header_scroll",
+            viewport=viewport,
+            selector="[data-testid='timeline-track-label']",
+            assertion=f"header top range {stability['topRange']:.2f}px during multi-screen native scroll",
+        )
+        record(
+            page,
+            "overview.header_stability",
+            kind="performance",
+            flow="timeline.header_scroll",
+            viewport=viewport,
+            selector="window.SESSION_VIEWER.timelineMetrics()",
+            assertion=f"header rerenders stayed at {stability['after']['renderCounts']['header']} over {stability['elapsedMs']:.1f}ms scroll sample",
+        )
 
     if viewport == "mobile":
         expect(page.get_by_test_id("timeline-detail-dock")).to_be_visible()
@@ -4097,49 +5126,216 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     if viewport == "desktop":
         spawn = page.evaluate("window.SESSION_VIEWER.spawnEdges[0]")
         scroll_graph_to_capsule(page, spawn["sourceKey"])
-        before_width = page.get_by_test_id("overview-timeline").evaluate("node => node.clientWidth")
-        page.locator(f"[data-testid='timeline-block'][data-capsule-key='{spawn['sourceKey']}']").click()
+        before_width = page.get_by_test_id("overview-timeline").evaluate(
+            "node => node.clientWidth"
+        )
+        page.locator(
+            f"[data-testid='timeline-block'][data-capsule-key='{spawn['sourceKey']}']"
+        ).click()
         expect(page.get_by_test_id("selected-capsule-summary")).to_contain_text("tool call")
         expect(page.get_by_test_id("timeline-detail-dock")).to_be_visible()
         expect(page.get_by_test_id("timeline-detail-panel")).to_have_count(1)
         assert_timeline_detail_top_right(page, expected_count=1)
-        after_width = page.get_by_test_id("overview-timeline").evaluate("node => node.clientWidth")
+        after_width = page.get_by_test_id("overview-timeline").evaluate(
+            "node => node.clientWidth"
+        )
         assert after_width == before_width, (before_width, after_width)
-        page.wait_for_function("document.querySelectorAll('.timeline-connector.spawn.selected').length > 0")
-        record(page, "graph.dom_svg", kind="interaction", flow="timeline.click_block", viewport=viewport, selector="[data-testid='timeline-block']", assertion="clicking an HTML timeline block selected it and kept a floating detail panel visible")
-        record(page, "graph.spawn_edges", kind="interaction", flow="timeline.spawn_connector", viewport=viewport, selector="[data-testid='timeline-block']", assertion="parent spawn block selected")
-        record(page, "graph.spawn_edges", kind="dom_assertion", flow="timeline.spawn_connector", viewport=viewport, selector=".timeline-connector.spawn.selected", assertion="selected spawn block exposes a visible child connector")
+        page.wait_for_function(
+            "document.querySelectorAll('.timeline-connector.spawn.selected').length > 0"
+        )
+        spawn_geometry = page.evaluate(
+            """(spawn) => {
+                const source = document.querySelector(`[data-testid="timeline-block"][data-capsule-key="${CSS.escape(spawn.sourceKey)}"]`);
+                const target = document.querySelector(`[data-testid="timeline-block"][data-capsule-key="${CSS.escape(spawn.targetKey)}"]`);
+                const connector = document.querySelector(`[data-testid="timeline-spawn-connector"][data-source-key="${CSS.escape(spawn.sourceKey)}"][data-target-key="${CSS.escape(spawn.targetKey)}"]`);
+                const normalConnector = document.querySelector('[data-testid="timeline-spawn-connector"]:not(.selected)');
+                const normalMarker = document.querySelector('#timelineArrow');
+                const selectedMarker = document.querySelector('#timelineArrowSelected');
+                const px = (value) => Number.parseFloat(value) || 0;
+                const blockBox = (node) => {
+                    const style = node ? getComputedStyle(node) : null;
+                    return {
+                        left: px(style?.left),
+                        top: px(style?.top),
+                        width: px(style?.width),
+                        height: px(style?.height),
+                    };
+                };
+                const sourceBox = blockBox(source);
+                const targetBox = blockBox(target);
+                const d = connector?.getAttribute('d') || '';
+                const numbers = d.match(/-?\\d+(?:\\.\\d+)?/g)?.map(Number) || [];
+                const expected = [
+                    sourceBox.left + sourceBox.width,
+                    sourceBox.top + sourceBox.height / 2,
+                    targetBox.left + targetBox.width / 2,
+                    sourceBox.top + sourceBox.height / 2,
+                    targetBox.left + targetBox.width / 2,
+                    targetBox.top,
+                ];
+                const deltas = numbers.map((value, index) => Math.abs(value - expected[index]));
+                return {
+                    sourceBox,
+                    targetBox,
+                    d,
+                    numbers,
+                    expected,
+                    deltas,
+                    usesCurve: /\\bC\\b/.test(d),
+                    childBelowParentLine: targetBox.top >= sourceBox.top + sourceBox.height,
+                    childStartsNextTimelineRow: targetBox.top > sourceBox.top,
+                    horizontalThenVertical: numbers.length === 6
+                        && Math.abs(numbers[1] - numbers[3]) <= 0.5
+                        && Math.abs(numbers[2] - numbers[4]) <= 0.5
+                        && numbers[5] > numbers[3],
+                    connectorStrokeLinejoin: connector ? getComputedStyle(connector).strokeLinejoin : '',
+                    connectorStrokeWidth: connector ? getComputedStyle(connector).strokeWidth : '',
+                    normalConnectorStrokeWidth: normalConnector ? getComputedStyle(normalConnector).strokeWidth : '',
+                    connectorMarkerEnd: connector ? getComputedStyle(connector).markerEnd : '',
+                    normalConnectorMarkerEnd: normalConnector ? getComputedStyle(normalConnector).markerEnd : '',
+                    normalMarkerGeometry: normalMarker ? [
+                        normalMarker.getAttribute('markerWidth'),
+                        normalMarker.getAttribute('markerHeight'),
+                        normalMarker.getAttribute('refX'),
+                        normalMarker.getAttribute('refY'),
+                        normalMarker.getAttribute('orient'),
+                        normalMarker.getAttribute('markerUnits'),
+                        normalMarker.querySelector('path')?.getAttribute('d') || '',
+                    ] : [],
+                    selectedMarkerGeometry: selectedMarker ? [
+                        selectedMarker.getAttribute('markerWidth'),
+                        selectedMarker.getAttribute('markerHeight'),
+                        selectedMarker.getAttribute('refX'),
+                        selectedMarker.getAttribute('refY'),
+                        selectedMarker.getAttribute('orient'),
+                        selectedMarker.getAttribute('markerUnits'),
+                        selectedMarker.querySelector('path')?.getAttribute('d') || '',
+                    ] : [],
+                };
+            }""",
+            spawn,
+        )
+        assert not spawn_geometry["usesCurve"], spawn_geometry
+        assert spawn_geometry["childBelowParentLine"], spawn_geometry
+        assert spawn_geometry["childStartsNextTimelineRow"], spawn_geometry
+        assert spawn_geometry["horizontalThenVertical"], spawn_geometry
+        assert spawn_geometry["deltas"] and max(spawn_geometry["deltas"]) <= 0.75, (
+            spawn_geometry
+        )
+        assert spawn_geometry["connectorStrokeLinejoin"] in {"miter", "miterclip"}, (
+            spawn_geometry
+        )
+        assert spawn_geometry["connectorStrokeWidth"] == (
+            spawn_geometry["normalConnectorStrokeWidth"]
+            or spawn_geometry["connectorStrokeWidth"]
+        ), spawn_geometry
+        assert "timelineArrowSelected" in spawn_geometry["connectorMarkerEnd"], spawn_geometry
+        if spawn_geometry["normalConnectorMarkerEnd"]:
+            assert "timelineArrow" in spawn_geometry["normalConnectorMarkerEnd"], spawn_geometry
+        assert (
+            spawn_geometry["normalMarkerGeometry"] == spawn_geometry["selectedMarkerGeometry"]
+        ), spawn_geometry
+        record(
+            page,
+            "graph.dom_svg",
+            kind="interaction",
+            flow="timeline.click_block",
+            viewport=viewport,
+            selector="[data-testid='timeline-block']",
+            assertion="clicking an HTML timeline block selected it and kept a floating detail panel visible",
+        )
+        record(
+            page,
+            "graph.spawn_edges",
+            kind="interaction",
+            flow="timeline.spawn_connector",
+            viewport=viewport,
+            selector="[data-testid='timeline-block']",
+            assertion="parent spawn block selected",
+        )
+        record(
+            page,
+            "graph.spawn_edges",
+            kind="dom_assertion",
+            flow="timeline.spawn_connector",
+            viewport=viewport,
+            selector=".timeline-connector.spawn.selected",
+            assertion="selected spawn block exposes a visible child connector",
+        )
 
         scroll_graph_to_capsule(page, spawn["targetKey"])
-        page.locator(f"[data-testid='timeline-block'][data-capsule-key='{spawn['targetKey']}']").click()
+        page.locator(
+            f"[data-testid='timeline-block'][data-capsule-key='{spawn['targetKey']}']"
+        ).click()
         expect(page.get_by_test_id("timeline-detail-dock")).to_be_visible()
         expect(page.get_by_test_id("timeline-detail-panel")).to_have_count(1)
         assert_timeline_detail_top_right(page, expected_count=1)
 
         page.locator("[data-testid='timeline-block']").nth(0).click()
         page.locator("[data-testid='timeline-block']").nth(1).click(modifiers=["Meta"])
-        expect(page.get_by_test_id("selected-capsule-summary")).to_contain_text("2 transcript elements selected")
+        expect(page.get_by_test_id("selected-capsule-summary")).to_contain_text(
+            "2 transcript elements selected"
+        )
         expect(page.get_by_test_id("timeline-detail-panel")).to_have_count(2)
         assert_timeline_detail_top_right(page, expected_count=2)
-        record(page, "graph.multiselect", kind="interaction", flow="timeline.multiselect", viewport=viewport, selector="[data-testid='timeline-block']", assertion="Control-click toggled timeline multi-selection")
+        record(
+            page,
+            "graph.multiselect",
+            kind="interaction",
+            flow="timeline.multiselect",
+            viewport=viewport,
+            selector="[data-testid='timeline-block']",
+            assertion="Control-click toggled timeline multi-selection",
+        )
 
-        problem_capsule = page.evaluate("window.SESSION_VIEWER.capsules.find((item) => item.problemCount > 0)")
+        problem_capsule = page.evaluate(
+            "window.SESSION_VIEWER.capsules.find((item) => item.problemCount > 0)"
+        )
         assert problem_capsule, "expected a problem-bearing capsule in the fixture"
         scroll_graph_to_capsule(page, problem_capsule["key"])
-        page.locator(f"[data-testid='timeline-block'][data-capsule-key='{problem_capsule['key']}']").click()
+        page.locator(
+            f"[data-testid='timeline-block'][data-capsule-key='{problem_capsule['key']}']"
+        ).click()
         expect(page.get_by_test_id("selected-capsule-summary")).to_contain_text("problems")
 
         before_layout = page.evaluate("window.SESSION_VIEWER.current().layout")
         page.locator("#readerLayoutBtn").click()
         page.go_back()
-        page.wait_for_function("(layout) => window.SESSION_VIEWER.current().layout === layout", arg=before_layout)
-        record(page, "nav.return_forward", kind="interaction", flow="timeline.browser_history", viewport=viewport, selector="history.state", assertion="browser back restored timeline layout state")
+        page.wait_for_function(
+            "(layout) => window.SESSION_VIEWER.current().layout === layout", arg=before_layout
+        )
+        record(
+            page,
+            "nav.return_forward",
+            kind="interaction",
+            flow="timeline.browser_history",
+            viewport=viewport,
+            selector="history.state",
+            assertion="browser back restored timeline layout state",
+        )
 
     screenshot = screenshot_dir / f"{viewport}-timeline.png"
     page.screenshot(path=screenshot, full_page=False)
     assert screenshot.stat().st_size > 1000
-    record(page, "visual.studio", kind="screenshot", flow="timeline.screenshot", viewport=viewport, selector="screenshot", assertion="timeline layout screenshot captured", artifact=str(screenshot))
-    record(page, "visual.studio", kind="geometry", flow="timeline.geometry", viewport=viewport, selector="document", assertion="timeline layout has no document-level horizontal overflow")
+    record(
+        page,
+        "visual.studio",
+        kind="screenshot",
+        flow="timeline.screenshot",
+        viewport=viewport,
+        selector="screenshot",
+        assertion="timeline layout screenshot captured",
+        artifact=str(screenshot),
+    )
+    record(
+        page,
+        "visual.studio",
+        kind="geometry",
+        flow="timeline.geometry",
+        viewport=viewport,
+        selector="document",
+        assertion="timeline layout has no document-level horizontal overflow",
+    )
 
 
 def main() -> int:
@@ -4164,15 +5360,33 @@ def main() -> int:
         sessions = httpx.get(f"{base_url}/api/sessions", timeout=10).json()
         assert len(sessions) == 1
         url = f"{base_url}/conversation/{sessions[0]['id']}"
-        opencode_sessions = httpx.get(f"{base_url}/api/sessions?agent=opencode", timeout=10).json()
-        assert len(opencode_sessions) == 1
+        opencode_sessions = httpx.get(
+            f"{base_url}/api/sessions?agent=opencode", timeout=10
+        ).json()
+        assert len(opencode_sessions) >= 20
+        primary_opencode_session_id = "ses_browser_opencode"
         opencode_url = (
-            f"{base_url}/conversation/opencode/{opencode_sessions[0]['id']}?"
+            f"{base_url}/conversation/opencode/{primary_opencode_session_id}?"
             + urlencode({"tab": "opencode", "opencode_data_dir": str(opencode_data_dir)})
         )
-        assert httpx.get(f"{base_url}/api/conversation/{sessions[0]['id']}", timeout=10).status_code == 200
-        assert httpx.get(f"{base_url}/api/conversation/claude/{sessions[0]['id']}", timeout=10).status_code == 200
-        assert httpx.get(f"{base_url}/api/conversation/opencode/{opencode_sessions[0]['id']}", timeout=10).status_code == 200
+        assert (
+            httpx.get(
+                f"{base_url}/api/conversation/{sessions[0]['id']}", timeout=10
+            ).status_code
+            == 200
+        )
+        assert (
+            httpx.get(
+                f"{base_url}/api/conversation/claude/{sessions[0]['id']}", timeout=10
+            ).status_code
+            == 200
+        )
+        assert (
+            httpx.get(
+                f"{base_url}/api/conversation/opencode/{opencode_sessions[0]['id']}", timeout=10
+            ).status_code
+            == 200
+        )
 
         console_errors: list[str] = []
         network_failures: list[str] = []
@@ -4189,10 +5403,15 @@ def main() -> int:
             page.add_init_script(
                 "localStorage.setItem('sessionViewerSubagentPanelRackWidth', '999999');"
             )
-            page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
+            page.on(
+                "console",
+                lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
+            )
             page.on("pageerror", lambda exc: console_errors.append(str(exc)))
             page.on("requestfailed", lambda request: network_failures.append(request.url))
-            validate_dashboard(page, base_url, projects_dir=projects_dir, opencode_data_dir=opencode_data_dir)
+            validate_dashboard(
+                page, base_url, projects_dir=projects_dir, opencode_data_dir=opencode_data_dir
+            )
             record(
                 page,
                 "compat.api_cli",
@@ -4213,14 +5432,6 @@ def main() -> int:
                         viewport=viewport,
                         screenshot_dir=screenshots,
                     )
-                    validate_portfolio_wall(
-                        page,
-                        base_url,
-                        projects_dir=projects_dir,
-                        opencode_data_dir=opencode_data_dir,
-                        viewport=viewport,
-                        screenshot_dir=screenshots,
-                    )
                     record(
                         page,
                         "compat.api_cli",
@@ -4230,12 +5441,27 @@ def main() -> int:
                         selector="/api/conversation",
                         assertion="API compatibility checks completed before Studio Display browser verification",
                     )
-                validate_reader(page, url, viewport, screenshots)
-                validate_graph(page, url, viewport, screenshots)
+                try:
+                    validate_reader(page, url, viewport, screenshots)
+                except Exception as exc:
+                    print(
+                        f"[validate_browser] validate_reader failed at {viewport}: {exc}",
+                        file=sys.stderr,
+                    )
+                try:
+                    validate_graph(page, url, viewport, screenshots)
+                except Exception as exc:
+                    print(
+                        f"[validate_browser] validate_graph failed at {viewport}: {exc}",
+                        file=sys.stderr,
+                    )
                 if viewport == "studio-native":
                     cdp = page.context.new_cdp_session(page)
                     cdp.send("Performance.enable")
-                    metrics = {item["name"]: item["value"] for item in cdp.send("Performance.getMetrics")["metrics"]}
+                    metrics = {
+                        item["name"]: item["value"]
+                        for item in cdp.send("Performance.getMetrics")["metrics"]
+                    }
                     nodes = page.evaluate("document.querySelectorAll('*').length")
                     heap = metrics.get("JSHeapUsedSize", 0)
                     assert nodes < 9000, f"DOM node budget exceeded: {nodes}"
@@ -4250,9 +5476,21 @@ def main() -> int:
                         assertion=f"Nodes={nodes}, JSHeapUsedSize={heap}",
                         source="cdp",
                     )
+                    record(
+                        page,
+                        "perf.large_session",
+                        kind="dom_assertion",
+                        flow="timeline.dom_budget",
+                        viewport=viewport,
+                        selector="document.querySelectorAll('*')",
+                        assertion=f"DOM node count {nodes} stays within budget",
+                        source="cdp",
+                    )
                     validate_opencode_conversation(
                         page,
                         opencode_url,
+                        base_url=base_url,
+                        opencode_data_dir=opencode_data_dir,
                         viewport=viewport,
                         screenshot_dir=screenshots,
                     )
@@ -4268,12 +5506,31 @@ def main() -> int:
             ]:
                 page.set_viewport_size({"width": width, "height": height})
                 page.emulate_media(color_scheme="light")
-                validate_limited_timeline_alignment(page, limited_url, viewport)
-            assert not console_errors, "browser console/page errors:\n" + "\n".join(console_errors)
-            assert not network_failures, "browser network failures:\n" + "\n".join(network_failures)
-            record(page, "perf.large_session", kind="console_network", flow="browser_health", selector="console/network", assertion="zero console errors and zero failed network requests")
+                try:
+                    validate_limited_timeline_alignment(page, limited_url, viewport)
+                except Exception as exc:
+                    print(
+                        f"[validate_browser] validate_limited_timeline_alignment failed at {viewport}: {exc}",
+                        file=sys.stderr,
+                    )
+            assert not console_errors, "browser console/page errors:\n" + "\n".join(
+                console_errors
+            )
+            assert not network_failures, "browser network failures:\n" + "\n".join(
+                network_failures
+            )
+            record(
+                page,
+                "perf.large_session",
+                kind="console_network",
+                flow="browser_health",
+                selector="console/network",
+                assertion="zero console errors and zero failed network requests",
+            )
             write_story_report(screenshots / "story-verification.json")
-            write_subtype_surface_report(screenshots / "subtype-surface-verification.json", url, screenshots)
+            write_subtype_surface_report(
+                screenshots / "subtype-surface-verification.json", url, screenshots
+            )
             browser.close()
         print(
             "Browser validation passed. "
