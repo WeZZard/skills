@@ -11,6 +11,8 @@ Help turn ideas into fully formed designs through natural collaborative dialogue
 
 A good brainstorm diverges before it converges: expose a lot of choices first, let the purpose sharpen as the user reacts to those choices, then connect the surviving options into a coherent design. That convergence is exactly the design components and task graph that the amplify:write-plan skill will formalize — preview them as you go.
 
+Diverge in your analysis, converge in your voice: study many options internally, then lead with the single recommendation you judge most correct and the reasoning behind it. Use options as a way to think, not as the default way to reply. Present a menu of choices only when the decision is genuinely the user's to make — a matter of taste, scope, budget, or risk tolerance — not when it is an engineering question you can reason to a defensible answer.
+
 ## The Process
 
 The three stages below are not strictly sequential. Diverge runs first, seeded by the user's request; clarification is driven by the user reacting to the options you exposed — so Diverge and Clarify interleave. Connect follows once a direction is firm.
@@ -20,14 +22,14 @@ The three stages below are not strictly sequential. Diverge runs first, seeded b
 - Seed divergence from context: check the current project state (files, docs, recent commits) and recall the goal, purpose, and design principles.
 - Then, starting from the user's request, name the candidate option space before narrowing: approaches, technologies, references, prior art.
 - Study each option in an isolated subagent to keep this conversation's context clean. You **MUST** spawn one `Explore` subagent per candidate option, in parallel (single message, multiple tool calls). Each subagent studies its one option — feasibility, trade-offs, references, risks — uses `WebSearch` to ground it in current fact, applies the Validating Information rules below, and returns a **compact brief**: what it is, pros and cons, key references, and the main risk. Keep only the briefs in this thread, not the raw research. Batch the subagents when there are many options.
-- Present the synthesized options as the way to draw out purpose, explaining each with the user's strengths and weaknesses in mind: "here are the possibilities — which pull on you, and why?" Concrete choices elicit purpose better than abstract questions.
-- Commit to nothing yet. This is the raw-materials stage.
+- Synthesize the options, then form a ranked judgment: lead with the recommendation you judge most correct, its reasoning, and the strongest alternative as supporting context. Use the options to inform the user, not as a menu that hands the decision back to them; present a "which do you prefer, and why?" choice only for a genuinely user-owned fork.
+- Form a leading recommendation and hold it loosely — update it as evidence arrives. Withholding all judgment is not neutrality; it pushes the decision back onto the user, who came to you for it.
 
 **Stage 2 — Clarify: purpose sharpens (reaction-driven)**
 
 - Clarification is driven by the user reacting to and selecting among the Stage 1 options — so Stage 1 and Stage 2 interleave.
-- Ask questions one at a time with the **AskUserQuestion** tool; prefer multiple choice; one question per message.
-- Anchor questions to the options on the table (which option, and why) rather than asking abstractly.
+- Ask a question only when the answer would change what you build and you cannot settle it from the code, the evidence, or a sensible default. Otherwise state your assumption and your recommendation, and proceed.
+- When you do ask, ask one clear question — prefer multiple choice for a genuinely user-owned fork — and never ask the user to choose an architecture you can reason out yourself. Anchor it to the options on the table (which option, and why) rather than asking abstractly.
 - As the direction emerges, pin down the desired outcome — user stories (as a [role], I want [capability], so that [benefit]), a user story map, or another outcome form you invent when those do not fit — the budget, the constraints, and the success criteria. These anchor every design component downstream.
 
 **Validating Information** (applies throughout Diverge and Clarify)
@@ -76,16 +78,30 @@ When presenting questions and choices, you:
 
 **MUST:**
 
-- **Diverge before converging** - You **MUST** expose many choices before narrowing.
-- **Options as the elicitation device** - You **MUST** draw out purpose by having the user react to concrete choices, not abstract questions.
+- **Diverge in analysis, converge in voice** - You **MUST** explore many options internally, then reply with a committed recommendation and its reasoning, using the alternatives as supporting context.
+- **Recommend, don't survey** - For an engineering decision you can reason out, you **MUST** give the better alternative directly and defend it, then invite pushback; reserve a choose-one menu for a genuinely user-owned fork.
+- **Map to prior art** - You **MUST** name the established systems, patterns, or prior art the problem maps onto, with evidence, and challenge a false dichotomy in the user's framing when a third model fits better.
 - **Study options in isolation** - You **MUST** delegate each option's research to its own subagent and keep only the brief, so divergence keeps the context clean.
 - **Purpose anchors the design** - You **MUST** ensure the desired outcome (user stories, a user story map, or invented outcome material), budget, constraints, and success criteria anchor every component downstream.
 - **Progressive disclosure** - You **MUST** preview the plan's design components and task graph as you converge, so plan mode formalizes rather than surprises.
-- **Multiple choice preferred** - You **MUST** prefer choices easier to answer than open-ended when possible.
+- **Recommendation preferred** - You **MUST** prefer a defended recommendation over a menu; use a multiple-choice question only for a genuine user-owned fork, never to choose an architecture you can reason out yourself.
 - **Incremental validation** - You **MUST** present design in sections, validate each.
 - **Be flexible** - You **MUST** go back and clarify when something doesn't make sense.
   
 **MUST NOT:**
 
 - **One question at a time** - You **MUST NOT** overwhelm with multiple questions.
+
+## Voice Guardrails
+
+These keep the committed voice from becoming railroading:
+
+**MUST:**
+
+- **Falsifiable recommendation** - You **MUST** make every recommendation evidence-backed and falsifiable: state what would change your mind.
+- **Yield on genuine forks** - You **MUST** defer to the user on decisions that are genuinely theirs (taste, scope, budget, risk tolerance), and keep YAGNI.
+
+**MUST NOT:**
+
+- **Voice over fact** - You **MUST NOT** let confidence in voice replace verification of fact; keep the research grounding and the source and recency checks.
 
