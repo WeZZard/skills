@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/WeZZard/skills/blob/main/claude/amplify/schemas/node-types.json",
+  "title": "Amplify Node-Type Templates",
+  "description": "The system-owned registry of graph node types. Every node in a folded task graph (schemas/task-graph.schema.json) carries a required, explicit `type` that names one of these templates; scripts/task.mjs reads THIS file at load time and validates each node against its type's template. A template names: the properties that are required on a node of that type, an optional set of additional allowed properties, and a per-type executor rule. `executor` and `deps` are required on every type. Property semantics (id/deps/executor grammar, max_attempts integer, etc.) are the same as task-graph.schema.json -- this file only declares which properties belong to which type, plus the executor constraint. The execute-plan dump authors `implement` nodes; `resolve`/`audit`/`reduce` nodes are created at runtime by the lifecycle (audit-resolver registers auditors; the reducer reduces a round). The `reduce` executor names subagent(amplify:audit-reducer), which is NOT yet an authored agent file -- this registry only names it.",
+  "types": {
+    "implement": {
+      "description": "An implement-and-audit task authored by the execute-plan dump. Its implementer always runs subagent(general-purpose); specialized GUI/behavioral work is an audit node (authored executor), never an implementer.",
+      "required": ["id", "type", "name", "deps", "acceptance_criteria", "design_aspect", "executor", "max_attempts"],
+      "optional": ["human_gate"],
+      "executor": { "const": "subagent(general-purpose)" }
+    },
+    "resolve": {
+      "description": "The audit-resolver subnode for a completed task: it designs the auditor panel. Created at runtime.",
+      "required": ["id", "type", "deps", "executor"],
+      "optional": [],
+      "executor": { "const": "subagent(amplify:audit-resolver)" }
+    },
+    "audit": {
+      "description": "One auditor that verifies a task's acceptance criteria against the implementer's diff, blind and read-only. Its executor is an authored sub-agent chosen at runtime by the audit-resolver (any value matching the executor grammar).",
+      "required": ["id", "type", "deps", "executor", "focus", "audit_prompt"],
+      "optional": [],
+      "executor": { "matchesGrammar": true }
+    },
+    "reduce": {
+      "description": "Reduces one audit round to a verdict, keyed by a counter. Its executor names subagent(amplify:audit-reducer) (registry name only; the agent file does not exist yet).",
+      "required": ["id", "type", "deps", "executor", "counter"],
+      "optional": [],
+      "executor": { "const": "subagent(amplify:audit-reducer)" }
+    }
+  }
+}

@@ -51,10 +51,13 @@ function ids(s) {
 
 function ensureDir(dir) { mkdirSync(dir, { recursive: true }); }
 
-// A task no longer declares auditors -- they are resolved at runtime.
+// A task no longer declares auditors -- they are resolved at runtime. Every node
+// now carries an explicit `type`; the helper authors `implement` nodes (the type
+// the execute-plan dump emits), so most existing graphs are unchanged save the
+// added `type`.
 function task(id, deps = [], over = {}) {
   return {
-    id, name: `Task ${id}`, deps,
+    id, type: "implement", name: `Task ${id}`, deps,
     acceptance_criteria: ["does the thing"], design_aspect: "Architecture", max_attempts: 2,
     ...over,
   };
@@ -104,17 +107,20 @@ test("init: state is written under AMPLIFY_STATE_DIR, not elsewhere", () => {
 });
 
 const invalidCases = {
-  "missing required field (acceptance_criteria)": { version: 1, nodes: [{ id: "A", name: "A", deps: [], max_attempts: 1 }] },
-  "impl.executor with invalid grammar": { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(bogus)" } })] },
-  "external driver (codex) as implementer": { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(amplify:codex-driver)" } })] },
-  "external driver (kimi) as implementer": { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(amplify:kimi-driver)" } })] },
-  "stale audit field rejected": { version: 1, nodes: [task("A", [], { audit: { executor: "subagent(general-purpose)" } })] },
+  "missing required field (acceptance_criteria)": { version: 1, nodes: [{ id: "A", type: "implement", name: "A", deps: [], max_attempts: 1 }] },
+  "missing type": { version: 1, nodes: [{ id: "A", name: "A", deps: [], acceptance_criteria: ["x"], design_aspect: "Architecture", max_attempts: 1 }] },
+  "executor with invalid grammar": { version: 1, nodes: [task("A", [], { executor: "subagent(bogus)" })] },
+  "external driver (codex) as implementer": { version: 1, nodes: [task("A", [], { executor: "subagent(amplify:codex-driver)" })] },
+  "external driver (kimi) as implementer": { version: 1, nodes: [task("A", [], { executor: "subagent(amplify:kimi-driver)" })] },
+  "implement executor not general-purpose": { version: 1, nodes: [task("A", [], { executor: "subagent(explore)" })] },
+  "stale audit field rejected (outside template)": { version: 1, nodes: [task("A", [], { audit: { executor: "subagent(general-purpose)" } })] },
   "duplicate id": { version: 1, nodes: [task("A"), task("A")] },
   "unknown dependency": { version: 1, nodes: [task("A", ["ghost"])] },
   "dependency cycle": { version: 1, nodes: [task("A", ["B"]), task("B", ["A"])] },
   "id containing a dot": { version: 1, nodes: [task("A.x")] },
   "version not 1": { version: 2, nodes: [task("A")] },
   "empty nodes": { version: 1, nodes: [] },
+  "unknown type": { version: 1, nodes: [{ id: "A", type: "frobnicate", deps: [], executor: "subagent(general-purpose)" }] },
 };
 
 for (const [label, graph] of Object.entries(invalidCases)) {
@@ -126,11 +132,13 @@ for (const [label, graph] of Object.entries(invalidCases)) {
   });
 }
 
-test("init: external-agent driver as implementer is rejected with an audit-only error and writes no state", () => {
+test("init: a non-general-purpose implementer executor is rejected and writes no state", () => {
   const { dir, stateDir } = ws();
-  const bad = init(stateDir, dir, { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(amplify:codex-driver)" } })] });
-  assert.notEqual(bad.status, 0, "external driver as implementer must be rejected");
-  assert.match(bad.stderr, /audit-only|implementer/i);
+  // implement nodes are general-purpose-only; an external driver (or any other
+  // executor) in the implement slot is rejected by the type's executor const rule.
+  const bad = init(stateDir, dir, { version: 1, nodes: [task("A", [], { executor: "subagent(amplify:codex-driver)" })] });
+  assert.notEqual(bad.status, 0, "a non-general-purpose implementer must be rejected");
+  assert.match(bad.stderr, /general-purpose/i, "the rejection names the required executor");
   assert.equal(
     readdirSync(stateDir).filter((f) => f.endsWith(".json")).length, 0,
     "no state file is written on a rejected graph",
@@ -371,7 +379,7 @@ test("flow: ready/complete/resolve emit '<id>\\t<executor>', carrying each subno
   const { dir, stateDir } = ws();
   const id = init(stateDir, dir, {
     version: 1,
-    nodes: [task("A"), task("B", ["A"], { impl: { executor: "subagent(explore)" } })],
+    nodes: [task("A"), task("B", ["A"])],
   }).stdout.trim();
 
   const readyLines = lines(run(stateDir, ["ready", "--id", id]).stdout);
@@ -380,13 +388,15 @@ test("flow: ready/complete/resolve emit '<id>\\t<executor>', carrying each subno
   const afterImpl = lines(run(stateDir, ["complete", "--id", id, "--node", "A.impl"]).stdout);
   assert.deepEqual(afterImpl, ["A.resolve\tsubagent(amplify:audit-resolver)"]);
 
+  // the audit panel carries a custom (non-general-purpose) executor onto the audit
+  // subnode — that is where specialized executors live now, not on the implementer.
   const afterResolve = lines(run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel",
     panel([{ focus: "semantic", executor: "subagent(amplify:codex-driver)" }])]).stdout);
   assert.deepEqual(afterResolve, ["A.audit.0\tsubagent(amplify:codex-driver)"]);
 
-  // single auditor passes -> task A done -> B.impl ready with B's explicit executor
+  // single auditor passes -> task A done -> B.impl ready with the general-purpose executor
   const afterAudit = lines(run(stateDir, ["complete", "--id", id, "--node", "A.audit.0"]).stdout);
-  assert.deepEqual(afterAudit, ["B.impl\tsubagent(explore)"]);
+  assert.deepEqual(afterAudit, ["B.impl\tsubagent(general-purpose)"]);
 });
 
 test("resolve: rejects a bad panel executor and a non-resolve subnode", () => {
@@ -459,12 +469,12 @@ test("identity: same graph + same salt => same GRAPH_ID (resume preserves state)
 // deps) survives the full lifecycle, because commit re-projects and re-validates
 // the folded graph at each step.
 
-test("commit: a mid-flight state with human_gate + explicit executor + deps survives every verb", () => {
+test("commit: a mid-flight state with human_gate + deps survives every verb", () => {
   const { dir, stateDir } = ws();
   const id = init(stateDir, dir, {
     version: 1,
     nodes: [
-      task("A", [], { human_gate: true, impl: { executor: "subagent(explore)" } }),
+      task("A", [], { human_gate: true }),
       task("B", ["A"], { max_attempts: 2 }),
     ],
   }).stdout.trim();
@@ -480,17 +490,17 @@ test("commit: a mid-flight state with human_gate + explicit executor + deps surv
   run(stateDir, ["resolve", "--id", id, "--node", "B.resolve", "--panel", ONE_AUDIT]);
   const retry = ids(run(stateDir, ["fail", "--id", id, "--node", "B.audit.0", "--reason", "x"]).stdout);
   assert.ok(retry.includes("B.impl"), "fail-under-max reopens B.impl through commit");
-  // the human_gate boolean and explicit executor are intact after several commits
+  // the human_gate boolean and the (general-purpose) executor are intact after several commits
   const state = JSON.parse(readFileSync(join(stateDir, `${id}.json`), "utf8"));
   assert.equal(state.tasks.A.human_gate, true);
-  assert.equal(state.subnodes["A.impl"].executor, "subagent(explore)");
+  assert.equal(state.subnodes["A.impl"].executor, "subagent(general-purpose)");
 });
 
 test("commit: init rejects an invalid graph atomically — no state file written", () => {
   const { dir, stateDir } = ws();
-  // an external-agent driver as implementer is invalid; init must reject before any write
+  // a non-general-purpose implementer executor is invalid; init must reject before any write
   const bad = init(stateDir, dir, {
-    version: 1, nodes: [task("A", [], { impl: { executor: "subagent(amplify:codex-driver)" } })],
+    version: 1, nodes: [task("A", [], { executor: "subagent(amplify:codex-driver)" })],
   });
   assert.notEqual(bad.status, 0, "invalid graph must be rejected");
   assert.equal(
@@ -510,29 +520,159 @@ test("identity: different content or salt => different GRAPH_ID", () => {
   assert.notEqual(idA, idC, "different salt => different id");
 });
 
-test("field parity: a graph built from the schema's required keys is accepted", () => {
+test("field parity: a graph built from the implement type's required keys is accepted", () => {
   const schema = JSON.parse(readFileSync(SCHEMA, "utf8"));
-  const required = schema.$defs.task.required;
+  const required = schema.$defs.implement.required;
   assert.deepEqual(
     [...required].sort(),
-    ["acceptance_criteria", "deps", "design_aspect", "id", "max_attempts", "name"],
-    "schema required keys are the snake_case contract (no audit)",
+    ["acceptance_criteria", "deps", "design_aspect", "id", "max_attempts", "name", "type"],
+    "the implement type's required keys are the snake_case contract plus the explicit type (no audit)",
   );
-  const node = { id: "A", name: "A", deps: [], acceptance_criteria: ["x"], design_aspect: "Architecture", max_attempts: 1 };
+  const node = { id: "A", type: "implement", name: "A", deps: [], acceptance_criteria: ["x"], design_aspect: "Architecture", max_attempts: 1 };
   for (const k of required) assert.ok(k in node, `missing required key ${k}`);
   const { dir, stateDir } = ws();
   const r = init(stateDir, dir, { version: 1, nodes: [node] });
   assert.equal(r.status, 0, r.stderr);
 });
 
-test("schema: external-agent drivers are excluded from the impl executor pattern", () => {
+test("schema: the implement type fixes its executor to general-purpose; the audit executor grammar admits the external drivers", () => {
   const schema = JSON.parse(readFileSync(SCHEMA, "utf8"));
+  // implement is general-purpose-only: no external driver (or any other executor)
+  // can occupy an implement slot.
+  assert.equal(schema.$defs.implement.properties.executor.const, "subagent(general-purpose)",
+    "the implement type fixes its executor to subagent(general-purpose)");
+  // the audit executor grammar admits the audit-only external-agent drivers as
+  // read-only auditors (they are barred from implement by the const above).
   const pattern = schema.$defs.executor.pattern;
-  assert.doesNotMatch(pattern, /codex-driver/, "codex-driver must not be a valid implementer");
-  assert.doesNotMatch(pattern, /kimi-driver/, "kimi-driver must not be a valid implementer");
-  // ordinary implementers stay valid
+  assert.match(pattern, /codex-driver/, "codex-driver is a valid AUDIT executor (audit-only)");
+  assert.match(pattern, /kimi-driver/, "kimi-driver is a valid AUDIT executor (audit-only)");
   assert.match(pattern, /general-purpose/);
 });
+
+// --- typed nodes + system property templates (V-NT) ------------------------
+// Every node carries a required, explicit `type`; the system file node-types.json
+// declares each type's property template, and validateGraph (read at load time)
+// validates every node against its type's template: required present, no property
+// outside the template, per-type property + executor checks. The execute-plan dump
+// authors `implement` nodes; `audit`/`reduce` are DEFINED + validatable here.
+
+const NODE_TYPES_FILE = fileURLToPath(new URL("../schemas/node-types.json", import.meta.url));
+
+test("V-NT.1 typed implement: every existing test graph is a typed implement node (suite-green proxy)", () => {
+  // The task() helper now stamps type:"implement" on every node, so a representative
+  // graph with deps validates and runs exactly as before — this is the regression
+  // anchor for "all existing graphs are typed implement nodes and still pass."
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [task("A"), task("B", ["A"])] });
+  assert.equal(r.status, 0, r.stderr);
+  const id = r.stdout.trim();
+  const state = readState(stateDir, id);
+  assert.equal(state.tasks.A.type, "implement", "the explicit type persists on the task record");
+  assert.equal(state.tasks.B.type, "implement");
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id]).stdout), ["A.impl"], "typed implement schedules as before");
+});
+
+test("V-NT.1 node-types.json is the source of truth validateGraph reads (declares the four types with executor+deps required)", () => {
+  const nt = JSON.parse(readFileSync(NODE_TYPES_FILE, "utf8"));
+  assert.deepEqual(Object.keys(nt.types).sort(), ["audit", "implement", "reduce", "resolve"],
+    "node-types.json declares exactly the four node types");
+  for (const [name, tmpl] of Object.entries(nt.types)) {
+    assert.ok(tmpl.required.includes("executor"), `${name} requires executor`);
+    assert.ok(tmpl.required.includes("deps"), `${name} requires deps`);
+    assert.ok(tmpl.required.includes("type"), `${name} requires the explicit type`);
+  }
+  assert.equal(nt.types.implement.executor.const, "subagent(general-purpose)");
+  assert.equal(nt.types.resolve.executor.const, "subagent(amplify:audit-resolver)");
+  assert.equal(nt.types.reduce.executor.const, "subagent(amplify:audit-reducer)");
+  assert.ok(nt.types.audit.executor.matchesGrammar, "audit's executor is the open grammar (authored sub-agent)");
+});
+
+test("V-NT.5 consistency: node-types.json and task-graph.schema.json agree on every type's executor rule, property set, and required set", () => {
+  // node-types.json is what the engine reads at load time; the schema $defs serve
+  // only the dump's offline JSON-Schema validation. Nothing else asserts the two
+  // hand-maintained declarations agree, so this guards against silent drift: an
+  // edit to one file that isn't mirrored in the other fails here.
+  const nt = JSON.parse(readFileSync(NODE_TYPES_FILE, "utf8")).types;
+  const schema = JSON.parse(readFileSync(SCHEMA, "utf8"));
+  for (const type of ["implement", "resolve", "audit", "reduce"]) {
+    const tmpl = nt[type];
+    const def = schema.$defs[type];
+    assert.ok(def, `schema declares $defs.${type}`);
+
+    // 1. Property set: node-types' required ∪ optional == schema's declared properties.
+    assert.deepEqual(
+      [...new Set([...tmpl.required, ...tmpl.optional])].sort(),
+      Object.keys(def.properties).sort(),
+      `${type}: property sets must match across the two files`,
+    );
+
+    // 2. Executor rule: a fixed (const) executor mirrors the schema const; the
+    //    open-grammar (audit) executor mirrors the schema $ref to #/$defs/executor.
+    if ("const" in tmpl.executor) {
+      assert.equal(def.properties.executor.const, tmpl.executor.const,
+        `${type}: executor const must match`);
+    } else {
+      assert.ok(tmpl.executor.matchesGrammar, `${type}: executor is the open grammar`);
+      assert.equal(def.properties.executor.$ref, "#/$defs/executor",
+        `${type}: open-grammar executor must $ref the shared executor grammar`);
+    }
+
+    // 3. Required set: identical, except a fixed (const, hence defaultable) executor
+    //    is omitted from the schema's `required` (a missing executor defaults to the
+    //    const), while the open-grammar executor stays required in both.
+    const defaultable = "const" in tmpl.executor;
+    const expectedRequired = tmpl.required.filter((p) => !(p === "executor" && defaultable));
+    assert.deepEqual(def.required.slice().sort(), expectedRequired.sort(),
+      `${type}: required sets must match (executor defaultable iff its executor is fixed)`);
+  }
+});
+
+test("V-NT.2 happy: an audit node {focus, audit_prompt, executor, deps} and a reduce node {counter, executor, deps} validate via init", () => {
+  // An audit node carrying an authored (specialized) executor validates.
+  const a = ws();
+  const auditNode = { id: "AUD", type: "audit", deps: [], focus: "gui",
+    audit_prompt: "verify the on-screen behavior", executor: "subagent(amplify:computer-use)" };
+  const ra = init(a.stateDir, a.dir, { version: 1, nodes: [auditNode] });
+  assert.equal(ra.status, 0, ra.stderr);
+  assert.equal(readState(a.stateDir, ra.stdout.trim()).tasks.AUD.type, "audit", "the audit type persists");
+
+  // A reduce node with a counter validates; its executor defaults to the reducer.
+  const b = ws();
+  const reduceNode = { id: "RED", type: "reduce", deps: [], counter: 0 };
+  const rb = init(b.stateDir, b.dir, { version: 1, nodes: [reduceNode] });
+  assert.equal(rb.status, 0, rb.stderr);
+  const stateB = readState(b.stateDir, rb.stdout.trim());
+  assert.equal(stateB.tasks.RED.type, "reduce", "the reduce type persists");
+  assert.equal(stateB.tasks.RED.executor, "subagent(amplify:audit-reducer)",
+    "reduce's executor defaults to the named reducer");
+});
+
+// A small per-case rejection harness: each fixture must be rejected by init.
+const ntRejectCases = {
+  "missing type": { version: 1, nodes: [{ id: "A", name: "A", deps: [], acceptance_criteria: ["x"], design_aspect: "Architecture", max_attempts: 1 }] },
+  "implement with a non-general-purpose executor": { version: 1, nodes: [task("A", [], { executor: "subagent(explore)" })] },
+  "audit missing focus": { version: 1, nodes: [{ id: "A", type: "audit", deps: [], audit_prompt: "p", executor: "subagent(general-purpose)" }] },
+  "audit missing audit_prompt": { version: 1, nodes: [{ id: "A", type: "audit", deps: [], focus: "f", executor: "subagent(general-purpose)" }] },
+  "reduce missing counter": { version: 1, nodes: [{ id: "A", type: "reduce", deps: [], executor: "subagent(amplify:audit-reducer)" }] },
+  "implement missing acceptance_criteria": { version: 1, nodes: [{ id: "A", type: "implement", name: "A", deps: [], design_aspect: "Architecture", max_attempts: 1 }] },
+  "implement missing design_aspect": { version: 1, nodes: [{ id: "A", type: "implement", name: "A", deps: [], acceptance_criteria: ["x"], max_attempts: 1 }] },
+  "implement missing max_attempts": { version: 1, nodes: [{ id: "A", type: "implement", name: "A", deps: [], acceptance_criteria: ["x"], design_aspect: "Architecture" }] },
+  "unknown type": { version: 1, nodes: [{ id: "A", type: "frobnicate", deps: [], executor: "subagent(general-purpose)" }] },
+  "property outside the type template": { version: 1, nodes: [task("A", [], { audit_prompt: "not allowed on implement" })] },
+};
+
+for (const [label, graph] of Object.entries(ntRejectCases)) {
+  test(`V-NT.3/4 reject: ${label}`, () => {
+    const { dir, stateDir } = ws();
+    const r = init(stateDir, dir, graph);
+    assert.notEqual(r.status, 0, `expected non-zero exit for: ${label}`);
+    assert.match(r.stderr, /task: /);
+    assert.equal(
+      readdirSync(stateDir).filter((f) => f.endsWith(".json")).length, 0,
+      "a rejected graph writes no state",
+    );
+  });
+}
 
 // --- runId rename + commitSeq + wire stability (V-ID.1) ---------------------
 
@@ -682,24 +822,19 @@ test("V-CH.2 contentHash: changing acceptance_criteria, design_aspect, max_attem
   assert.notEqual(hDep.B, hBase.B, "dropping a dependency changes the dependent's hash");
 });
 
-test("V-CH.3 contentHash: omitted impl and explicit subagent(general-purpose) hash equal (resolved executor)", () => {
+test("V-CH.3 contentHash: an omitted executor and an explicit subagent(general-purpose) hash equal (resolved executor)", () => {
   const omit = ws();
   const idOmit = init(omit.stateDir, omit.dir, { version: 1, nodes: [task("A")] }).stdout.trim();
   const expl = ws();
-  const idExpl = init(expl.stateDir, expl.dir, { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(general-purpose)" } })] }).stdout.trim();
+  const idExpl = init(expl.stateDir, expl.dir, { version: 1, nodes: [task("A", [], { executor: "subagent(general-purpose)" })] }).stdout.trim();
   assert.equal(
     contentHashes(omit.stateDir, idOmit).A,
     contentHashes(expl.stateDir, idExpl).A,
-    "the resolved executor is hashed, so default == explicit general-purpose",
+    "the resolved executor is hashed, so an omitted executor == an explicit general-purpose one",
   );
-  // and a DIFFERENT explicit executor does change the hash
-  const other = ws();
-  const idOther = init(other.stateDir, other.dir, { version: 1, nodes: [task("A", [], { impl: { executor: "subagent(explore)" } })] }).stdout.trim();
-  assert.notEqual(
-    contentHashes(omit.stateDir, idOmit).A,
-    contentHashes(other.stateDir, idOther).A,
-    "a different executor changes the hash",
-  );
+  // implement nodes are general-purpose-only now, so the executor is no longer a
+  // hash-varying dimension for them — a non-general-purpose executor would be
+  // rejected by validateGraph, not produce a different hash.
 });
 
 test("V-CH.4 contentHash: adding a task that depends on X leaves X's hash unchanged", () => {
@@ -972,8 +1107,10 @@ test("V-SI.3 invalidate: a failed task AT the generation cap stays failed and is
 // automatic caller exists — every command here is invoked manually by the test.
 
 // A complete folded-graph node body (everything but the id), suitable as --spec.
+// It is an `implement` node body, matching the type the dump and explode author.
 function specBody(over = {}) {
   return {
+    type: "implement",
     name: "Spawned",
     deps: [],
     acceptance_criteria: ["does the new thing"],
@@ -1082,29 +1219,38 @@ test("V-TC.1 remove-task: a leaf with no dependents is removed with all its subn
   assert.ok("A" in state.tasks, "the surviving task is untouched");
 });
 
-test("V-TC.3 remove-task: a leaf whose executor is exclusive prints the dangling RELEASE owner line", () => {
+// The exclusive executor now lives on an AUDIT subnode (the audit-resolver picks a
+// specialized executor at runtime), since implement is general-purpose-only. We
+// reach it via the resolve --panel path: complete X.impl, resolve a panel whose
+// auditor uses subagent(amplify:computer-use), and the exclusive lock is owned by
+// X.audit.0. This helper drives a single task X to that mid-audit state.
+const EXCLUSIVE_PANEL = panel([{ focus: "gui", executor: "subagent(amplify:computer-use)" }]);
+function driveToExclusiveAudit(stateDir, id, t = "X") {
+  run(stateDir, ["complete", "--id", id, "--node", `${t}.impl`]);
+  run(stateDir, ["resolve", "--id", id, "--node", `${t}.resolve`, "--panel", EXCLUSIVE_PANEL]);
+}
+
+test("V-TC.3 remove-task: a leaf whose AUDIT subnode is exclusive prints the dangling RELEASE owner line", () => {
   const { dir, stateDir } = ws();
-  // X is a leaf whose impl executor is exclusive (computer-use -> a host-global lock);
-  // keep is an independent task so the graph stays non-empty after X is removed.
+  // X is a general-purpose implement leaf; its audit panel uses the exclusive
+  // computer-use executor (a host-global lock). keep stays so the graph is non-empty.
   const id = init(stateDir, dir, {
     version: 1,
-    nodes: [
-      task("X", [], { impl: { executor: "subagent(amplify:computer-use)" } }),
-      task("keep"),
-    ],
+    nodes: [task("X"), task("keep")],
   }).stdout.trim();
-  // confirm the impl subnode carries the exclusive executor
+  driveToExclusiveAudit(stateDir, id, "X");
+  // confirm the audit subnode carries the exclusive executor
   let state = readState(stateDir, id);
-  assert.equal(state.subnodes["X.impl"].executor, "subagent(amplify:computer-use)");
+  assert.equal(state.subnodes["X.audit.0"].executor, "subagent(amplify:computer-use)");
   const runId = state.runId;
 
   const r = run(stateDir, ["remove-task", "--id", id, "--task-id", "X"]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, new RegExp(`^RELEASE ${runId}:X\\.impl$`, "m"),
+  assert.match(r.stdout, new RegExp(`^RELEASE ${runId}:X\\.audit\\.0$`, "m"),
     "remove-task reports the dangling exclusive-lock owner as RELEASE <runId>:<subnode>");
   state = readState(stateDir, id);
-  assert.ok(!("X" in state.tasks), "the exclusive leaf is removed");
-  assert.ok(!("X.impl" in state.subnodes), "its exclusive impl subnode is gone");
+  assert.ok(!("X" in state.tasks), "the leaf is removed");
+  assert.ok(!("X.audit.0" in state.subnodes), "its exclusive audit subnode is gone");
   assert.ok("keep" in state.tasks, "the surviving task is untouched");
 });
 
@@ -1117,13 +1263,13 @@ test("V-TC.3 remove-task: a leaf whose executor is NOT exclusive prints no RELEA
   assert.doesNotMatch(r.stdout, /RELEASE/, "a non-exclusive removal leaks no RELEASE line");
 });
 
-test("V-RT.1 remove-task: a rejected removal (last task, exclusive) emits no RELEASE and writes no state", () => {
+test("V-RT.1 remove-task: a rejected removal (last task, exclusive audit) emits no RELEASE and writes no state", () => {
   const { dir, stateDir } = ws();
-  // Single task whose impl is exclusive; removing it empties the graph -> validateGraph rejects.
-  const id = init(stateDir, dir, {
-    version: 1,
-    nodes: [task("only", [], { impl: { executor: "subagent(amplify:computer-use)" } })],
-  }).stdout.trim();
+  // Single task whose audit subnode is exclusive; removing it empties the graph ->
+  // validateGraph rejects, so the RELEASE for the exclusive audit must NOT be printed.
+  const id = init(stateDir, dir, { version: 1, nodes: [task("only")] }).stdout.trim();
+  driveToExclusiveAudit(stateDir, id, "only");
+  assert.equal(readState(stateDir, id).subnodes["only.audit.0"].executor, "subagent(amplify:computer-use)");
   const raw = readFileSync(join(stateDir, `${id}.json`), "utf8");
   const r = run(stateDir, ["remove-task", "--id", id, "--task-id", "only"]);
   assert.notEqual(r.status, 0, "removing the last task must be rejected (empty graph)");
@@ -1135,16 +1281,14 @@ test("V-RT.1 remove-task: a rejected removal (last task, exclusive) emits no REL
 
 test("V-RT.2 remove-task: refuses a task with a running subnode without --force", () => {
   const { dir, stateDir } = ws();
-  const id = init(stateDir, dir, {
-    version: 1,
-    nodes: [task("A", [], { impl: { executor: "subagent(amplify:computer-use)" } }), task("keep")],
-  }).stdout.trim();
-  run(stateDir, ["dispatch", "--id", id, "--node", "A.impl"]); // A.impl -> running (exclusive)
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A"), task("keep")] }).stdout.trim();
+  driveToExclusiveAudit(stateDir, id, "A");
+  run(stateDir, ["dispatch", "--id", id, "--node", "A.audit.0"]); // A.audit.0 -> running (exclusive)
   const raw = readFileSync(join(stateDir, `${id}.json`), "utf8");
   const r = run(stateDir, ["remove-task", "--id", id, "--task-id", "A"]);
   assert.notEqual(r.status, 0, "removing a task with a running subnode must be refused without --force");
   assert.match(r.stderr, /running/, "the refusal explains the running subnode");
-  assert.match(r.stderr, /A\.impl/, "the refusal names the running subnode");
+  assert.match(r.stderr, /A\.audit\.0/, "the refusal names the running subnode");
   assert.doesNotMatch(r.stdout, /RELEASE/, "a refused removal emits no RELEASE");
   assert.equal(readFileSync(join(stateDir, `${id}.json`), "utf8"), raw,
     "a refused remove-task writes no state (byte-for-byte unchanged)");
@@ -1152,21 +1296,19 @@ test("V-RT.2 remove-task: refuses a task with a running subnode without --force"
 
 test("V-RT.3 remove-task: --force removes a running task, warns on stderr, and RELEASEs after commit", () => {
   const { dir, stateDir } = ws();
-  const id = init(stateDir, dir, {
-    version: 1,
-    nodes: [task("A", [], { impl: { executor: "subagent(amplify:computer-use)" } }), task("keep")],
-  }).stdout.trim();
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A"), task("keep")] }).stdout.trim();
   const runId = readState(stateDir, id).runId;
-  run(stateDir, ["dispatch", "--id", id, "--node", "A.impl"]); // A.impl -> running (exclusive)
+  driveToExclusiveAudit(stateDir, id, "A");
+  run(stateDir, ["dispatch", "--id", id, "--node", "A.audit.0"]); // A.audit.0 -> running (exclusive)
   const r = run(stateDir, ["remove-task", "--id", id, "--task-id", "A", "--force"]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, new RegExp(`^RELEASE ${runId}:A\\.impl$`, "m"),
+  assert.match(r.stdout, new RegExp(`^RELEASE ${runId}:A\\.audit\\.0$`, "m"),
     "RELEASE is emitted (after commit) for the exclusive running subnode");
   assert.match(r.stderr, /orphaning/, "a stderr warning flags the orphaned in-flight work");
-  assert.match(r.stderr, /A\.impl/, "the warning names the orphaned subnode");
+  assert.match(r.stderr, /A\.audit\.0/, "the warning names the orphaned subnode");
   const state = readState(stateDir, id);
   assert.ok(!("A" in state.tasks), "the force-removed task is gone");
-  assert.ok(!("A.impl" in state.subnodes), "its running subnode is gone");
+  assert.ok(!("A.audit.0" in state.subnodes), "its running subnode is gone");
   assert.ok("keep" in state.tasks, "the surviving task is untouched");
 });
 
@@ -1403,7 +1545,7 @@ test("init rejects a graph missing plan_file", () => {
 
 test("init rejects a node missing design_aspect", () => {
   const { dir, stateDir } = ws();
-  const r = init(stateDir, dir, { version: 1, nodes: [{ id: "A", name: "A", deps: [], acceptance_criteria: ["x"], max_attempts: 1 }] });
+  const r = init(stateDir, dir, { version: 1, nodes: [{ id: "A", type: "implement", name: "A", deps: [], acceptance_criteria: ["x"], max_attempts: 1 }] });
   assert.notEqual(r.status, 0, "expected non-zero exit for missing design_aspect");
   assert.match(r.stderr, /design_aspect/);
 });

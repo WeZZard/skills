@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/WeZZard/skills/blob/main/claude/amplify/schemas/task-graph.schema.json",
   "title": "Amplify Task Graph",
-  "description": "The task graph that scripts/task.mjs ingests. Each node is one 'implement-and-audit' task; the engine explodes it into <id>.impl and <id>.resolve subnodes, then creates <id>.audit.<i> subnodes at runtime from the audit-resolver's panel. Tasks declare only the implementer side (optional impl.executor); the auditors are resolved at runtime by the amplify:audit-resolver agent, so there is no audit field. The implementer model/tools are NOT stored -- execute-plan chooses them at spawn time per implementer-design-guidelines.md, and each custom executor supplies its own tools via its frontmatter. On init the engine derives a stable run identifier (runId, printed as GRAPH_ID) from a sha256 of this folded graph plus the --salt text; runId never changes after init even though the live graph is mutable (tasks may be added, removed, or re-linked across commits). The engine-internal state fields runId, commitSeq, contentHash, doneHash, generation, dispatchHash, and origin are NOT inputs in this schema -- they live in the engine's persisted state and are never part of the folded graph that this schema validates.",
+  "description": "The task graph that scripts/task.mjs ingests. Every node carries a required, explicit `type` naming one of the four node-type templates declared in schemas/node-types.json (implement, resolve, audit, reduce). The execute-plan dump authors `implement` nodes (an implement-and-audit task); the engine explodes each into <id>.impl and <id>.resolve subnodes, then creates <id>.audit.<i> subnodes at runtime from the audit-resolver's panel. The `resolve`/`audit`/`reduce` node types are DEFINED and validatable here but are created at runtime by the lifecycle (the audit-resolver registers auditors; the reducer reduces a round) -- the execute-plan dump emits only `implement` nodes. Each type's executor is fixed except `audit`, whose executor is an authored sub-agent chosen at runtime. The implement model/tools are NOT stored -- execute-plan spawns the implementer as subagent(general-purpose) per implementer-design-guidelines.md, and each custom (audit) executor supplies its own tools via its frontmatter. On init the engine derives a stable run identifier (runId, printed as GRAPH_ID) from a sha256 of this folded graph plus the --salt text; runId never changes after init even though the live graph is mutable. The engine-internal state fields runId, commitSeq, contentHash, doneHash, generation, dispatchHash, and origin are NOT inputs in this schema -- they live in the engine's persisted state and are never part of the folded graph that this schema validates.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "nodes", "variables", "plan_file"],
@@ -17,10 +17,10 @@
       "minLength": 1
     },
     "nodes": {
-      "description": "The tasks. Task ids must be unique; every dep must reference an existing task id; the dependency graph must be acyclic.",
+      "description": "The graph nodes. Each carries a required, explicit `type`; node ids must be unique; every dep must reference an existing node id; the dependency graph must be acyclic.",
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/task" }
+      "items": { "$ref": "#/$defs/node" }
     },
     "variables": {
       "description": "Required dictionary of variable name -> value injected into the audit-resolver's spawn prompt — the capability/approval flags write-plan detects (e.g. $AMPLIFY_CODEX_AVAILABLE), which executor-selection-guidelines.md gates on. Use {} when there are no variables to inject.",
@@ -28,27 +28,52 @@
     }
   },
   "$defs": {
-    "task": {
+    "node": {
+      "description": "One graph node. Its required, explicit `type` selects which per-type template (implement/resolve/audit/reduce) governs the rest of its properties.",
+      "type": "object",
+      "required": ["id", "type", "deps", "executor"],
+      "properties": {
+        "type": {
+          "description": "Required, explicit node type. One of: implement, resolve, audit, reduce. There is no implicit default.",
+          "enum": ["implement", "resolve", "audit", "reduce"]
+        }
+      },
+      "oneOf": [
+        { "$ref": "#/$defs/implement" },
+        { "$ref": "#/$defs/resolve" },
+        { "$ref": "#/$defs/audit" },
+        { "$ref": "#/$defs/reduce" }
+      ]
+    },
+    "id": {
+      "description": "Unique node id. Must not contain '.', which the engine reserves as the subnode separator (e.g. <id>.impl, <id>.resolve, <id>.audit.<i>).",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "minLength": 1
+    },
+    "deps": {
+      "description": "Node ids this node depends on. A successor waits until every dependency is done.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }
+    },
+    "implement": {
+      "description": "An implement-and-audit task authored by the execute-plan dump. Its implementer always runs subagent(general-purpose); specialized GUI/behavioral work is an audit node (authored executor), not an implementer. Auditors are NOT declared here -- they are resolved at runtime by the amplify:audit-resolver agent.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "deps", "acceptance_criteria", "design_aspect", "max_attempts"],
+      "required": ["id", "type", "name", "deps", "acceptance_criteria", "design_aspect", "max_attempts"],
       "properties": {
-        "id": {
-          "description": "Unique task id. Must not contain '.', which the engine reserves as the subnode separator (e.g. <id>.impl, <id>.resolve, <id>.audit.<i>).",
-          "type": "string",
-          "pattern": "^[A-Za-z0-9_-]+$",
-          "minLength": 1
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "implement" },
+        "deps": { "$ref": "#/$defs/deps" },
+        "executor": {
+          "description": "Optional. Fixed to subagent(general-purpose) for an implement node; a missing executor defaults to it. Any other value is rejected.",
+          "const": "subagent(general-purpose)"
         },
         "name": {
           "description": "Short human-readable task title.",
           "type": "string",
           "minLength": 1
-        },
-        "deps": {
-          "description": "Task ids this task depends on. A successor's implementer waits until every dependency task is done (its implementer passed and all its runtime-resolved auditors passed).",
-          "type": "array",
-          "uniqueItems": true,
-          "items": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" }
         },
         "acceptance_criteria": {
           "description": "Independently checkable statements that define done. Every runtime-resolved auditor verifies each against evidence.",
@@ -61,12 +86,6 @@
           "type": "string",
           "minLength": 1
         },
-        "impl": {
-          "description": "Implementer subnode config. Optional; a missing impl (or missing impl.executor) defaults to subagent(general-purpose). Auditors are NOT declared here -- they are resolved at runtime by the amplify:audit-resolver agent.",
-          "type": "object",
-          "additionalProperties": false,
-          "properties": { "executor": { "$ref": "#/$defs/executor" } }
-        },
         "human_gate": {
           "description": "Optional. When true, this task requires a human verification gate before it is considered complete.",
           "type": "boolean"
@@ -78,10 +97,66 @@
         }
       }
     },
+    "resolve": {
+      "description": "The audit-resolver subnode for a completed task: it designs the auditor panel. Created at runtime, not by the execute-plan dump.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "deps"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "resolve" },
+        "deps": { "$ref": "#/$defs/deps" },
+        "executor": {
+          "description": "Fixed to subagent(amplify:audit-resolver).",
+          "const": "subagent(amplify:audit-resolver)"
+        }
+      }
+    },
+    "audit": {
+      "description": "One auditor that verifies a task's acceptance criteria against the implementer's diff, blind and read-only. Its executor is an authored sub-agent chosen at runtime by the audit-resolver (any value matching the executor grammar, including the audit-only external-agent drivers).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "deps", "executor", "focus", "audit_prompt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "audit" },
+        "deps": { "$ref": "#/$defs/deps" },
+        "executor": { "$ref": "#/$defs/executor" },
+        "focus": {
+          "description": "Short focus name for this auditor (e.g. 'technical execution', 'semantic').",
+          "type": "string",
+          "minLength": 1
+        },
+        "audit_prompt": {
+          "description": "The ready-to-run blind-audit prompt the audit-resolver authored for this auditor.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "reduce": {
+      "description": "Reduces one audit round to a verdict, keyed by a counter. Its executor names subagent(amplify:audit-reducer) (registry name only; the agent file does not exist yet).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "deps", "counter"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "type": { "const": "reduce" },
+        "deps": { "$ref": "#/$defs/deps" },
+        "executor": {
+          "description": "Fixed to subagent(amplify:audit-reducer).",
+          "const": "subagent(amplify:audit-reducer)"
+        },
+        "counter": {
+          "description": "The reduce counter (which round this reducer settles).",
+          "type": "integer"
+        }
+      }
+    },
     "executor": {
-      "description": "Names the subagent that runs the implementer subnode. Grammar: subagent(<name>). The external-agent drivers (amplify:codex-driver, amplify:kimi-driver) are audit-only and are intentionally excluded here, so a plan cannot assign them as an implementer; auditor executors are chosen at runtime by the amplify:audit-resolver agent, not in this graph. The subagent(...) wrapper reserves room for future executor kinds.",
+      "description": "Names the subagent that runs an audit node. Grammar: subagent(<name>). Auditor executors are chosen at runtime by the amplify:audit-resolver agent; the audit-only external-agent drivers (amplify:codex-driver, amplify:kimi-driver) are valid auditors here, but are barred from the implement slot (the implement type fixes its executor to subagent(general-purpose)). The subagent(...) wrapper reserves room for future executor kinds.",
       "type": "string",
-      "pattern": "^subagent\\((general-purpose|explore|plan|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:computer-use-cua|amplify:audit-resolver)\\)$"
+      "pattern": "^subagent\\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:computer-use-cua|amplify:audit-resolver|amplify:audit-reducer)\\)$"
     }
   }
 }

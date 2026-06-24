@@ -7,7 +7,9 @@ You **MUST** design that subagent—model, tools, and prompt—adaptively from t
 
 ## Executor Selection
 
-You **MUST** choose `impl.executor` per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md`. When the executor is a built-in subagent, grant its tools to fit the task:
+The implementer executor is **always** `subagent(general-purpose)`. You **MUST NOT** select a per-task implementer executor — the `implement` node type fixes it to `subagent(general-purpose)` (see `${CLAUDE_PLUGIN_ROOT}/schemas/node-types.json`). Specialized GUI/behavioral/external executors are **auditor** choices, resolved at runtime by the `amplify:audit-resolver` agent onto the audit panel (per `${CLAUDE_PLUGIN_ROOT}/references/executor-selection-guidelines.md`), never onto the implementer.
+
+You design only the implementer's **model tier** and its read-only tools:
 
 ### Built-tin Agents Model-Tier Selection
 
@@ -20,12 +22,11 @@ You **MUST** choose the model tier from the task's actual complexity. You **MUST
 
 ## Tools
 
-The Agent tool can set only `model` at spawn, not `tools`/`mcpServers`. Therefore:
+The Agent tool can set only `model` at spawn, not `tools`/`mcpServers`. The implementer is always the built-in `subagent(general-purpose)`. Therefore:
 
 **MUST:**
 
-1. For a built-in subagent executor (`subagent(general-purpose|explore|plan)`), you **MUST** spawn it read-only: Read, Grep, Glob, Bash (Bash for the task's verification commands only).
-2. For a pre-defined subagent executor (`subagent(amplify:<name>)`), you **MUST** rely on that subagent file's frontmatter for tools/MCP and pass only `model` plus the prompt.
+1. You **MUST** spawn the implementer (`subagent(general-purpose)`) read-only: Read, Grep, Glob, Bash (Bash for the task's verification commands only), passing only `model` plus the prompt.
 
 **MUST NOT:**
 

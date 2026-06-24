@@ -50,6 +50,7 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync, readdir
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const IMPL = "impl";
 const RESOLVE = "resolve";
@@ -57,6 +58,15 @@ const AUDIT = "audit";
 const SEP = ".";
 const DEFAULT_IMPL_EXECUTOR = "subagent(general-purpose)";
 const RESOLVER_EXECUTOR = "subagent(amplify:audit-resolver)";
+const REDUCER_EXECUTOR = "subagent(amplify:audit-reducer)";
+
+// Folded-graph node types. Every node carries a required, explicit `type` naming
+// one of these; the system file schemas/node-types.json declares each type's
+// property template, which validateGraph reads at load time (see NODE_TYPES).
+const TYPE_IMPLEMENT = "implement";
+const TYPE_RESOLVE = "resolve";
+const TYPE_AUDIT = "audit";
+const TYPE_REDUCE = "reduce";
 const DEFAULT_LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes (backstop only)
 
 // Bound on how many times structural invalidation may resurrect a FAILED task
@@ -80,17 +90,15 @@ const EXCLUSIVE = {
 };
 function resourceOf(executor) { return EXCLUSIVE[executor] || null; }
 
-// External-agent drivers run as their own process with their own git behavior,
-// which is not synchronized with this repository's state and cannot be bounded.
-// They are therefore audit-only and MUST NOT be an implementer (an implementer
-// writes the working tree). This set is the single source of truth for that
-// restriction; it gates the impl slot only -- the audit panel (cmdResolve) still
-// accepts these executors as read-only auditors.
-const EXTERNAL_IMPL = {
-  "subagent(amplify:codex-driver)": true,
-  "subagent(amplify:kimi-driver)": true,
-};
-function isExternalImpl(executor) { return Boolean(EXTERNAL_IMPL[executor]); }
+// External-agent drivers (subagent(amplify:codex-driver|kimi-driver)) run as their
+// own process with their own git behavior, which is not synchronized with this
+// repository's state and cannot be bounded. They are therefore audit-only and MUST
+// NOT be an implementer (an implementer writes the working tree). This is enforced
+// structurally now: the `implement` node type fixes its executor to
+// subagent(general-purpose) (node-types.json), so no external driver — indeed no
+// non-general-purpose executor — can occupy an implement slot, while the `audit`
+// type still accepts any EXECUTOR_RE-matching authored sub-agent as a read-only
+// auditor.
 
 // ---------------------------------------------------------------------------
 // argument parsing
@@ -348,8 +356,84 @@ function invalidateStale(working) {
 // ---------------------------------------------------------------------------
 
 const ID_RE = /^[A-Za-z0-9_-]+$/;
-const EXECUTOR_RE = /^subagent\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:computer-use-cua|amplify:audit-resolver)\)$/;
-const ALLOWED_TASK_KEYS = new Set(["id", "name", "deps", "acceptance_criteria", "design_aspect", "impl", "max_attempts", "human_gate"]);
+const EXECUTOR_RE = /^subagent\((general-purpose|explore|plan|amplify:codex-driver|amplify:kimi-driver|amplify:browser-use-chrome-devtools|amplify:browser-use-playwright|amplify:computer-use|amplify:computer-use-cua|amplify:audit-resolver|amplify:audit-reducer)\)$/;
+
+// The node-type templates are the declared source of truth for which properties
+// each `type` may carry and that type's executor rule. We read the system file at
+// load time (a Node built-in readFileSync; the engine forbids only EXTERNAL deps),
+// resolving its path from THIS script's URL, so the engine and the schema can never
+// drift. The file lives one directory up, under schemas/node-types.json.
+const NODE_TYPES = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../schemas/node-types.json", import.meta.url)), "utf8"),
+).types;
+
+// Resolve a node's executor for validation/explosion: a fixed-executor type whose
+// `executor` is OMITTED defaults to that type's constant (matching the historical
+// impl default), so the execute-plan dump need not emit it; an explicit value is
+// taken verbatim (and then checked against the type rule). audit has no fixed
+// executor, so it has no default — its executor must be present and authored.
+function defaultExecutorForType(type) {
+  const rule = NODE_TYPES[type]?.executor;
+  return rule && typeof rule.const === "string" ? rule.const : undefined;
+}
+function resolveNodeExecutor(node) {
+  if (typeof node.executor === "string") return node.executor;
+  return defaultExecutorForType(node.type);
+}
+
+// Per-type checks beyond "required present / no out-of-template property" that the
+// generic loop applies for every type. Keyed by type name; each gets (node, where,
+// errors) and pushes any violations.
+const TYPE_PROPERTY_CHECKS = {
+  [TYPE_IMPLEMENT](node, where, errors) {
+    if (!Array.isArray(node.acceptance_criteria) || node.acceptance_criteria.length < 1) {
+      errors.push(`${where}.acceptance_criteria must be a non-empty array`);
+    }
+    if (typeof node.design_aspect !== "string" || !node.design_aspect) {
+      errors.push(`${where}.design_aspect must be a non-empty string`);
+    }
+    if (!Number.isInteger(node.max_attempts) || node.max_attempts < 1) {
+      errors.push(`${where}.max_attempts must be an integer >= 1`);
+    }
+    if ("human_gate" in node && typeof node.human_gate !== "boolean") {
+      errors.push(`${where}.human_gate must be a boolean`);
+    }
+  },
+  [TYPE_AUDIT](node, where, errors) {
+    if (typeof node.focus !== "string" || !node.focus) {
+      errors.push(`${where}.focus must be a non-empty string`);
+    }
+    if (typeof node.audit_prompt !== "string" || !node.audit_prompt) {
+      errors.push(`${where}.audit_prompt must be a non-empty string`);
+    }
+  },
+  [TYPE_REDUCE](node, where, errors) {
+    if (!Number.isInteger(node.counter)) {
+      errors.push(`${where}.counter must be an integer`);
+    }
+  },
+};
+
+// Validate one node's `executor` against its type's rule. A `const` rule fixes the
+// executor (the omitted-default resolved above must equal it; an external-impl
+// driver is rejected for `implement`); a `matchesGrammar` rule (audit) accepts any
+// authored sub-agent matching EXECUTOR_RE.
+function validateNodeExecutor(node, where, errors) {
+  const rule = NODE_TYPES[node.type].executor;
+  const resolved = resolveNodeExecutor(node);
+  if (typeof resolved !== "string" || !EXECUTOR_RE.test(resolved)) {
+    errors.push(`${where}.executor must match ${EXECUTOR_RE}`);
+    return;
+  }
+  if (rule.const !== undefined) {
+    if (resolved !== rule.const) {
+      errors.push(`${where}.executor for a "${node.type}" node must be "${rule.const}", got "${resolved}"`);
+    }
+    return;
+  }
+  // No fixed executor (audit). The external-agent drivers are audit-only, so they
+  // are valid here; they remain barred from `implement` by the const rule above.
+}
 
 function validateGraph(graph) {
   const errors = [];
@@ -383,38 +467,37 @@ function validateGraph(graph) {
     } else {
       ids.add(node.id);
     }
-    if (typeof node.name !== "string" || !node.name) errors.push(`${where}.name must be a non-empty string`);
+    // Cross-type fields (every node has them): a non-empty deps array.
     if (!Array.isArray(node.deps)) errors.push(`${where}.deps must be an array`);
-    if (!Array.isArray(node.acceptance_criteria) || node.acceptance_criteria.length < 1) {
-      errors.push(`${where}.acceptance_criteria must be a non-empty array`);
+    // Type-aware validation: read the node's required, explicit `type`, look up its
+    // template, then assert (a) every required property is present, (b) no property
+    // falls outside the template (required + optional), (c) per-type property checks,
+    // (d) the executor obeys the type's rule. The template is the node-types.json
+    // source of truth, so the engine and the schema cannot drift.
+    if (typeof node.type !== "string" || !node.type) {
+      errors.push(`${where}.type is required (one of: ${Object.keys(NODE_TYPES).join(", ")})`);
+      continue; // without a type there is no template to validate against
     }
-    if (typeof node.design_aspect !== "string" || !node.design_aspect) {
-      errors.push(`${where}.design_aspect must be a non-empty string`);
+    const template = NODE_TYPES[node.type];
+    if (!template) {
+      errors.push(`${where}.type "${node.type}" is unknown (one of: ${Object.keys(NODE_TYPES).join(", ")})`);
+      continue;
     }
-    if ("impl" in node) {
-      if (!node.impl || typeof node.impl !== "object" || Array.isArray(node.impl)) {
-        errors.push(`${where}.impl must be an object`);
-      } else if ("executor" in node.impl) {
-        const ex = node.impl.executor;
-        if (typeof ex !== "string" || !EXECUTOR_RE.test(ex)) {
-          errors.push(`${where}.impl.executor must match ${EXECUTOR_RE}`);
-        } else if (isExternalImpl(ex)) {
-          errors.push(`${where}.impl.executor "${ex}" is an external-agent driver, which is audit-only and cannot be an implementer`);
-        }
-      }
+    const allowed = new Set([...template.required, ...(template.optional || [])]);
+    for (const k of template.required) {
+      // `executor` may be omitted on a fixed-executor type (it defaults), so it is
+      // not treated as a missing required property when a default applies.
+      if (k === "executor" && defaultExecutorForType(node.type) !== undefined) continue;
+      if (!(k in node)) errors.push(`${where} (type "${node.type}") is missing required property "${k}"`);
     }
-    if (!Number.isInteger(node.max_attempts) || node.max_attempts < 1) {
-      errors.push(`${where}.max_attempts must be an integer >= 1`);
+    for (const k of Object.keys(node)) {
+      if (!allowed.has(k)) errors.push(`${where} has property "${k}" outside its "${node.type}" template`);
     }
-    if ("human_gate" in node && typeof node.human_gate !== "boolean") {
-      errors.push(`${where}.human_gate must be a boolean`);
+    if (typeof node.name !== "string" || !node.name) {
+      if (allowed.has("name")) errors.push(`${where}.name must be a non-empty string`);
     }
-    // additionalProperties: false parity -- reject unknown fields (e.g. a stale `audit`).
-    if (node && typeof node === "object") {
-      for (const k of Object.keys(node)) {
-        if (!ALLOWED_TASK_KEYS.has(k)) errors.push(`${where} has unknown field "${k}"`);
-      }
-    }
+    TYPE_PROPERTY_CHECKS[node.type]?.(node, where, errors);
+    validateNodeExecutor(node, where, errors);
   }
   // referential integrity: deps reference existing ids
   for (const node of graph.nodes) {
@@ -467,32 +550,50 @@ function implId(taskId) { return `${taskId}${SEP}${IMPL}`; }
 function resolveId(taskId) { return `${taskId}${SEP}${RESOLVE}`; }
 function auditId(taskId, i) { return `${taskId}${SEP}${AUDIT}${SEP}${i}`; }
 
-// explode is now a CHANGE applied through commit: it writes the per-task records
-// and the impl/resolve subnodes onto the working copy (audits are created later,
-// at runtime, by the resolve verb). It does NOT persist or validate on its own;
-// commit() does both. The exact records produced here are unchanged from before.
+// explode is a CHANGE applied through commit: it writes the per-task records and
+// (for an `implement` node) the impl/resolve subnodes onto the working copy (audits
+// are created later, at runtime, by the resolve verb). It does NOT persist or
+// validate on its own; commit() does both.
+//
+// Every task record stores its explicit `type` plus its type-specific property
+// VALUES and the RESOLVED executor, so projectFoldedGraph can reconstruct a folded
+// node that revalidates against the SAME node-types.json template. For an
+// `implement` node the impl subnode also carries the resolved executor (spec()
+// reads it for the contentHash; that hash path is byte-unchanged). The audit/reduce
+// node types are DEFINED and validatable but nothing schedules them yet, so explode
+// records them WITHOUT creating impl/resolve runtime subnodes — the lifecycle
+// migration (a later task) is what will create their runtime work.
 function explode(working, graph) {
   for (const node of graph.nodes) {
-    working.tasks[node.id] = {
-      name: node.name,
+    const type = node.type || TYPE_IMPLEMENT;
+    const executor = resolveNodeExecutor(node);
+    const record = {
+      type,
       deps: node.deps || [],
-      acceptance_criteria: node.acceptance_criteria,
-      design_aspect: node.design_aspect,
-      human_gate: node.human_gate === true,
-      max_attempts: node.max_attempts,
+      executor,
       status: "pending", // pending -> impl-done -> auditing -> done | failed
       attempts: 0,
       generation: 0, // bumped only by structural invalidation of a failed task
       lastReason: null,
     };
-    working.subnodes[implId(node.id)] = {
-      task: node.id, role: IMPL, status: "pending",
-      executor: node.impl?.executor ?? DEFAULT_IMPL_EXECUTOR,
-    };
-    working.subnodes[resolveId(node.id)] = {
-      task: node.id, role: RESOLVE, status: "pending",
-      executor: RESOLVER_EXECUTOR,
-    };
+    // Copy the type's declared property values (minus the structural id/type/deps/
+    // executor handled above) verbatim onto the record, so they round-trip.
+    const template = NODE_TYPES[type];
+    for (const k of [...template.required, ...(template.optional || [])]) {
+      if (["id", "type", "deps", "executor"].includes(k)) continue;
+      if (k === "human_gate") { record.human_gate = node.human_gate === true; continue; }
+      if (k in node) record[k] = node[k];
+    }
+    working.tasks[node.id] = record;
+    if (type === TYPE_IMPLEMENT) {
+      working.subnodes[implId(node.id)] = {
+        task: node.id, role: IMPL, status: "pending", executor,
+      };
+      working.subnodes[resolveId(node.id)] = {
+        task: node.id, role: RESOLVE, status: "pending",
+        executor: RESOLVER_EXECUTOR,
+      };
+    }
   }
 }
 
@@ -500,23 +601,29 @@ function explode(working, graph) {
 // commit: the single validated writer of state.tasks / state.subnodes
 // ---------------------------------------------------------------------------
 
-// Reconstruct the folded-graph view {version:1, nodes, variables, plan_file}
-// from live state, so the whole-graph validator (validateGraph, the same one
-// init uses) can check any candidate the same way. Each node carries the spec
-// fields stored on the task record plus the RESOLVED implementer executor read
-// from the task's .impl subnode (post-default), and nothing else — so the shape
-// matches what a valid folded graph looks like (ALLOWED_TASK_KEYS parity).
+// Reconstruct the folded-graph view {version:1, nodes, variables, plan_file} from
+// live state, so the whole-graph validator (validateGraph, the same one init uses)
+// can check any candidate the same way. Each node carries its explicit `type`, the
+// type-specific property values stored on the task record, and the RESOLVED
+// executor — for an `implement` task read from its .impl subnode (post-default), so
+// the contentHash/spec path is byte-unchanged; for other types read from the task
+// record. The reconstructed node carries EXACTLY its type's template properties, so
+// it revalidates against node-types.json the same way init's input did.
 function projectFoldedGraph(state) {
-  const nodes = Object.entries(state.tasks).map(([id, t]) => ({
-    id,
-    name: t.name,
-    deps: t.deps || [],
-    acceptance_criteria: t.acceptance_criteria,
-    design_aspect: t.design_aspect,
-    human_gate: t.human_gate === true,
-    max_attempts: t.max_attempts,
-    impl: { executor: state.subnodes[implId(id)]?.executor ?? DEFAULT_IMPL_EXECUTOR },
-  }));
+  const nodes = Object.entries(state.tasks).map(([id, t]) => {
+    const type = t.type || TYPE_IMPLEMENT;
+    const template = NODE_TYPES[type];
+    const executor = type === TYPE_IMPLEMENT
+      ? (state.subnodes[implId(id)]?.executor ?? t.executor ?? DEFAULT_IMPL_EXECUTOR)
+      : (t.executor ?? defaultExecutorForType(type));
+    const node = { id, type, deps: t.deps || [], executor };
+    for (const k of [...template.required, ...(template.optional || [])]) {
+      if (["id", "type", "deps", "executor"].includes(k)) continue;
+      if (k === "human_gate") { node.human_gate = t.human_gate === true; continue; }
+      if (k in t) node[k] = t[k];
+    }
+    return node;
+  });
   return { version: 1, nodes, variables: state.variables || {}, plan_file: state.plan_file };
 }
 

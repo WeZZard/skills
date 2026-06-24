@@ -41,17 +41,16 @@ Transcribe the plan's task list into a JSON file — a **faithful 1:1 transcript
    },
    "nodes": [
       {
-         "id": "...", "name": "...", "deps": ["..."],
+         "id": "...", "type": "implement", "name": "...", "deps": ["..."],
          "acceptance_criteria": ["...", "..."],
          "design_aspect": "<the task's (Aspect: …) design component>",
-         "impl": { "executor": "subagent(<subagent-name>)" },
          "human_gate": true|false, "max_attempts": [max_attempts]
       }
    ]
 }
 ```
 
-1. You **MUST** set `nodes[].impl.executor` only when the task needs a non-default implementer; otherwise omit `nodes[].impl` — a missing `impl` (or `impl.executor`) defaults the implementer to `subagent(general-purpose)`.
+1. You **MUST** set `nodes[].type` to `"implement"` on every node you author — the dump only ever emits `implement` nodes. The implementer always runs `subagent(general-purpose)`, so you **MUST NOT** emit a per-implementer `executor`; specialized GUI/behavioral work is an auditor choice, resolved at runtime by the audit-resolver. (The `resolve`/`audit`/`reduce` node types exist in the registry but are created at runtime by the lifecycle, never by this dump.)
 2. You **MUST** set `nodes[].human_gate` to `false` is the task **IS NTO** a human gate or **HAVEN'T MENTIONED ITSELF** as a human gate.
 3. You **MUST** set each `nodes[].design_aspect` to the task's `(Aspect: …)` design component (e.g. Architecture, Data Structure, User Interaction).
 4. You **MUST** set `plan_file` to the absolute path of the session plan file.
