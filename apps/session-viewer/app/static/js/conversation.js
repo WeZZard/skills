@@ -6,7 +6,8 @@ const state = {
   backStack: [],
   forwardStack: [],
   leftNavTab: "messages",
-  selectedTrackId: "main",
+  timelineSelectedTrackId: "main",
+  readerSelectedTrackId: "main",
   selectedGraphKeys: new Set(),
   openPanelIds: new Set(),
   graphFrame: null,
@@ -20,6 +21,10 @@ const state = {
   timelineDetailKey: "",
   pinnedTimelineDetailKeys: [],
   timelineDetailWindowLayout: null,
+  timelineDetailLayoutFrame: null,
+  timelineDetailLayoutFrameBudget: 0,
+  timelineDetailLayoutDeadline: 0,
+  timelineDetailResizeObserver: null,
   readerRawCapsuleKey: "",
   graphStatusText: "",
   timelineHeaderRenderCount: 0,
@@ -27,6 +32,14 @@ const state = {
   timelineBlockRenderCount: 0,
   timelineDetailRenderCount: 0,
   agentTreeDrawerOpen: false,
+  searchOpenByLayout: { graph: false, reader: false },
+  searchQuery: "",
+  searchTokens: [],
+  timelineSearchMode: "context",
+  timelineSearchScope: "all",
+  timelineSearchCursorKey: "",
+  readerSearchCursorKey: "",
+  readerSearchReturnState: null,
 };
 
 const navByKey = new Map();
@@ -40,6 +53,7 @@ const toolResultByScopedId = new Map();
 const navKeyToCapsuleKey = new Map();
 const edgesByCapsuleKey = new Map();
 const rawEventByAddress = new Map();
+const searchIndexByKey = new Map();
 
 const model = {
   tracks: [],
@@ -71,6 +85,7 @@ const els = {
   sessionInfoButton: document.getElementById("sessionInfoButton"),
   sessionInfoPopover: document.getElementById("sessionInfoPopover"),
   layoutButtons: document.querySelectorAll("[data-layout]"),
+  searchToggleButton: document.getElementById("searchToggleBtn"),
   readerButton: document.getElementById("readerLayoutBtn"),
   graphButton: document.getElementById("graphLayoutBtn"),
   returnButton: document.getElementById("returnElementBtn"),
@@ -78,6 +93,10 @@ const els = {
   sessionSummary: document.getElementById("sessionSummary"),
   leftTabs: document.querySelectorAll("[data-left-tab]"),
   messageNavPanel: document.getElementById("messageNavPanel"),
+  readerSearchPanel: document.getElementById("readerSearchPanel"),
+  readerSearchInput: document.getElementById("readerSearchInput"),
+  readerSearchStatus: document.getElementById("readerSearchStatus"),
+  readerSearchResults: document.getElementById("readerSearchResults"),
   agentTreePanel: document.getElementById("agentTreePanel"),
   agentSelector: document.getElementById("agentSelector"),
   openAgentChips: document.getElementById("openAgentChips"),
@@ -96,6 +115,10 @@ const els = {
   agentStreamSeparator: document.getElementById("agentStreamSeparator"),
   subagentPanelOverlay: document.getElementById("subagentPanelOverlay"),
   graphViewport: document.getElementById("graphViewport"),
+  timelineSearchShelf: document.getElementById("timelineSearchShelf"),
+  timelineSearchInput: document.getElementById("timelineSearchInput"),
+  timelineSearchStatus: document.getElementById("timelineSearchStatus"),
+  timelineSearchWarning: document.getElementById("timelineSearchWarning"),
   timelineHeader: document.getElementById("timelineHeader"),
   graphSizer: document.getElementById("graphSizer"),
   graphLayer: document.getElementById("graphLayer"),
@@ -1328,11 +1351,15 @@ function renderMessageKindStack(kind) {
 
 function renderMessageIndexKind(kind) {
   const contentKinds = titleBarContentKinds(kind);
+  if (!contentKinds.length) {
+    return `
+      <span class="portfolio-nav-kind message-index-kind" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="">
+        <span class="portfolio-kind-badge message-index-line-kind ${escAttr(portfolioBadgeClass(kind.line.key))}">${esc(kind.line.label)}</span>
+      </span>`;
+  }
   return `
     <span class="portfolio-nav-kind message-index-kind" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
-      <span class="portfolio-kind-badge message-index-line-kind ${escAttr(portfolioBadgeClass(kind.line.key))}">${esc(kind.line.label)}</span>
       ${contentKinds.map((item) => `
-        <span class="portfolio-kind-separator message-index-kind-separator" aria-hidden="true">/</span>
         <span class="portfolio-subtype-badge message-index-content-kind ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${esc(item.label)}</span>
       `).join("")}
     </span>`;
@@ -1891,6 +1918,7 @@ function buildModels() {
     if (resultKey) addBidirectionalEdge(track.lastCapsuleKey, resultKey, "parent_result", "Parent result", "Child completion", track.id);
   });
 
+  buildSearchIndex();
   layoutGraph();
 }
 
@@ -1903,22 +1931,39 @@ function timelineTrackGroupLeftForViewport(viewportWidth, trackSpan) {
 
 function layoutGraph(viewportWidth = 0) {
   const layoutViewportWidth = Math.max(0, Math.floor(viewportWidth || 0));
-  const trackSpan = model.tracks.length * model.trackWidth;
+  const searchPresentation = timelineSearchPresentation();
+  const layoutTracks = timelineLayoutTracks(searchPresentation);
+  const layoutTrackIds = new Set(layoutTracks.map((track) => track.id));
+  const trackSpan = layoutTracks.length * model.trackWidth;
   const trackGroupLeft = timelineTrackGroupLeftForViewport(layoutViewportWidth, trackSpan);
   let maxBottom = model.timelinePadTop;
-  model.tracks.forEach((track, laneIndex) => {
+  model.tracks.forEach((track) => {
+    track.timelineSearchHidden = !layoutTrackIds.has(track.id);
+    track.timelineLayoutCapsuleKeys = track.timelineSearchHidden
+      ? []
+      : timelineTrackLayoutKeys(track, searchPresentation);
+    if (!track.timelineSearchHidden) return;
+    track.x = -100000;
+    track.y = model.timelinePadTop;
+    track.width = model.trackWidth;
+    track.timelineStartY = model.timelinePadTop;
+    track.timelineEndY = model.timelinePadTop;
+  });
+  layoutTracks.forEach((track, laneIndex) => {
     const parentKey = navKeyToCapsuleKey.get(navKey(track.parentTaskNav));
     const parentCapsule = capsuleByKey.get(parentKey);
-    const startY = parentCapsule
+    const parentVisibleInLayout = !searchPresentation.active || searchPresentation.visibleKeys.has(parentKey);
+    const startY = parentCapsule && parentVisibleInLayout
       ? parentCapsule.y + model.blockStepY
       : model.timelinePadTop;
     const trackLeft = trackGroupLeft + laneIndex * model.trackWidth;
+    const layoutKeys = track.timelineLayoutCapsuleKeys || [];
     track.x = trackLeft;
     track.y = startY;
     track.width = model.trackWidth;
     track.timelineStartY = startY;
-    track.timelineEndY = startY + Math.max(1, track.capsuleKeys.length) * model.blockStepY;
-    track.capsuleKeys.forEach((key, index) => {
+    track.timelineEndY = startY + Math.max(1, layoutKeys.length) * model.blockStepY;
+    layoutKeys.forEach((key, index) => {
       const capsule = capsuleByKey.get(key);
       if (!capsule) return;
       capsule.x = trackLeft + (model.trackWidth - model.blockWidth) / 2;
@@ -1963,6 +2008,15 @@ function selectedCapsule() {
   return capsuleByKey.get(state.currentCapsuleKey) || null;
 }
 
+function selectedTrackIdForLayout(layout = state.layout) {
+  return layout === "graph" ? state.timelineSelectedTrackId : state.readerSelectedTrackId;
+}
+
+function setSelectedTrackForLayout(trackId, layout = state.layout) {
+  if (layout === "graph") state.timelineSelectedTrackId = trackId;
+  else state.readerSelectedTrackId = trackId;
+}
+
 function currentNav() {
   return selectedCapsule()?.nav || null;
 }
@@ -1971,7 +2025,8 @@ function navigationSnapshot(extra = {}) {
   return {
     key: state.currentCapsuleKey,
     layout: state.layout,
-    selectedTrackId: state.selectedTrackId,
+    timelineSelectedTrackId: state.timelineSelectedTrackId,
+    readerSelectedTrackId: state.readerSelectedTrackId,
     ...extra,
   };
 }
@@ -2042,10 +2097,12 @@ function renderSessionSummary() {
 
 function renderAgentSelector() {
   if (!els.agentSelector || !els.openAgentChips) return;
+  const activeTrackId = selectedTrackIdForLayout();
+  const showReaderPanelState = state.layout === "reader";
   els.agentSelector.innerHTML = compactHtml(model.tracks
     .map((track) => {
-      const active = track.id === state.selectedTrackId;
-      const open = state.openPanelIds.has(track.id);
+      const active = track.id === activeTrackId;
+      const open = showReaderPanelState && state.openPanelIds.has(track.id);
       return `
         <button class="agent-filter-option ${active ? "active" : ""} ${open ? "panel-open" : ""}" role="option" aria-selected="${active ? "true" : "false"}" aria-pressed="${open ? "true" : "false"}" data-action="select-track" data-track-id="${escAttr(track.id)}" data-testid="agent-filter-option">
           <span class="agent-filter-kind">${track.depth === 0 ? "main" : "subagent"}</span>
@@ -2055,13 +2112,15 @@ function renderAgentSelector() {
     })
     .join(""));
 
-  const chipTracks = model.tracks.filter((track) => track.depth > 0 && state.openPanelIds.has(track.id));
+  const chipTracks = state.layout === "reader"
+    ? model.tracks.filter((track) => track.depth > 0 && state.openPanelIds.has(track.id))
+    : [];
   els.openAgentChips.innerHTML = chipTracks.length
     ? compactHtml(chipTracks
         .map((track) => {
           const closable = state.openPanelIds.has(track.id) && track.depth > 0;
           return `
-            <button class="selected-agent-chip ${track.id === state.selectedTrackId ? "active" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}">
+            <button class="selected-agent-chip ${track.id === activeTrackId ? "active" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}">
               <span>${esc(compact(trackTitle(track), 34))}</span>
               ${closable ? `<span class="selected-agent-chip-close" data-action="close-panel" data-track-id="${escAttr(track.id)}" aria-label="Close ${escAttr(trackTitle(track))}">x</span>` : ""}
             </button>`;
@@ -2072,6 +2131,8 @@ function renderAgentSelector() {
 
 function renderAgentTree() {
   const childrenByParent = new Map();
+  const activeTrackId = selectedTrackIdForLayout();
+  const showReaderPanelState = state.layout === "reader";
   model.tracks.forEach((track) => {
     const list = childrenByParent.get(track.parentTrackId || "") || [];
     list.push(track);
@@ -2079,8 +2140,8 @@ function renderAgentTree() {
   });
 
   function renderNode(track) {
-    const active = track.id === state.selectedTrackId;
-    const open = state.openPanelIds.has(track.id);
+    const active = track.id === activeTrackId;
+    const open = showReaderPanelState && state.openPanelIds.has(track.id);
     const title = trackTitle(track);
     const isSubagent = track.depth > 0;
     const children = childrenByParent.get(track.id) || [];
@@ -2105,7 +2166,7 @@ function renderAgentTree() {
             <span class="agent-option-title">${esc(compact(title, 58))}</span>
             <span class="agent-option-count">${track.messages.length}</span>
           </button>
-          ${isSubagent ? `<button class="agent-tree-toggle" data-action="toggle-panel" data-track-id="${escAttr(track.id)}" data-testid="subagent-toggle" aria-pressed="${open ? "true" : "false"}" aria-label="${open ? "Unpin panel for" : "Pin panel for"} ${escAttr(title)}" title="${open ? "Unpin panel" : "Pin panel"}"><svg class="agent-tree-pin-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5" /><path d="M5 17h14v-1.76a2 2 0 0 0-.59-1.42L16 11.41V6h1a1 1 0 0 0 1-1V2H6v3a1 1 0 0 0 1 1h1v5.41l-2.41 2.41A2 2 0 0 0 5 15.24Z" /></svg></button>` : '<span class="agent-tree-toggle-placeholder" aria-hidden="true"></span>'}
+          ${isSubagent && showReaderPanelState ? `<button class="agent-tree-toggle" data-action="toggle-panel" data-track-id="${escAttr(track.id)}" data-testid="subagent-toggle" aria-pressed="${open ? "true" : "false"}" aria-label="${open ? "Unpin panel for" : "Pin panel for"} ${escAttr(title)}" title="${open ? "Unpin panel" : "Pin panel"}"><svg class="agent-tree-pin-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5" /><path d="M5 17h14v-1.76a2 2 0 0 0-.59-1.42L16 11.41V6h1a1 1 0 0 0 1-1V2H6v3a1 1 0 0 0 1 1h1v5.41l-2.41 2.41A2 2 0 0 0 5 15.24Z" /></svg></button>` : '<span class="agent-tree-toggle-placeholder" aria-hidden="true"></span>'}
         </div>
         ${hasChildren ? `<div class="agent-tree-group" role="group" style="--agent-depth:${track.depth}">${children.map(renderNode).join("")}</div>` : ""}
       </div>`;
@@ -2129,6 +2190,7 @@ function renderLeftNavigation() {
   renderAgentSelector();
   renderAgentTree();
   renderMessageIndex();
+  renderSearchPanels();
 }
 
 function renderMessageIndex() {
@@ -2136,7 +2198,7 @@ function renderMessageIndex() {
     els.messageIndex.innerHTML = '<div class="nav-item muted">Timeline uses tracks and message blocks for navigation.</div>';
     return;
   }
-  const track = trackById.get(state.selectedTrackId) || model.tracks[0];
+  const track = trackById.get(state.readerSelectedTrackId) || model.tracks[0];
   if (!track) return;
   const maxItems = 1400;
   const capsules = track.capsuleKeys.map((key) => capsuleByKey.get(key)).filter(Boolean);
@@ -2162,6 +2224,213 @@ function renderMessageIndex() {
         </button>`;
     })
     .join("") + (capsules.length > maxItems ? `<div class="nav-item muted">Showing first ${maxItems.toLocaleString()} of ${capsules.length.toLocaleString()} blocks.</div>` : ""));
+}
+
+function activeSearchOpen(layout = state.layout) {
+  return Boolean(state.searchOpenByLayout[layout === "graph" ? "graph" : "reader"]);
+}
+
+function syncSearchInputs() {
+  if (els.timelineSearchInput && els.timelineSearchInput.value !== state.searchQuery) els.timelineSearchInput.value = state.searchQuery;
+  if (els.readerSearchInput && els.readerSearchInput.value !== state.searchQuery) els.readerSearchInput.value = state.searchQuery;
+}
+
+function invalidateTimelineRender() {
+  state.timelineHeaderKey = "";
+  state.timelineTrackKey = "";
+  state.timelineBlockKey = "";
+  scheduleGraphRender();
+  scheduleTimelineDetailDockLayout({ frames: 2 });
+}
+
+function renderSearchButton() {
+  if (!els.searchToggleButton) return;
+  const open = activeSearchOpen();
+  const viewName = state.layout === "graph" ? "Timeline" : "Waterfall";
+  els.searchToggleButton.setAttribute("aria-pressed", String(open));
+  els.searchToggleButton.setAttribute("aria-label", `${open ? "Close" : "Open"} ${viewName} search`);
+}
+
+function searchStatusText(count) {
+  if (!isSearchQueryActive()) return "No query";
+  if (!count) return "No results";
+  return `${count.toLocaleString()} ${count === 1 ? "hit" : "hits"}`;
+}
+
+function renderTimelineSearchShelf() {
+  if (!els.timelineSearchShelf) return;
+  const open = state.searchOpenByLayout.graph;
+  const presentation = timelineSearchPresentation();
+  els.timelineSearchShelf.dataset.open = String(open);
+  els.timelineSearchShelf.setAttribute("aria-hidden", String(!open));
+  syncSearchInputs();
+  if (els.timelineSearchStatus) els.timelineSearchStatus.textContent = searchStatusText(presentation.results.length);
+  if (els.timelineSearchWarning) els.timelineSearchWarning.textContent = open ? presentation.warning : "";
+  els.timelineSearchShelf.querySelectorAll("[data-search-mode]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.searchMode === state.timelineSearchMode));
+  });
+  els.timelineSearchShelf.querySelectorAll("[data-search-scope]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.searchScope === state.timelineSearchScope));
+  });
+}
+
+function renderReaderSearchPanel() {
+  if (!els.readerSearchPanel || !els.readerSearchResults) return;
+  const open = state.layout === "reader" && state.searchOpenByLayout.reader;
+  els.readerSearchPanel.setAttribute("aria-hidden", String(!open));
+  syncSearchInputs();
+  const results = searchResults();
+  if (els.readerSearchStatus) els.readerSearchStatus.textContent = searchStatusText(results.length);
+  if (!isSearchQueryActive()) {
+    els.readerSearchResults.innerHTML = '<p class="search-results-empty">Type to search transcript content across all agents.</p>';
+    return;
+  }
+  if (!results.length) {
+    els.readerSearchResults.innerHTML = '<p class="search-results-empty">No matching transcript blocks.</p>';
+    return;
+  }
+  const maxRows = 500;
+  const grouped = new Map();
+  results.forEach((result) => {
+    const list = grouped.get(result.trackId) || [];
+    list.push(result);
+    grouped.set(result.trackId, list);
+  });
+  let renderedRows = 0;
+  const html = model.tracks
+    .filter((track) => grouped.has(track.id))
+    .map((track) => {
+      const trackResults = grouped.get(track.id) || [];
+      const rows = trackResults
+        .slice(0, Math.max(0, maxRows - renderedRows))
+        .map((result) => {
+          renderedRows += 1;
+          const capsule = capsuleByKey.get(result.key);
+          const current = state.readerSearchCursorKey === result.key;
+          return `
+            <button class="search-result-row ${current ? "current" : ""}" type="button" role="listitem" data-action="search-result" data-capsule-key="${escAttr(result.key)}" data-testid="search-result-row">
+              <span class="search-result-row-meta">
+                <span class="search-result-kind">${esc(result.lineLabel || result.kindLabel || "block")}</span>
+                <span>#${capsule ? capsule.messageIndex + 1 : result.messageIndex + 1}</span>
+                ${capsule?.timestamp ? `<span>${esc(formatTime(capsule.timestamp))}</span>` : ""}
+              </span>
+              <span class="search-result-snippet">${highlightSearchTerms(searchResultSnippet(result))}</span>
+            </button>`;
+        })
+        .join("");
+      return `
+        <section class="search-result-group" role="group" aria-label="${escAttr(trackTitle(track))} search results">
+          <div class="search-result-group-header">
+            <strong>${esc(track.depth === 0 ? "MAIN" : trackTitle(track))}</strong>
+            <span>${trackResults.length.toLocaleString()}</span>
+          </div>
+          ${rows}
+        </section>`;
+    })
+    .join("");
+  const overflow = results.length > renderedRows
+    ? `<p class="search-results-empty">Showing first ${renderedRows.toLocaleString()} of ${results.length.toLocaleString()} hits.</p>`
+    : "";
+  els.readerSearchResults.innerHTML = compactHtml(html + overflow);
+}
+
+function renderSearchPanels() {
+  const readerSearchOpen = state.layout === "reader" && state.searchOpenByLayout.reader;
+  els.workbench?.setAttribute("data-reader-search-open", String(readerSearchOpen));
+  renderSearchButton();
+  renderTimelineSearchShelf();
+  renderReaderSearchPanel();
+  renderReaderSearchActiveState();
+}
+
+function focusSearchInput(layout = state.layout) {
+  const input = layout === "graph" ? els.timelineSearchInput : els.readerSearchInput;
+  requestAnimationFrame(() => {
+    input?.focus();
+    input?.select();
+  });
+}
+
+function setSearchOpen(layout, open, options = {}) {
+  const target = layout === "graph" ? "graph" : "reader";
+  const nextOpen = Boolean(open);
+  if (target === "reader" && nextOpen && !state.searchOpenByLayout.reader) {
+    state.readerSearchReturnState = { agentTreeDrawerOpen: state.agentTreeDrawerOpen };
+    if (state.agentTreeDrawerOpen) setAgentTreeDrawerOpen(false);
+  }
+  state.searchOpenByLayout[target] = nextOpen;
+  if (target === "reader" && !nextOpen) {
+    const restoreState = state.readerSearchReturnState;
+    state.readerSearchReturnState = null;
+    renderSearchPanels();
+    if (restoreState?.agentTreeDrawerOpen && state.layout === "reader") setAgentTreeDrawerOpen(true);
+  } else {
+    renderSearchPanels();
+  }
+  if (target === "graph") {
+    invalidateTimelineRender();
+    scheduleTimelineDetailTransitionLayout();
+  }
+  if (options.focus && nextOpen) focusSearchInput(target);
+}
+
+function toggleSearchForLayout(layout = state.layout) {
+  setSearchOpen(layout, !activeSearchOpen(layout), { focus: true });
+}
+
+function setSearchQuery(value) {
+  state.searchQuery = String(value || "");
+  state.searchTokens = tokenizeSearchQuery(state.searchQuery);
+  const readerResults = searchResults();
+  const timelineResults = searchResults({ scope: "timeline" });
+  state.readerSearchCursorKey = readerResults[0]?.key || "";
+  state.timelineSearchCursorKey = timelineResults[0]?.key || "";
+  renderSearchPanels();
+  invalidateTimelineRender();
+}
+
+function setTimelineSearchMode(mode) {
+  state.timelineSearchMode = mode === "hits" ? "hits" : "context";
+  state.timelineSearchCursorKey = searchResults({ scope: "timeline" })[0]?.key || "";
+  renderSearchPanels();
+  invalidateTimelineRender();
+}
+
+function setTimelineSearchScope(scope) {
+  state.timelineSearchScope = ["main", "subagents"].includes(scope) ? scope : "all";
+  state.timelineSearchCursorKey = searchResults({ scope: "timeline" })[0]?.key || "";
+  renderSearchPanels();
+  invalidateTimelineRender();
+}
+
+function searchResultsForLayout(layout = state.layout) {
+  return layout === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
+}
+
+function searchCursorKeyForLayout(layout = state.layout) {
+  return layout === "graph" ? state.timelineSearchCursorKey : state.readerSearchCursorKey;
+}
+
+function setSearchCursorForLayout(key, layout = state.layout) {
+  if (layout === "graph") state.timelineSearchCursorKey = key;
+  else state.readerSearchCursorKey = key;
+}
+
+function focusSearchResult(key, layout = state.layout) {
+  if (!key || !capsuleByKey.has(key)) return;
+  setSearchCursorForLayout(key, layout);
+  focusCapsule(key, { scroll: true });
+  renderSearchPanels();
+}
+
+function moveSearchResult(delta, layout = state.layout) {
+  const results = searchResultsForLayout(layout);
+  if (!results.length) return;
+  const currentKey = searchCursorKeyForLayout(layout);
+  const currentIndex = results.findIndex((result) => result.key === currentKey);
+  const startIndex = currentIndex >= 0 ? currentIndex : (delta < 0 ? 0 : -1);
+  const nextIndex = (startIndex + delta + results.length) % results.length;
+  focusSearchResult(results[nextIndex].key, layout);
 }
 
 function renderLegend() {
@@ -2194,8 +2463,10 @@ function renderPanels(options = {}) {
     requestAnimationFrame(() => {
       nextRack.scrollLeft = previousScrollLeft;
       if (pinTrackId) pinSubagentPanelIntoView(pinTrackId, options.instant);
+      renderReaderSearchActiveState();
     });
   }
+  renderReaderSearchActiveState();
 }
 
 function pinSubagentPanelIntoView(trackId, instant = false) {
@@ -2663,6 +2934,7 @@ function setLayout(layout, options = {}) {
     renderGraphStatus();
   } else if (state.layout === "reader") {
     updateSubagentPanelOverlayWidth();
+    renderMessageIndex();
     renderGraphStatus();
   }
   if (options.history !== false) {
@@ -2671,6 +2943,7 @@ function setLayout(layout, options = {}) {
     else url.searchParams.delete("layout");
     history.pushState(historyState(), "", url);
   }
+  renderSearchPanels();
   renderBreadcrumb();
   updateNavigationButtons();
 }
@@ -2780,6 +3053,203 @@ function timelineBlockKindLabel(capsule, index) {
   return words[0] || "kind";
 }
 
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function tokenizeSearchQuery(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function isSearchQueryActive() {
+  return state.searchTokens.length > 0;
+}
+
+function capsuleSearchText(capsule, track) {
+  const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
+  const parts = capsule.message?.parts || [];
+  const partMeta = parts
+    .map((part) => [
+      part.type,
+      part.tool,
+      part.nav?.toolUseId,
+      part.state?.tool_use_id,
+      part.id,
+      partText(part),
+    ].filter(Boolean).join(" "))
+    .filter(Boolean)
+    .join("\n");
+  return [
+    capsule.summary,
+    kind?.fullLabel,
+    kind?.line?.label,
+    capsule.contentTypes?.join(" "),
+    trackTitle(track),
+    timelineTrackLabel(track, track?.index || 0),
+    track?.agentDescription,
+    track?.modelName,
+    capsule.nav?.agentPath,
+    capsule.role,
+    capsule.rawOnly ? rawText(capsule.rawEvent) : messageText(capsule.message || {}),
+    partMeta,
+  ].filter(Boolean).join("\n");
+}
+
+function buildSearchIndex() {
+  searchIndexByKey.clear();
+  model.capsules.forEach((capsule) => {
+    const track = trackById.get(capsule.trackId);
+    const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
+    const sourceText = capsuleSearchText(capsule, track);
+    searchIndexByKey.set(capsule.key, {
+      key: capsule.key,
+      trackId: capsule.trackId,
+      messageIndex: capsule.messageIndex,
+      kindLabel: kind?.fullLabel || capsule.lineType || capsule.type,
+      lineLabel: kind?.line?.label || capsule.lineType || capsule.type,
+      sourceText,
+      haystack: sourceText.toLowerCase(),
+    });
+  });
+}
+
+function searchResultTrackAllowed(track) {
+  if (!track) return false;
+  if (state.timelineSearchScope === "main") return track.depth === 0;
+  if (state.timelineSearchScope === "subagents") return track.depth > 0;
+  return true;
+}
+
+function searchResults(options = {}) {
+  const tokens = state.searchTokens;
+  if (!tokens.length) return [];
+  const scope = options.scope || "all";
+  return model.capsules
+    .map((capsule) => searchIndexByKey.get(capsule.key))
+    .filter(Boolean)
+    .filter((record) => {
+      const track = trackById.get(record.trackId);
+      if (scope === "timeline" && !searchResultTrackAllowed(track)) return false;
+      return tokens.every((token) => record.haystack.includes(token));
+    });
+}
+
+function searchResultSnippet(record, maxLength = 118) {
+  const tokens = state.searchTokens;
+  const source = String(record?.sourceText || "").replace(/\s+/g, " ").trim();
+  if (!source) return "(no searchable text)";
+  const lower = source.toLowerCase();
+  const positions = tokens
+    .map((token) => lower.indexOf(token))
+    .filter((position) => position >= 0);
+  const first = positions.length ? Math.min(...positions) : 0;
+  const start = Math.max(0, first - Math.floor(maxLength * 0.35));
+  const snippet = `${start > 0 ? "..." : ""}${source.slice(start, start + maxLength)}${start + maxLength < source.length ? "..." : ""}`;
+  return snippet;
+}
+
+function highlightSearchTerms(value) {
+  const tokens = [...state.searchTokens].sort((a, b) => b.length - a.length);
+  const source = String(value || "");
+  if (!tokens.length || !source) return esc(source);
+  const pattern = new RegExp(`(${tokens.map(escapeRegExp).join("|")})`, "ig");
+  return source.split(pattern)
+    .map((part) => tokens.includes(part.toLowerCase()) ? `<mark class="search-hit">${esc(part)}</mark>` : esc(part))
+    .join("");
+}
+
+function timelineSearchActive() {
+  return state.searchOpenByLayout.graph && isSearchQueryActive();
+}
+
+function timelineSearchPresentation() {
+  const active = timelineSearchActive();
+  if (!active) {
+    return {
+      active: false,
+      results: [],
+      hitKeys: new Set(),
+      contextKeys: new Set(),
+      visibleKeys: new Set(),
+      visibleTrackIds: new Set(model.tracks.map((track) => track.id)),
+      layoutKeysByTrackId: new Map(model.tracks.map((track) => [track.id, track.capsuleKeys])),
+      warning: "",
+      signature: "inactive",
+    };
+  }
+  const results = searchResults({ scope: "timeline" });
+  const hitKeys = new Set(results.map((result) => result.key));
+  const contextKeys = new Set();
+  const visibleTrackIds = new Set();
+  const hitTracksWithHiddenParents = new Set();
+
+  results.forEach((result) => {
+    let track = trackById.get(result.trackId);
+    if (track) visibleTrackIds.add(track.id);
+    if (state.timelineSearchMode !== "context") {
+      if (track?.depth > 0) hitTracksWithHiddenParents.add(track.id);
+      return;
+    }
+    while (track?.depth > 0) {
+      visibleTrackIds.add(track.id);
+      if (track.parentTrackId) visibleTrackIds.add(track.parentTrackId);
+      const edge = model.spawnEdges.find((item) => item.trackId === track.id);
+      if (edge) {
+        if (!hitKeys.has(edge.sourceKey)) contextKeys.add(edge.sourceKey);
+        if (!hitKeys.has(edge.targetKey)) contextKeys.add(edge.targetKey);
+        const source = capsuleByKey.get(edge.sourceKey);
+        const target = capsuleByKey.get(edge.targetKey);
+        if (source) visibleTrackIds.add(source.trackId);
+        if (target) visibleTrackIds.add(target.trackId);
+      }
+      track = track.parentTrackId ? trackById.get(track.parentTrackId) : null;
+    }
+  });
+
+  const visibleKeys = new Set([...hitKeys, ...contextKeys]);
+  const layoutKeysByTrackId = new Map();
+  model.tracks.forEach((track) => {
+    const layoutKeys = track.capsuleKeys.filter((key) => visibleKeys.has(key));
+    if (layoutKeys.length) layoutKeysByTrackId.set(track.id, layoutKeys);
+  });
+  const warning = state.timelineSearchMode === "hits" && hitTracksWithHiddenParents.size
+    ? "Hits Only hides subagent spawn context for some results."
+    : "";
+  return {
+    active,
+    results,
+    hitKeys,
+    contextKeys,
+    visibleKeys,
+    visibleTrackIds,
+    layoutKeysByTrackId,
+    warning,
+    signature: [
+      state.searchQuery,
+      state.timelineSearchMode,
+      state.timelineSearchScope,
+      results.length,
+      [...visibleTrackIds].join(","),
+      [...visibleKeys].join(","),
+    ].join("|"),
+  };
+}
+
+function timelineLayoutTracks(presentation = timelineSearchPresentation()) {
+  if (!presentation.active) return model.tracks;
+  return model.tracks.filter((track) => presentation.visibleTrackIds.has(track.id));
+}
+
+function timelineTrackLayoutKeys(track, presentation = timelineSearchPresentation()) {
+  if (!track) return [];
+  if (!presentation.active) return track.capsuleKeys;
+  return presentation.layoutKeysByTrackId.get(track.id) || [];
+}
+
 function timelineTrackBounds(track) {
   return {
     left: track.x || 0,
@@ -2791,16 +3261,18 @@ function timelineTrackBounds(track) {
 
 function renderTimelineHeader() {
   if (!els.timelineHeader) return;
-  const key = `${model.timelineLayoutVersion}:${model.width}:${model.tracks.length}:${state.selectedTrackId}:${model.tracks.map((track) => track.problemCount).join(",")}`;
+  const renderTracks = model.tracks.filter((track) => !track.timelineSearchHidden);
+  const searchPresentation = timelineSearchPresentation();
+  const key = `${model.timelineLayoutVersion}:${model.width}:${renderTracks.map((track) => track.id).join("|")}:${state.timelineSelectedTrackId}:${searchPresentation.signature}:${model.tracks.map((track) => track.problemCount).join(",")}`;
   els.timelineHeader.style.width = `${model.width}px`;
   if (state.timelineHeaderKey === key) return;
   state.timelineHeaderKey = key;
   state.timelineHeaderRenderCount += 1;
-  els.timelineHeader.innerHTML = compactHtml(model.tracks
-    .map((track, index) => {
-      const selected = track.id === state.selectedTrackId;
+  els.timelineHeader.innerHTML = compactHtml(renderTracks
+    .map((track) => {
+      const selected = track.id === state.timelineSelectedTrackId;
       const isMainTrack = track.depth === 0;
-      const label = timelineTrackLabel(track, index);
+      const label = timelineTrackLabel(track, track.index || 0);
       const description = timelineTrackDescription(track);
       const modelLabel = timelineTrackModel(track);
       const problemLabel = timelineTrackProblemLabel(track);
@@ -2827,13 +3299,14 @@ function renderTimelineHeader() {
 }
 
 function renderTimelineTracks(visibleTracks) {
-  const key = `${model.timelineLayoutVersion}:${model.width}:${model.height}:${state.selectedTrackId}:${visibleTracks.map((track) => track.id).join("|")}`;
+  const searchPresentation = timelineSearchPresentation();
+  const key = `${model.timelineLayoutVersion}:${model.width}:${model.height}:${state.timelineSelectedTrackId}:${searchPresentation.signature}:${visibleTracks.map((track) => track.id).join("|")}`;
   if (state.timelineTrackKey === key) return;
   state.timelineTrackKey = key;
   state.timelineTrackRenderCount += 1;
   els.graphLanes.innerHTML = compactHtml(visibleTracks
     .map((track) => {
-      const selected = track.id === state.selectedTrackId;
+      const selected = track.id === state.timelineSelectedTrackId;
       return `
       <div class="timeline-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}" data-track-id="${escAttr(track.id)}" style="left:${track.x}px;top:0px;width:${model.trackWidth}px;height:${model.height}px"></div>`;
     })
@@ -2852,6 +3325,7 @@ function renderGraphVirtual() {
   const overscanY = Math.max(360, Math.min(640, viewport.clientHeight * 0.22));
   const verticalChunkHeight = model.blockStepY * 96;
   const visibleTracks = model.tracks.filter((track) => {
+    if (track.timelineSearchHidden) return false;
     const bounds = timelineTrackBounds(track);
     return bounds.right >= viewLeft - overscanX && bounds.left <= viewRight + overscanX;
   });
@@ -2869,36 +3343,45 @@ function renderGraphVirtual() {
 
   const windowTop = Math.max(0, Math.floor((viewTop - overscanY) / verticalChunkHeight) * verticalChunkHeight);
   const windowBottom = Math.ceil((viewBottom + overscanY) / verticalChunkHeight) * verticalChunkHeight;
-  const rangeByTrack = visibleTracks.map((track) => ({
-    track,
-    start: Math.max(0, Math.floor((windowTop - track.timelineStartY) / model.blockStepY)),
-    end: Math.min(track.capsuleKeys.length - 1, Math.ceil((windowBottom - track.timelineStartY) / model.blockStepY)),
-  }));
   const selectionKey = `${state.currentCapsuleKey}:${[...state.selectedGraphKeys].sort().join(",")}`;
-  const blockKey = `${model.timelineLayoutVersion}:${selectionKey}:${windowTop}:${windowBottom}:${visibleTracks.map((track) => track.id).join("|")}`;
+  const searchPresentation = timelineSearchPresentation();
+  const rangeByTrack = visibleTracks.map((track) => {
+    const layoutKeys = track.timelineLayoutCapsuleKeys || timelineTrackLayoutKeys(track, searchPresentation);
+    return {
+      track,
+      layoutKeys,
+      start: Math.max(0, Math.floor((windowTop - track.timelineStartY) / model.blockStepY)),
+      end: Math.min(layoutKeys.length - 1, Math.ceil((windowBottom - track.timelineStartY) / model.blockStepY)),
+    };
+  });
+  const blockKey = `${model.timelineLayoutVersion}:${selectionKey}:${searchPresentation.signature}:${windowTop}:${windowBottom}:${visibleTracks.map((track) => track.id).join("|")}`;
   if (state.timelineBlockKey !== blockKey) {
     state.timelineBlockKey = blockKey;
     state.timelineBlockRenderCount += 1;
     const blockHtml = [];
-    rangeByTrack.forEach(({ track, start, end }) => {
-      for (let index = start; index <= end; index += 1) {
-        const key = track.capsuleKeys[index];
+    rangeByTrack.forEach(({ track, layoutKeys, start, end }) => {
+      for (let layoutIndex = start; layoutIndex <= end; layoutIndex += 1) {
+        const key = layoutKeys[layoutIndex];
         const capsule = capsuleByKey.get(key);
         if (!capsule) continue;
+        if (searchPresentation.active && !searchPresentation.visibleKeys.has(key)) continue;
         const active = key === state.currentCapsuleKey;
         const selected = state.selectedGraphKeys.has(key);
+        const searchHit = searchPresentation.hitKeys.has(key);
+        const searchContext = searchPresentation.contextKeys.has(key);
         const style = typeStyle(capsule.type);
         const kind = capsule.kindModel || rawEventKindModel(capsule.rawEvent);
         const noSubtype = kind.contentKinds.length ? "" : "no-subtype";
+        const blockNumber = capsule.messageIndex + 1;
         blockHtml.push(`
-          <button class="portfolio-timeline-block timeline-block ${style.className} ${noSubtype} ${active ? "active" : ""} ${selected ? "selected" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-testid="timeline-block" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" style="left:${capsule.x}px;top:${capsule.y}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${kind.fullLabel}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${index + 1}, ${kind.fullLabel}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
-            <span class="portfolio-timeline-block-label timeline-block-label" data-full-label="${escAttr(timelineBlockKindLabel(capsule, index))}">${esc(timelineBlockKindLabel(capsule, index))}</span>
+          <button class="portfolio-timeline-block timeline-block ${style.className} ${noSubtype} ${active ? "active" : ""} ${selected ? "selected" : ""} ${searchHit ? "timeline-search-hit" : ""} ${searchContext ? "timeline-search-context" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-track-id="${escAttr(track.id)}" data-message-index="${capsule.messageIndex}" data-layout-index="${layoutIndex}" data-testid="timeline-block" data-search-role="${searchHit ? "hit" : searchContext ? "context" : ""}" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" style="left:${capsule.x}px;top:${capsule.y}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${kind.fullLabel}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${blockNumber}, ${kind.fullLabel}${searchContext ? ", search context" : ""}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
+            <span class="portfolio-timeline-block-label timeline-block-label" data-full-label="${escAttr(timelineBlockKindLabel(capsule, layoutIndex))}">${esc(timelineBlockKindLabel(capsule, layoutIndex))}</span>
           </button>`);
       }
     });
     els.graphCapsules.innerHTML = compactHtml(blockHtml.join(""));
   }
-  els.graphEdges.innerHTML = renderVisibleEdges(viewLeft - overscanX, viewTop - overscanY, viewRight + overscanX, viewBottom + overscanY);
+  els.graphEdges.innerHTML = renderVisibleEdges(viewLeft - overscanX, viewTop - overscanY, viewRight + overscanX, viewBottom + overscanY, searchPresentation);
   renderGraphStatus();
 }
 
@@ -2907,7 +3390,7 @@ function capsuleInView(capsule, left, top, right, bottom) {
   return capsule.x + capsule.width >= left && capsule.x <= right && capsule.y + capsule.height >= top && capsule.y <= bottom;
 }
 
-function renderVisibleEdges(left, top, right, bottom) {
+function renderVisibleEdges(left, top, right, bottom, searchPresentation = timelineSearchPresentation()) {
   const defs = `
     <defs>
       <marker id="timelineArrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -2922,7 +3405,9 @@ function renderVisibleEdges(left, top, right, bottom) {
       const source = capsuleByKey.get(edge.sourceKey);
       const target = capsuleByKey.get(edge.targetKey);
       if (!source || !target) return "";
+      if (searchPresentation.active && (!searchPresentation.visibleKeys.has(edge.sourceKey) || !searchPresentation.visibleKeys.has(edge.targetKey))) return "";
       const selected = edge.sourceKey === state.currentCapsuleKey || edge.targetKey === state.currentCapsuleKey || state.selectedGraphKeys.has(edge.sourceKey) || state.selectedGraphKeys.has(edge.targetKey);
+      const searchContext = searchPresentation.contextKeys.has(edge.sourceKey) || searchPresentation.contextKeys.has(edge.targetKey);
       const targetTrack = trackById.get(edge.trackId || target.trackId);
       const sx = source.x + source.width;
       const sy = source.y + source.height / 2;
@@ -2937,7 +3422,7 @@ function renderVisibleEdges(left, top, right, bottom) {
       const edgeVisible = edgeRight >= left && edgeLeft <= right && edgeBottom >= top && edgeTop <= bottom;
       if (!selected && !edgeVisible) return "";
       const d = `M ${sx} ${sy} L ${columnCenterX} ${sy} L ${columnCenterX} ${targetTopCenterY}`;
-      return `<path class="timeline-connector ${escAttr(edge.type)} ${selected ? "selected" : ""}" data-testid="timeline-spawn-connector" data-source-key="${escAttr(edge.sourceKey)}" data-target-key="${escAttr(edge.targetKey)}" d="${escAttr(d)}" marker-end="url(#${selected ? "timelineArrowSelected" : "timelineArrow"})" />`;
+      return `<path class="timeline-connector ${escAttr(edge.type)} ${selected ? "selected" : ""} ${searchContext ? "timeline-search-context" : ""}" data-testid="timeline-spawn-connector" data-source-key="${escAttr(edge.sourceKey)}" data-target-key="${escAttr(edge.targetKey)}" d="${escAttr(d)}" marker-end="url(#${selected ? "timelineArrowSelected" : "timelineArrow"})" />`;
     })
     .join("");
   return defs + paths;
@@ -3057,6 +3542,58 @@ function updateTimelineDetailDockLayout(count = document.querySelectorAll("[data
   };
   state.timelineDetailWindowLayout = layout;
   applyTimelineDetailWindowLayout(layout);
+}
+
+function scheduleTimelineDetailDockLayout({ frames = 1, duration = 0 } = {}) {
+  if (!els.timelineDetailPanel) return;
+  state.timelineDetailLayoutFrameBudget = Math.max(state.timelineDetailLayoutFrameBudget || 0, frames);
+  if (duration > 0) {
+    state.timelineDetailLayoutDeadline = Math.max(
+      state.timelineDetailLayoutDeadline || 0,
+      performance.now() + duration,
+    );
+  }
+  if (state.timelineDetailLayoutFrame !== null) return;
+
+  const updateFrame = () => {
+    state.timelineDetailLayoutFrame = null;
+    updateTimelineDetailDockLayout();
+    if (state.timelineDetailLayoutFrameBudget > 0) state.timelineDetailLayoutFrameBudget -= 1;
+    const keepFollowing = state.timelineDetailLayoutFrameBudget > 0
+      || performance.now() < (state.timelineDetailLayoutDeadline || 0);
+    if (!keepFollowing) {
+      state.timelineDetailLayoutDeadline = 0;
+      return;
+    }
+    state.timelineDetailLayoutFrame = requestAnimationFrame(updateFrame);
+  };
+
+  state.timelineDetailLayoutFrame = requestAnimationFrame(updateFrame);
+}
+
+function scheduleTimelineDetailTransitionLayout() {
+  updateTimelineDetailDockLayout();
+  scheduleTimelineDetailDockLayout({ duration: 280, frames: 2 });
+}
+
+function bindTimelineDetailLayoutObservers() {
+  const scheduleLayout = () => scheduleTimelineDetailDockLayout({ frames: 2 });
+  if (!state.timelineDetailResizeObserver && "ResizeObserver" in window) {
+    const observer = new ResizeObserver(scheduleLayout);
+    [els.graphViewport, els.timelineSearchShelf, els.timelineHeader]
+      .filter(Boolean)
+      .forEach((element) => observer.observe(element));
+    state.timelineDetailResizeObserver = observer;
+  }
+  els.timelineSearchShelf?.addEventListener("transitionrun", (event) => {
+    if (event.propertyName === "max-height") scheduleTimelineDetailTransitionLayout();
+  });
+  els.timelineSearchShelf?.addEventListener("transitionend", (event) => {
+    if (event.propertyName === "max-height") scheduleTimelineDetailDockLayout({ frames: 2 });
+  });
+  els.timelineSearchShelf?.addEventListener("transitioncancel", (event) => {
+    if (event.propertyName === "max-height") scheduleTimelineDetailDockLayout({ frames: 2 });
+  });
 }
 
 function renderTimelineDetailPart(part, partIndex) {
@@ -3332,7 +3869,7 @@ function focusCapsule(key, options = {}) {
   if (!capsule) return;
   if (state.currentCapsuleKey !== key) pushBackNavigation(options);
   state.currentCapsuleKey = key;
-  state.selectedTrackId = capsule.trackId;
+  setSelectedTrackForLayout(capsule.trackId);
   if (!options.multi) state.selectedGraphKeys = new Set([key]);
   setLinkStatus("");
   renderLeftNavigation();
@@ -3441,6 +3978,18 @@ function renderReaderActiveState() {
     element.classList.add("active");
     element.setAttribute("aria-current", "true");
   }
+  renderReaderSearchActiveState();
+}
+
+function renderReaderSearchActiveState() {
+  document.querySelectorAll(".reader-message.search-current").forEach((node) => {
+    node.classList.remove("search-current");
+  });
+  if (!(state.layout === "reader" && state.searchOpenByLayout.reader && state.readerSearchCursorKey)) return;
+  const capsule = capsuleByKey.get(state.readerSearchCursorKey);
+  if (!capsule) return;
+  const element = document.getElementById(readerMessageId(capsule.trackId, capsule.messageIndex));
+  element?.classList.add("search-current");
 }
 
 function focusMessage(trackId, index) {
@@ -3450,12 +3999,29 @@ function focusMessage(trackId, index) {
   if (key) focusCapsule(key);
 }
 
-function selectTrack(trackId, options = {}) {
+function selectTimelineTrack(trackId, options = {}) {
   const track = trackById.get(trackId);
   if (!track) return;
-  const wasSelected = state.selectedTrackId === trackId;
+  const wasSelected = state.timelineSelectedTrackId === trackId;
+  state.timelineSelectedTrackId = trackId;
+  renderLeftNavigation();
+  scheduleGraphRender();
+  const canFocusTrack = track.firstCapsuleKey && options.focus !== false && !wasSelected;
+  if (canFocusTrack) {
+    focusCapsule(track.firstCapsuleKey, { scroll: true });
+  } else {
+    renderBreadcrumb();
+    renderGraphStatus();
+    updateNavigationButtons();
+  }
+}
+
+function selectReaderTrack(trackId, options = {}) {
+  const track = trackById.get(trackId);
+  if (!track) return;
+  const wasSelected = state.readerSelectedTrackId === trackId;
   const wasOpen = state.openPanelIds.has(trackId);
-  state.selectedTrackId = trackId;
+  state.readerSelectedTrackId = trackId;
   const shouldOpen = track.depth > 0 && options.open !== false;
   const openChanged = shouldOpen && !wasOpen;
   if (shouldOpen) {
@@ -3475,11 +4041,16 @@ function selectTrack(trackId, options = {}) {
   }
 }
 
+function selectTrack(trackId, options = {}) {
+  if (state.layout === "graph") selectTimelineTrack(trackId, options);
+  else selectReaderTrack(trackId, options);
+}
+
 function closePanel(trackId) {
   state.openPanelIds.delete(trackId);
-  if (state.selectedTrackId === trackId) {
+  if (state.readerSelectedTrackId === trackId) {
     const mainTrack = model.tracks[0];
-    state.selectedTrackId = mainTrack?.id || "main";
+    state.readerSelectedTrackId = mainTrack?.id || "main";
     if (mainTrack?.firstCapsuleKey) {
       state.currentCapsuleKey = mainTrack.firstCapsuleKey;
       state.selectedGraphKeys = new Set([mainTrack.firstCapsuleKey]);
@@ -3494,12 +4065,16 @@ function closePanel(trackId) {
 
 function togglePanel(trackId) {
   const track = trackById.get(trackId);
+  if (state.layout === "graph") {
+    selectTimelineTrack(trackId, { open: false });
+    return;
+  }
   if (!track || track.depth === 0) {
-    selectTrack(trackId, { open: false });
+    selectReaderTrack(trackId, { open: false });
     return;
   }
   if (state.openPanelIds.has(trackId)) closePanel(trackId);
-  else selectTrack(trackId, { open: true });
+  else selectReaderTrack(trackId, { open: true });
 }
 
 function renderBreadcrumb() {
@@ -3520,7 +4095,8 @@ function renderBreadcrumb() {
 function restoreNavigationSnapshot(item) {
   if (!item) return;
   setLayout(item.layout || state.layout, { history: false });
-  state.selectedTrackId = item.selectedTrackId || state.selectedTrackId;
+  state.timelineSelectedTrackId = item.timelineSelectedTrackId || item.selectedTrackId || state.timelineSelectedTrackId;
+  state.readerSelectedTrackId = item.readerSelectedTrackId || item.selectedTrackId || state.readerSelectedTrackId;
   if (item.key && capsuleByKey.has(item.key)) {
     focusCapsule(item.key, { push: false, history: false, scroll: true, instant: true });
   }
@@ -3559,6 +4135,8 @@ function historyState(extra = {}) {
   return {
     layout: state.layout,
     capsuleKey: state.currentCapsuleKey,
+    timelineSelectedTrackId: state.timelineSelectedTrackId,
+    readerSelectedTrackId: state.readerSelectedTrackId,
     nav: currentNav(),
     graphScroll: { left: els.graphViewport.scrollLeft, top: els.graphViewport.scrollTop },
     readerScroll: { top: els.mainContent.scrollTop },
@@ -3670,8 +4248,10 @@ function layoutMetrics() {
 function timelineMetrics() {
   const viewportRect = els.graphViewport.getBoundingClientRect();
   const headerRect = els.timelineHeader.getBoundingClientRect();
+  const searchShelfRect = els.timelineSearchShelf?.getBoundingClientRect() || { top: 0, bottom: 0, height: 0 };
   const detailDockRect = els.timelineDetailPanel?.getBoundingClientRect() || { left: 0, right: 0, width: 0, height: 0 };
   const detailWindowLayoutArea = state.timelineDetailWindowLayout?.area || null;
+  const searchPresentation = timelineSearchPresentation();
   const mainTrack = model.tracks[0] || null;
   const trackGroupRight = model.timelineTrackGroupLeft + model.timelineTrackSpan;
   const trackGroupCenter = model.timelineTrackGroupLeft + model.timelineTrackSpan / 2;
@@ -3694,8 +4274,52 @@ function timelineMetrics() {
       top: Math.round(rect.top),
       color: window.getComputedStyle(element).backgroundColor,
       key: element.dataset.capsuleKey || "",
+      trackId: element.dataset.trackId || "",
+      messageIndex: Number(element.dataset.messageIndex || 0),
+      layoutIndex: Number(element.dataset.layoutIndex || 0),
     };
   });
+  const renderedBlocksByTrack = new Map();
+  blocks.forEach((block) => {
+    const list = renderedBlocksByTrack.get(block.trackId) || [];
+    list.push(block);
+    renderedBlocksByTrack.set(block.trackId, list);
+  });
+  let maxRenderedVerticalGap = 0;
+  renderedBlocksByTrack.forEach((trackBlocks) => {
+    trackBlocks
+      .sort((a, b) => a.top - b.top)
+      .forEach((block, index) => {
+        if (index === 0) return;
+        maxRenderedVerticalGap = Math.max(maxRenderedVerticalGap, block.top - trackBlocks[index - 1].top);
+      });
+  });
+  let searchLayoutVisibleBlockCount = 0;
+  let searchLayoutMaxOriginalIndexGap = 0;
+  let searchLayoutMaxYGap = 0;
+  const searchLayoutTracks = model.tracks
+    .filter((track) => !track.timelineSearchHidden)
+    .map((track) => {
+      const keys = track.timelineLayoutCapsuleKeys || [];
+      const messageIndexes = keys.map((key) => capsuleByKey.get(key)?.messageIndex ?? 0);
+      const yPositions = keys.map((key) => capsuleByKey.get(key)?.y ?? 0);
+      searchLayoutVisibleBlockCount += keys.length;
+      messageIndexes.forEach((messageIndex, index) => {
+        if (index === 0) return;
+        searchLayoutMaxOriginalIndexGap = Math.max(searchLayoutMaxOriginalIndexGap, messageIndex - messageIndexes[index - 1]);
+      });
+      yPositions.forEach((y, index) => {
+        if (index === 0) return;
+        searchLayoutMaxYGap = Math.max(searchLayoutMaxYGap, y - yPositions[index - 1]);
+      });
+      return {
+        trackId: track.id,
+        blockCount: keys.length,
+        keys,
+        messageIndexes,
+        yPositions,
+      };
+    });
   const labels = [...document.querySelectorAll("[data-testid='timeline-track-label']")].map((element) => {
     const rect = element.getBoundingClientRect();
     const style = window.getComputedStyle(element);
@@ -3734,6 +4358,7 @@ function timelineMetrics() {
     viewportScrollTop: els.graphViewport.scrollTop,
     scrollWidth: els.graphViewport.scrollWidth,
     trackWidth: model.trackWidth,
+    blockStepY: model.blockStepY,
     trackSpan: model.timelineTrackSpan,
     trackGroupLeft: model.timelineTrackGroupLeft,
     trackGroupRight,
@@ -3788,6 +4413,22 @@ function timelineMetrics() {
       left: headerRect.left,
       width: headerRect.width,
     },
+    searchShelf: {
+      open: state.searchOpenByLayout.graph,
+      top: searchShelfRect.top,
+      bottom: searchShelfRect.bottom,
+      height: searchShelfRect.height,
+    },
+    searchLayout: {
+      active: searchPresentation.active,
+      visibleTrackCount: searchLayoutTracks.length,
+      visibleBlockCount: searchLayoutVisibleBlockCount,
+      renderedBlockCount: blocks.length,
+      maxOriginalIndexGap: searchLayoutMaxOriginalIndexGap,
+      maxLayoutYGap: searchLayoutMaxYGap,
+      maxRenderedVerticalGap,
+      tracks: searchLayoutTracks,
+    },
   };
 }
 
@@ -3797,6 +4438,7 @@ function exposeDebugState() {
     capsules: model.capsules.map((capsule) => ({
       key: capsule.key,
       trackId: capsule.trackId,
+      messageIndex: capsule.messageIndex,
       type: capsule.type,
       lineType: capsule.lineType,
       contentTypes: capsule.contentTypes,
@@ -3820,7 +4462,9 @@ function exposeDebugState() {
     current: () => ({
       layout: state.layout,
       capsuleKey: state.currentCapsuleKey,
-      selectedTrackId: state.selectedTrackId,
+      selectedTrackId: selectedTrackIdForLayout(),
+      timelineSelectedTrackId: state.timelineSelectedTrackId,
+      readerSelectedTrackId: state.readerSelectedTrackId,
       selected: [...state.selectedGraphKeys],
       pinnedDetails: [...state.pinnedTimelineDetailKeys],
       backCount: state.backStack.length,
@@ -3828,6 +4472,18 @@ function exposeDebugState() {
       leftNavTab: state.leftNavTab,
       openPanels: [...state.openPanelIds],
       agentTreeDrawerOpen: state.agentTreeDrawerOpen,
+      search: {
+        query: state.searchQuery,
+        resultCount: searchResultsForLayout().length,
+        timelineMode: state.timelineSearchMode,
+        timelineScope: state.timelineSearchScope,
+        timelineVisibleKeys: [...timelineSearchPresentation().visibleKeys],
+        timelineContextKeys: [...timelineSearchPresentation().contextKeys],
+        readerResultKeys: searchResults().map((result) => result.key),
+        searchOpenByLayout: { ...state.searchOpenByLayout },
+        timelineCursorKey: state.timelineSearchCursorKey,
+        readerCursorKey: state.readerSearchCursorKey,
+      },
     }),
     layoutMetrics,
     timelineMetrics,
@@ -3838,12 +4494,14 @@ function initialize() {
   buildModels();
   updateCommandBarHeight();
   state.layout = getLayoutFromUrl();
-  state.selectedTrackId = model.tracks[0]?.id || "main";
+  state.timelineSelectedTrackId = model.tracks[0]?.id || "main";
+  state.readerSelectedTrackId = model.tracks[0]?.id || "main";
   bindSubagentSeparatorResize();
   renderSessionSummary();
   renderLegend();
   renderLeftNavigation();
   renderReader();
+  bindTimelineDetailLayoutObservers();
   setLayout(state.layout, { history: false });
   setLeftNavTab("messages");
   const restored = restoreHashTarget();
@@ -3858,6 +4516,9 @@ els.layoutButtons.forEach((button) => {
   button.addEventListener("click", () => setLayout(button.dataset.layout));
 });
 
+els.timelineSearchInput?.addEventListener("input", (event) => setSearchQuery(event.target.value));
+els.readerSearchInput?.addEventListener("input", (event) => setSearchQuery(event.target.value));
+
 els.leftTabs.forEach((button) => {
   button.addEventListener("click", () => setLeftNavTab(button.dataset.leftTab));
 });
@@ -3866,7 +4527,7 @@ els.graphViewport.addEventListener("scroll", scheduleGraphRender, { passive: tru
 window.addEventListener("resize", () => {
   updateCommandBarHeight();
   scheduleGraphRender();
-  updateTimelineDetailDockLayout();
+  scheduleTimelineDetailDockLayout({ frames: 2 });
   updateSubagentPanelOverlayWidth();
 });
 
@@ -3887,6 +4548,42 @@ document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const action = button.dataset.action;
+  if (action === "toggle-search") {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleSearchForLayout();
+    return;
+  }
+  if (action === "close-search") {
+    event.preventDefault();
+    event.stopPropagation();
+    setSearchOpen(state.layout, false);
+    return;
+  }
+  if (action === "search-next" || action === "search-prev") {
+    event.preventDefault();
+    event.stopPropagation();
+    moveSearchResult(action === "search-next" ? 1 : -1);
+    return;
+  }
+  if (action === "search-result") {
+    event.preventDefault();
+    event.stopPropagation();
+    focusSearchResult(button.dataset.capsuleKey);
+    return;
+  }
+  if (action === "set-timeline-search-mode") {
+    event.preventDefault();
+    event.stopPropagation();
+    setTimelineSearchMode(button.dataset.searchMode);
+    return;
+  }
+  if (action === "set-timeline-search-scope") {
+    event.preventDefault();
+    event.stopPropagation();
+    setTimelineSearchScope(button.dataset.searchScope);
+    return;
+  }
   if (action === "close-panel") {
     event.preventDefault();
     event.stopPropagation();
@@ -3939,7 +4636,29 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  const searchInput = event.target === els.timelineSearchInput || event.target === els.readerSearchInput;
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    setSearchOpen(state.layout, true, { focus: true });
+    return;
+  }
+  if (searchInput && event.key === "Enter") {
+    event.preventDefault();
+    moveSearchResult(event.shiftKey ? -1 : 1);
+    return;
+  }
+  if (searchInput && event.key === "Escape") {
+    event.preventDefault();
+    if (state.searchQuery) setSearchQuery("");
+    else setSearchOpen(state.layout, false);
+    return;
+  }
   if (event.key === "Escape") {
+    if (activeSearchOpen()) {
+      if (state.searchQuery) setSearchQuery("");
+      else setSearchOpen(state.layout, false);
+      return;
+    }
     setSessionInfoOpen(false);
     setAgentTreeDrawerOpen(false);
     if (state.readerRawCapsuleKey) {
@@ -3961,6 +4680,8 @@ document.addEventListener("keydown", (event) => {
 window.addEventListener("popstate", (event) => {
   const saved = event.state || {};
   setLayout(saved.layout || getLayoutFromUrl(), { history: false });
+  state.timelineSelectedTrackId = saved.timelineSelectedTrackId || saved.selectedTrackId || state.timelineSelectedTrackId;
+  state.readerSelectedTrackId = saved.readerSelectedTrackId || saved.selectedTrackId || state.readerSelectedTrackId;
   if (saved.capsuleKey && capsuleByKey.has(saved.capsuleKey)) {
     focusCapsule(saved.capsuleKey, { push: false, history: false, instant: true });
   } else {

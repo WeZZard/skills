@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ conversation.summary.title }} | Session Viewer</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/css/base.css?v=20260624-spawn-orthogonal-v2" />
+    <link rel="stylesheet" href="/static/css/base.css?v=20260624-search-panel-v1" />
   </head>
   <body>
     <script id="conversation-data" type="application/json">{{ conversation_json | safe }}</script>
@@ -52,6 +52,13 @@
           <div id="sessionInfoPopover" class="session-info-popover hidden" role="dialog" aria-label="Session information"></div>
         </div>
         <div class="command-actions" aria-label="Transcript actions">
+          <button id="searchToggleBtn" class="icon-label search-toggle-button" type="button" data-action="toggle-search" aria-pressed="false" aria-label="Open search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m16.5 16.5 4 4" />
+            </svg>
+            <span>Search</span>
+          </button>
           <div class="layout-switch segmented-control" role="group" aria-label="Conversation layout">
             <button id="graphLayoutBtn" class="icon-label" data-layout="graph" aria-pressed="true">
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -106,6 +113,34 @@
       </aside>
 
       <aside class="left-rail reader-rail" aria-label="Transcript browser">
+        <section id="readerSearchPanel" class="reader-search-panel" data-testid="waterfall-search-panel" aria-label="Waterfall search" aria-hidden="true">
+          <header class="reader-search-header">
+            <div>
+              <h2>Search Waterfall</h2>
+              <p id="readerSearchStatus" class="search-result-status">No query</p>
+            </div>
+            <button type="button" class="reader-search-close icon-label" data-action="close-search" aria-label="Close search">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </header>
+          <div class="reader-search-controls">
+            <label class="search-input-shell" for="readerSearchInput">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m16.5 16.5 4 4" />
+              </svg>
+              <input id="readerSearchInput" data-testid="waterfall-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search transcript content" />
+            </label>
+            <div class="search-navigation-controls" role="group" aria-label="Waterfall search navigation">
+              <button type="button" data-action="search-prev" data-testid="waterfall-search-previous" aria-label="Previous search result">Prev</button>
+              <button type="button" data-action="search-next" data-testid="waterfall-search-next" aria-label="Next search result">Next</button>
+            </div>
+          </div>
+          <div id="readerSearchResults" class="reader-search-results" data-testid="waterfall-search-results" role="list"></div>
+        </section>
         <div class="left-pane-header" data-testid="left-pane-header">
           <button id="agentPaneToggle" class="icon-label" type="button" aria-controls="agentTreeDrawer" aria-expanded="false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -145,6 +180,39 @@
           <div id="subagentPanelOverlay" class="subagent-panel-overlay" data-testid="subagent-panel-overlay" aria-label="Open subagent panels"></div>
         </section>
         <section id="graphLayout" class="timeline-layout" data-testid="overview-timeline-layout" aria-label="Transcript timeline view">
+          <section id="timelineSearchShelf" class="timeline-search-shelf" data-testid="timeline-search-shelf" aria-label="Timeline search" aria-hidden="true">
+            <div class="timeline-search-inner">
+              <div class="timeline-search-primary">
+                <label class="search-input-shell timeline-search-input-shell" for="timelineSearchInput">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m16.5 16.5 4 4" />
+                  </svg>
+                  <input id="timelineSearchInput" data-testid="timeline-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search timeline content" />
+                </label>
+                <span id="timelineSearchStatus" class="search-result-status">No query</span>
+                <div class="search-navigation-controls" role="group" aria-label="Timeline search navigation">
+                  <button type="button" data-action="search-prev" data-testid="timeline-search-previous" aria-label="Previous search result">Prev</button>
+                  <button type="button" data-action="search-next" data-testid="timeline-search-next" aria-label="Next search result">Next</button>
+                  <button type="button" data-action="close-search" data-testid="search-clear" aria-label="Close timeline search">Close</button>
+                </div>
+              </div>
+              <div class="timeline-search-options">
+                <div class="timeline-search-option-group" role="group" aria-label="Timeline search mode">
+                  <span>Mode</span>
+                  <button type="button" data-action="set-timeline-search-mode" data-search-mode="context" data-testid="timeline-search-mode-context" aria-pressed="true">Context Graph</button>
+                  <button type="button" data-action="set-timeline-search-mode" data-search-mode="hits" data-testid="timeline-search-mode-hits-only" aria-pressed="false">Hits Only</button>
+                </div>
+                <div class="timeline-search-option-group" role="group" aria-label="Timeline search scope">
+                  <span>Scope</span>
+                  <button type="button" data-action="set-timeline-search-scope" data-search-scope="all" aria-pressed="true">All</button>
+                  <button type="button" data-action="set-timeline-search-scope" data-search-scope="main" aria-pressed="false">Main</button>
+                  <button type="button" data-action="set-timeline-search-scope" data-search-scope="subagents" aria-pressed="false">Subagents</button>
+                </div>
+                <p id="timelineSearchWarning" class="timeline-search-warning" aria-live="polite"></p>
+              </div>
+            </div>
+          </section>
           <div id="graphViewport" class="timeline-viewport" data-testid="overview-timeline">
             <div id="timelineHeader" class="timeline-header" data-testid="timeline-header" aria-label="Pinned agent timeline header"></div>
             <div id="graphSizer" class="timeline-sizer"></div>
@@ -159,7 +227,7 @@
       </main>
     </div>
     <div id="timelineDetailPanel" class="timeline-detail-dock hidden" data-testid="timeline-detail-dock" aria-label="Selected message details"></div>
-    <script src="/static/js/opencode_renderer.js?v=20260624-spawn-orthogonal-v2"></script>
-    <script src="/static/js/conversation.js?v=20260624-spawn-orthogonal-v2"></script>
+    <script src="/static/js/opencode_renderer.js?v=20260624-search-panel-v1"></script>
+    <script src="/static/js/conversation.js?v=20260624-search-panel-v1"></script>
   </body>
 </html>

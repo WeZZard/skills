@@ -114,6 +114,14 @@ STORY_MANIFEST: dict[str, dict[str, Any]] = {
         "description": "Claude and OpenCode sessions share the same Timeline/Waterfall conversation workbench.",
         "requiredEvidence": ["dom_assertion"],
     },
+    "reader.search_panel": {
+        "description": "Waterfall search replaces and restores the left navigation while opening subagent results on demand.",
+        "requiredEvidence": ["interaction"],
+    },
+    "timeline.search_panel": {
+        "description": "Timeline search opens an inline shelf and renders hit blocks with minimal context graph structure.",
+        "requiredEvidence": ["interaction"],
+    },
     "nav.deep_links_back": {
         "description": "Agent-qualified conversation links and Sessions navigation preserve source scope.",
         "requiredEvidence": ["interaction"],
@@ -2018,7 +2026,9 @@ def assert_message_index_item_presentation(
                     line: node?.dataset.lineKind || '',
                     content,
                     text,
-                    hasTwoLevels: Boolean(node?.dataset.lineKind && content.length && text.includes('/')),
+                    usesRequestedCategoryRule: content.length
+                        ? Boolean(contentBadges.length && !lineBadge && !text.includes('/'))
+                        : Boolean(lineBadge && !contentBadges.length && !text.includes('/')),
                     textContainsLine: text.toLowerCase().includes((node?.dataset.lineKind || '').toLowerCase()),
                     textContainsContent: content.every((kind) => text.toLowerCase().includes(kind.toLowerCase())),
                     lineBackground: lineBadge ? getComputedStyle(lineBadge).backgroundColor : '',
@@ -2045,9 +2055,13 @@ def assert_message_index_item_presentation(
                 kindTopGap: first && kind ? kind.getBoundingClientRect().top - first.getBoundingClientRect().top : null,
                 kindTimeTopDelta: kind && time ? Math.abs(kind.getBoundingClientRect().top - time.getBoundingClientRect().top) : null,
                 hasDirectRoleBadge: Boolean(roleBadge),
-                allSampledKindsUseTwoLevels: sampledKinds.every((item) => item.hasTwoLevels && item.textContainsLine && item.textContainsContent),
+                allSampledKindsUseRequestedCategoryRule: sampledKinds.every((item) => (
+                    item.usesRequestedCategoryRule && item.textContainsContent
+                )),
                 allSampledKindsHaveBadgeBackgrounds: sampledKinds.every((item) => (
-                    !transparent.has(item.lineBackground) && !transparent.has(item.contentBackground)
+                    item.content.length
+                        ? !transparent.has(item.contentBackground)
+                        : !transparent.has(item.lineBackground)
                 )),
                 allSampledKindsHaveFullBadgeBorders: sampledKinds.every((item) => item.lineBorderIsFull && item.contentBordersAreFull),
                 attachmentBackgrounds,
@@ -2069,14 +2083,14 @@ def assert_message_index_item_presentation(
     )
     assert presentation["first"] and presentation["kind"] and presentation["time"], presentation
     assert presentation["kindLine"] and presentation["kindContent"], presentation
-    assert "/" in presentation["kindText"], presentation
+    assert "/" not in presentation["kindText"], presentation
     assert presentation["kindTextAlign"] == "left", presentation
     assert presentation["kindJustifySelf"] == "start", presentation
     assert 0 <= presentation["kindLeftGap"] <= 12, presentation
     assert 0 <= presentation["kindTopGap"] <= 12, presentation
     assert presentation["kindTimeTopDelta"] <= 4, presentation
     assert not presentation["hasDirectRoleBadge"], presentation
-    assert presentation["allSampledKindsUseTwoLevels"], presentation
+    assert presentation["allSampledKindsUseRequestedCategoryRule"], presentation
     assert presentation["allSampledKindsHaveBadgeBackgrounds"], presentation
     assert presentation["attachmentBackgroundsUseDistinctColor"], presentation
     if require_kind_variety:
@@ -3386,6 +3400,52 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     initial_metrics = focus_layout_metrics(page)
     assert_no_horizontal_overflow(page)
 
+    if viewport == "desktop":
+        subagent_search_target = page.evaluate(
+            """() => {
+                const subagentTracks = window.SESSION_VIEWER.tracks.filter((track) => track.depth > 0);
+                for (const track of subagentTracks) {
+                    const capsule = window.SESSION_VIEWER.capsules.find((item) => item.trackId === track.id && item.summary);
+                    const term = capsule?.summary?.split(/\\s+/).find((word) => /^[A-Za-z0-9_-]{4,}$/.test(word));
+                    if (capsule && term) return { key: capsule.key, term, trackId: track.id };
+                }
+                return null;
+            }"""
+        )
+        assert subagent_search_target, "expected a searchable subagent capsule"
+        page.locator("#agentPaneToggle").click()
+        expect(page.get_by_test_id("agent-tree-drawer")).to_be_visible()
+        page.locator("#searchToggleBtn").click()
+        expect(page.get_by_test_id("agent-tree-drawer")).to_be_hidden()
+        expect(page.get_by_test_id("waterfall-search-panel")).to_be_visible()
+        expect(page.get_by_test_id("message-index")).to_be_hidden()
+        page.get_by_test_id("waterfall-search-input").fill(subagent_search_target["term"])
+        row_selector = (
+            f'[data-testid="search-result-row"][data-capsule-key='
+            f'{json.dumps(subagent_search_target["key"])}]'
+        )
+        expect(page.locator(row_selector)).to_be_visible()
+        page.locator(row_selector).click()
+        expect(page.locator(".subagent-panel")).to_have_count(1)
+        search_state = page.evaluate("window.SESSION_VIEWER.current().search")
+        assert search_state["query"] == subagent_search_target["term"], search_state
+        assert search_state["readerCursorKey"] == subagent_search_target["key"], search_state
+        page.get_by_test_id("waterfall-search-panel").locator("[data-action='close-search']").click()
+        expect(page.get_by_test_id("agent-tree-drawer")).to_be_visible()
+        page.locator("#agentTreeDrawerClose").click()
+        expect(page.get_by_test_id("agent-tree-drawer")).to_be_hidden()
+        page.locator(".agent-panel-close").first.click()
+        expect(page.locator(".subagent-panel")).to_have_count(0)
+        record(
+            page,
+            "reader.search_panel",
+            kind="interaction",
+            flow="reader.search_replace_nav",
+            viewport=viewport,
+            selector="[data-testid='waterfall-search-panel']",
+            assertion="Waterfall search replaces the left navigation and restores the agent tree after close",
+        )
+
     record(
         page,
         "reader.default",
@@ -4665,6 +4725,252 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     assert any(
         re.search(r"\b\d+\.\d+\b", item["model"]) for item in subagent_timeline_labels
     ), subagent_timeline_labels[:8]
+    timeline_selection_state = page.evaluate(
+        """() => {
+            const before = window.SESSION_VIEWER.current();
+            const label = document.querySelector('.timeline-header-track.subagent [data-testid="timeline-track-label"]');
+            label?.click();
+            const after = window.SESSION_VIEWER.current();
+            return {
+                before,
+                after,
+                clicked: Boolean(label),
+            };
+        }"""
+    )
+    assert timeline_selection_state["clicked"], timeline_selection_state
+    assert (
+        timeline_selection_state["after"]["timelineSelectedTrackId"]
+        != timeline_selection_state["before"]["timelineSelectedTrackId"]
+    ), timeline_selection_state
+    assert (
+        timeline_selection_state["after"]["readerSelectedTrackId"]
+        == timeline_selection_state["before"]["readerSelectedTrackId"]
+    ), timeline_selection_state
+    assert timeline_selection_state["after"]["openPanels"] == [], timeline_selection_state
+    page.locator("#readerLayoutBtn").click()
+    expect(page.locator(".subagent-panel")).to_have_count(0)
+    reader_state_after_timeline_click = page.evaluate("window.SESSION_VIEWER.current()")
+    assert (
+        reader_state_after_timeline_click["readerSelectedTrackId"]
+        == timeline_selection_state["before"]["readerSelectedTrackId"]
+    ), reader_state_after_timeline_click
+    page.locator("#graphLayoutBtn").click()
+    page.wait_for_function("window.SESSION_VIEWER.current().layout === 'graph'")
+    timeline_search_target = page.evaluate(
+        """() => {
+            for (const spawn of window.SESSION_VIEWER.spawnEdges) {
+                const source = window.SESSION_VIEWER.capsules.find((item) => item.key === spawn.sourceKey);
+                const sourceText = `${source?.summary || ''}`.toLowerCase();
+                const track = window.SESSION_VIEWER.tracks.find((item) => item.id === spawn.trackId);
+                const capsules = window.SESSION_VIEWER.capsules.filter((item) => item.trackId === track?.id && item.key !== spawn.targetKey);
+                for (const capsule of capsules) {
+                    const words = (capsule.summary || '').match(/[A-Za-z0-9_-]{6,}/g) || [];
+                    const word = words.find((item) => !sourceText.includes(item.toLowerCase()));
+                    if (word) {
+                        return {
+                            query: word,
+                            sourceKey: spawn.sourceKey,
+                            spawnPromptKey: spawn.targetKey,
+                            targetKey: capsule.key,
+                        };
+                    }
+                }
+            }
+            return null;
+        }"""
+    )
+    assert timeline_search_target, "expected a searchable spawn target"
+    page.locator("#searchToggleBtn").click()
+    expect(page.get_by_test_id("timeline-search-shelf")).to_be_visible()
+    page.wait_for_function(
+        "() => window.SESSION_VIEWER.timelineMetrics().searchShelf.height > 40"
+    )
+    page.wait_for_timeout(220)
+    opened_search_detail_placement = assert_timeline_detail_top_right(page, expected_count=1)
+    page.get_by_test_id("timeline-search-input").fill(timeline_search_target["query"])
+    page.wait_for_function(
+        "() => window.SESSION_VIEWER.current().search.resultCount > 0"
+    )
+    page.wait_for_function(
+        "document.querySelectorAll('[data-search-role=\"hit\"]').length > 0"
+    )
+    page.wait_for_function(
+        "document.querySelectorAll('[data-search-role=\"context\"]').length > 0"
+    )
+    timeline_search_metrics = page.evaluate(
+        """() => {
+            const metrics = window.SESSION_VIEWER.timelineMetrics();
+            const state = window.SESSION_VIEWER.current().search;
+            const shelf = document.querySelector('[data-testid="timeline-search-shelf"]').getBoundingClientRect();
+            const firstLabel = document.querySelector('[data-testid="timeline-track-label"]').getBoundingClientRect();
+            return {
+                metrics,
+                state,
+                shelfBottom: shelf.bottom,
+                firstLabelTop: firstLabel.top,
+                hitBlocks: document.querySelectorAll('[data-search-role="hit"]').length,
+                contextBlocks: document.querySelectorAll('[data-search-role="context"]').length,
+            };
+        }"""
+    )
+    assert timeline_search_metrics["metrics"]["searchShelf"]["open"], timeline_search_metrics
+    assert timeline_search_metrics["metrics"]["searchShelf"]["height"] > 0, timeline_search_metrics
+    assert timeline_search_metrics["firstLabelTop"] >= timeline_search_metrics["shelfBottom"] - 1, (
+        timeline_search_metrics
+    )
+    assert timeline_search_metrics["hitBlocks"] > 0, timeline_search_metrics
+    assert timeline_search_metrics["contextBlocks"] > 0, timeline_search_metrics
+    assert timeline_search_target["targetKey"] in timeline_search_metrics["state"]["timelineVisibleKeys"], (
+        timeline_search_metrics
+    )
+    context_search_layout = timeline_search_metrics["metrics"]["searchLayout"]
+    assert context_search_layout["active"], timeline_search_metrics
+    assert context_search_layout["visibleBlockCount"] == len(
+        timeline_search_metrics["state"]["timelineVisibleKeys"]
+    ), timeline_search_metrics
+    assert (
+        context_search_layout["maxLayoutYGap"]
+        <= timeline_search_metrics["metrics"]["blockStepY"] + 0.5
+    ), timeline_search_metrics
+    page.get_by_test_id("timeline-search-mode-hits-only").click()
+    page.wait_for_function(
+        "document.querySelectorAll('[data-search-role=\"context\"]').length === 0"
+    )
+    hits_only_state = page.evaluate(
+        """() => ({
+            warning: document.querySelector('#timelineSearchWarning')?.textContent || '',
+            mode: window.SESSION_VIEWER.current().search.timelineMode,
+            contextCount: window.SESSION_VIEWER.current().search.timelineContextKeys.length,
+        })"""
+    )
+    assert hits_only_state["mode"] == "hits", hits_only_state
+    assert hits_only_state["contextCount"] == 0, hits_only_state
+    assert "hides subagent spawn context" in hits_only_state["warning"], hits_only_state
+    timeline_compaction_candidates = page.evaluate(
+        """() => {
+            const stopWords = new Set([
+                'message', 'should', 'timeline', 'search', 'subagent', 'agent',
+                'session', 'result', 'results', 'context', 'current', 'please',
+                'would', 'there', 'these', 'those', 'block', 'blocks', 'using',
+                'about', 'which', 'where', 'with', 'from', 'into', 'this',
+                'that', 'have', 'need', 'could', 'because', 'after', 'before',
+                'layout', 'design', 'system',
+            ]);
+            const records = new Map();
+            window.SESSION_VIEWER.capsules.forEach((capsule) => {
+                const words = new Set(String(capsule.summary || '')
+                    .toLowerCase()
+                    .match(/[a-z][a-z0-9_-]{5,}/g) || []);
+                words.forEach((word) => {
+                    if (stopWords.has(word)) return;
+                    const key = `${capsule.trackId}\\u0000${word}`;
+                    const list = records.get(key) || [];
+                    list.push({
+                        key: capsule.key,
+                        messageIndex: capsule.messageIndex,
+                        trackId: capsule.trackId,
+                    });
+                    records.set(key, list);
+                });
+            });
+            const candidates = [];
+            records.forEach((items, key) => {
+                if (items.length < 2) return;
+                items.sort((a, b) => a.messageIndex - b.messageIndex);
+                let originalGap = 0;
+                let pair = null;
+                for (let index = 1; index < items.length; index += 1) {
+                    const gap = items[index].messageIndex - items[index - 1].messageIndex;
+                    if (gap > originalGap) {
+                        originalGap = gap;
+                        pair = [items[index - 1], items[index]];
+                    }
+                }
+                const [trackId, query] = key.split('\\u0000');
+                candidates.push({ query, trackId, originalGap, count: items.length, pair });
+            });
+            return candidates
+                .sort((a, b) => b.originalGap - a.originalGap)
+                .slice(0, 12);
+        }"""
+    )
+    assert timeline_compaction_candidates, "expected repeated search terms for compaction"
+    timeline_compaction_metrics = None
+    for candidate in timeline_compaction_candidates:
+        page.get_by_test_id("timeline-search-input").fill(candidate["query"])
+        page.wait_for_function(
+            """(query) => {
+                const state = window.SESSION_VIEWER.current().search;
+                return state.query === query && state.resultCount > 0;
+            }""",
+            arg=candidate["query"],
+        )
+        page.wait_for_timeout(80)
+        candidate_metrics = page.evaluate(
+            """(candidate) => {
+                const metrics = window.SESSION_VIEWER.timelineMetrics();
+                const track = metrics.searchLayout.tracks.find((item) => item.trackId === candidate.trackId);
+                const messageIndexes = track?.messageIndexes || [];
+                const yPositions = track?.yPositions || [];
+                let maxOriginalIndexGap = 0;
+                let maxLayoutYGap = 0;
+                for (let index = 1; index < messageIndexes.length; index += 1) {
+                    maxOriginalIndexGap = Math.max(
+                        maxOriginalIndexGap,
+                        messageIndexes[index] - messageIndexes[index - 1]
+                    );
+                }
+                for (let index = 1; index < yPositions.length; index += 1) {
+                    maxLayoutYGap = Math.max(maxLayoutYGap, yPositions[index] - yPositions[index - 1]);
+                }
+                return {
+                    candidate,
+                    active: metrics.searchLayout.active,
+                    blockStepY: metrics.blockStepY,
+                    trackBlockCount: track?.blockCount || 0,
+                    visibleBlockCount: metrics.searchLayout.visibleBlockCount,
+                    maxOriginalIndexGap,
+                    maxLayoutYGap,
+                    renderedBlocks: metrics.searchLayout.renderedBlockCount,
+                };
+            }""",
+            candidate,
+        )
+        if (
+            candidate_metrics["active"]
+            and candidate_metrics["trackBlockCount"] >= 2
+            and candidate_metrics["maxOriginalIndexGap"] >= 100
+            and candidate_metrics["maxLayoutYGap"] <= candidate_metrics["blockStepY"] + 0.5
+        ):
+            timeline_compaction_metrics = candidate_metrics
+            break
+    assert timeline_compaction_metrics, timeline_compaction_candidates[:5]
+    page.get_by_test_id("timeline-search-shelf").locator("[data-action='close-search']").click()
+    page.wait_for_function(
+        "() => !window.SESSION_VIEWER.current().search.searchOpenByLayout.graph"
+    )
+    page.wait_for_function(
+        "() => window.SESSION_VIEWER.timelineMetrics().searchShelf.height < 2"
+    )
+    closed_search_detail_placement = assert_timeline_detail_top_right(page, expected_count=1)
+    record(
+        page,
+        "timeline.search_panel",
+        kind="interaction",
+        flow="timeline.search_context_graph",
+        viewport=viewport,
+        selector="[data-testid='timeline-search-shelf']",
+        assertion=(
+            "Timeline search shelf inserts above the agent list, renders hit/context blocks, "
+            "and keeps detail windows below the agent list after open/close "
+            f"({opened_search_detail_placement['timelineHeaderClearance']:.0f}px/"
+            f"{closed_search_detail_placement['timelineHeaderClearance']:.0f}px clearance); "
+            "compacted search layout collapses "
+            f"{timeline_compaction_metrics['maxOriginalIndexGap']} original blocks to "
+            f"{timeline_compaction_metrics['maxLayoutYGap']:.0f}px"
+        ),
+    )
     problem_label_icons = page.evaluate(
         """() => {
             const problemLabels = Array.from(document.querySelectorAll('[data-testid="timeline-track-label"].has-problem'));
