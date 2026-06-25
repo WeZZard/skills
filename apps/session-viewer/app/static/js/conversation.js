@@ -32,13 +32,12 @@ const state = {
   timelineBlockRenderCount: 0,
   timelineDetailRenderCount: 0,
   agentTreeDrawerOpen: false,
-  searchOpenByLayout: { graph: false, reader: false },
-  searchQuery: "",
-  searchTokens: [],
+  searchByLayout: {
+    graph: { queryText: "", expression: null, categories: {}, cursorKey: "", open: false },
+    reader: { queryText: "", expression: null, categories: {}, cursorKey: "", open: false },
+  },
   timelineSearchMode: "context",
   timelineSearchScope: "all",
-  timelineSearchCursorKey: "",
-  readerSearchCursorKey: "",
   readerSearchReturnState: null,
 };
 
@@ -95,6 +94,7 @@ const els = {
   messageNavPanel: document.getElementById("messageNavPanel"),
   readerSearchPanel: document.getElementById("readerSearchPanel"),
   readerSearchInput: document.getElementById("readerSearchInput"),
+  readerSearchBadges: document.getElementById("readerSearchBadges"),
   readerSearchStatus: document.getElementById("readerSearchStatus"),
   readerSearchResults: document.getElementById("readerSearchResults"),
   agentTreePanel: document.getElementById("agentTreePanel"),
@@ -117,6 +117,7 @@ const els = {
   graphViewport: document.getElementById("graphViewport"),
   timelineSearchShelf: document.getElementById("timelineSearchShelf"),
   timelineSearchInput: document.getElementById("timelineSearchInput"),
+  timelineSearchBadges: document.getElementById("timelineSearchBadges"),
   timelineSearchStatus: document.getElementById("timelineSearchStatus"),
   timelineSearchWarning: document.getElementById("timelineSearchWarning"),
   timelineHeader: document.getElementById("timelineHeader"),
@@ -162,13 +163,15 @@ const TYPE_STYLE = {
 const ATTACHMENT_PREVIEW_CHARS = 300;
 
 function esc(value) {
-  const div = document.createElement("div");
-  div.textContent = value === null || value === undefined ? "" : String(value);
-  return div.innerHTML;
+  return window.TextUtils.esc(value);
 }
 
 function escAttr(value) {
-  return esc(value).replaceAll('"', "&quot;");
+  return window.TextUtils.escAttr(value);
+}
+
+function hl(value, scope) {
+  return window.TextUtils.renderTextWithHighlights(value, { scope: scope || "value" });
 }
 
 function text(value) {
@@ -219,7 +222,7 @@ function navKey(nav) {
     nav.view ?? "rendered",
   ]
     .join(":")
-    .replaceAll("/", "_");
+    .replace(/\//g, "_");
 }
 
 function rememberNav(nav) {
@@ -299,13 +302,13 @@ function structuredToolPayload(part) {
 function renderStructuredToolPayload(part) {
   const payload = structuredToolPayload(part);
   const entries = payload ? Object.entries(payload).filter(([, value]) => hasValue(value)) : [];
-  if (!entries.length) return `<pre>${esc(partText(part) || "(no payload)")}</pre>`;
+  if (!entries.length) return `<pre>${hl(partText(part) || "(no payload)")}</pre>`;
   return `
     <dl class="tool-payload-fields">
       ${entries.map(([key, value]) => `
         <div class="tool-payload-field tool-payload-field-${escAttr(kindClass(key))}" data-tool-field="${escAttr(key)}">
           <dt>${esc(humanFieldName(key))}</dt>
-          <dd><pre class="tool-payload-value">${esc(text(value))}</pre></dd>
+          <dd><pre class="tool-payload-value">${hl(text(value))}</pre></dd>
         </div>`).join("")}
     </dl>`;
 }
@@ -1341,10 +1344,10 @@ function renderMessageKindStack(kind) {
   const contentKinds = titleBarContentKinds(kind);
   return `
     <span class="portfolio-kind-stack message-kind-stack" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
-      <span class="portfolio-kind-badge message-line-kind ${escAttr(portfolioBadgeClass(kind.line.key))}">${esc(kind.line.label)}</span>
+      <span class="portfolio-kind-badge message-line-kind ${escAttr(portfolioBadgeClass(kind.line.key))}">${hl(kind.line.label, "value")}</span>
       ${contentKinds.map((item) => `
         <span class="portfolio-kind-separator" aria-hidden="true">/</span>
-        <span class="portfolio-subtype-badge message-content-kind ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${esc(item.label)}</span>
+        <span class="portfolio-subtype-badge message-content-kind ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${hl(item.label, "value")}</span>
       `).join("")}
     </span>`;
 }
@@ -1354,13 +1357,13 @@ function renderMessageIndexKind(kind) {
   if (!contentKinds.length) {
     return `
       <span class="portfolio-nav-kind message-index-kind" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="">
-        <span class="portfolio-kind-badge message-index-line-kind ${escAttr(portfolioBadgeClass(kind.line.key))}">${esc(kind.line.label)}</span>
+        <span class="portfolio-kind-badge message-index-line-kind ${escAttr(portfolioBadgeClass(kind.line.key))}">${hl(kind.line.label, "value")}</span>
       </span>`;
   }
   return `
     <span class="portfolio-nav-kind message-index-kind" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}">
       ${contentKinds.map((item) => `
-        <span class="portfolio-subtype-badge message-index-content-kind ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${esc(item.label)}</span>
+        <span class="portfolio-subtype-badge message-index-content-kind ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${hl(item.label, "value")}</span>
       `).join("")}
     </span>`;
 }
@@ -1368,10 +1371,10 @@ function renderMessageIndexKind(kind) {
 function renderTimelineDetailKindStack(kind) {
   return `
     <div class="portfolio-kind-stack timeline-detail-kind-stack" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}">
-      <span class="portfolio-kind-badge timeline-detail-type ${escAttr(portfolioBadgeClass(kind.line.key))}">${esc(kind.line.label)}</span>
+      <span class="portfolio-kind-badge timeline-detail-type ${escAttr(portfolioBadgeClass(kind.line.key))}">${hl(kind.line.label, "value")}</span>
       ${kind.contentKinds.map((item) => `
         <span class="portfolio-kind-separator" aria-hidden="true">/</span>
-        <span class="portfolio-subtype-badge timeline-detail-content-type ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${esc(item.label)}</span>
+        <span class="portfolio-subtype-badge timeline-detail-content-type ${escAttr(portfolioBadgeClass(kind.line.key))} ${escAttr(portfolioBadgeClass(item.key))}">${hl(item.label, "value")}</span>
       `).join("")}
     </div>`;
 }
@@ -1386,7 +1389,7 @@ function renderAttachmentSection(section, rawEventKey) {
     const items = (section.items || []).filter(Boolean);
     const tag = section.ordered ? "ol" : "ul";
     const body = items.length
-      ? `<${tag}>${items.map((item) => `<li>${esc(item)}</li>`).join("")}</${tag}>`
+      ? `<${tag}>${items.map((item) => `<li>${hl(item)}</li>`).join("")}</${tag}>`
       : `<p>${esc(section.emptyText || "None")}</p>`;
     return `
       <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
@@ -1397,7 +1400,7 @@ function renderAttachmentSection(section, rawEventKey) {
   if (section.kind === "table") {
     const rows = section.rows || [];
     const body = rows.length
-      ? `<div class="attachment-table-scroll"><table><thead><tr>${section.columns.map((column) => `<th>${esc(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${esc(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+      ? `<div class="attachment-table-scroll"><table><thead><tr>${section.columns.map((column) => `<th>${esc(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((value) => `<td>${hl(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
       : `<p>${esc(section.emptyText || "None")}</p>`;
     return `
       <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
@@ -1410,14 +1413,14 @@ function renderAttachmentSection(section, rawEventKey) {
     return `
       <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
         <header><strong>${esc(section.label)}</strong><span>${esc(section.countLabel || formatChars(fullText))}</span></header>
-        <pre>${esc(fullText || section.emptyText || "None")}</pre>
+        <pre>${hl(fullText || section.emptyText || "None")}</pre>
       </section>`;
   }
   if (section.kind === "status") {
     return `
       <section class="attachment-section" data-attachment-section="${escAttr(section.label)}" data-attachment-field="${escAttr(section.fieldKey)}">
         <header><strong>${esc(section.label)}</strong></header>
-        <div class="attachment-status-list">${section.lines.map((line) => `<p>${esc(line)}</p>`).join("")}</div>
+        <div class="attachment-status-list">${section.lines.map((line) => `<p>${hl(line)}</p>`).join("")}</div>
       </section>`;
   }
   return "";
@@ -1429,7 +1432,7 @@ function renderSystemSection(section, rawEventKey) {
     const items = (section.items || []).filter(Boolean);
     const tag = section.ordered ? "ol" : "ul";
     const body = items.length
-      ? `<${tag}>${items.map((item) => `<li>${esc(item)}</li>`).join("")}</${tag}>`
+      ? `<${tag}>${items.map((item) => `<li>${hl(item)}</li>`).join("")}</${tag}>`
       : `<p>${esc(section.emptyText || "None")}</p>`;
     return `
       <section class="system-section" data-system-section="${escAttr(section.label)}" data-system-field="${escAttr(section.fieldKey)}">
@@ -1442,14 +1445,14 @@ function renderSystemSection(section, rawEventKey) {
     return `
       <section class="system-section" data-system-section="${escAttr(section.label)}" data-system-field="${escAttr(section.fieldKey)}">
         <header><strong>${esc(section.label)}</strong><span>${esc(section.countLabel || formatChars(fullText))}</span></header>
-        <pre>${esc(fullText || section.emptyText || "None")}</pre>
+        <pre>${hl(fullText || section.emptyText || "None")}</pre>
       </section>`;
   }
   if (section.kind === "status") {
     return `
       <section class="system-section" data-system-section="${escAttr(section.label)}" data-system-field="${escAttr(section.fieldKey)}">
         <header><strong>${esc(section.label)}</strong></header>
-        <div class="system-status-list">${section.lines.map((line) => `<p>${esc(line)}</p>`).join("")}</div>
+        <div class="system-status-list">${section.lines.map((line) => `<p>${hl(line)}</p>`).join("")}</div>
       </section>`;
   }
   return "";
@@ -1461,7 +1464,7 @@ function renderPortfolioFormText(label, value, options = {}) {
   return `
     <section class="portfolio-form-row${multiline ? " multiline" : ""}">
       <header><strong>${esc(label)}</strong></header>
-      <pre>${esc(valueText || options.emptyText || "None")}</pre>
+      <pre>${hl(valueText || options.emptyText || "None")}</pre>
     </section>`;
 }
 
@@ -1478,7 +1481,7 @@ function renderPortfolioFormTable(label, columns, rows, options = {}) {
           <table>
             <thead><tr>${columns.map((column) => `<th>${esc(column)}</th>`).join("")}</tr></thead>
             <tbody>
-              ${normalizedRows.map((row) => `<tr>${row.map((value) => `<td>${esc(value)}</td>`).join("")}</tr>`).join("")}
+              ${normalizedRows.map((row) => `<tr>${row.map((value) => `<td>${hl(value)}</td>`).join("")}</tr>`).join("")}
             </tbody>
           </table>
         </div>` : `<p class="portfolio-empty-value">${esc(options.emptyText || "None")}</p>`}
@@ -1555,7 +1558,7 @@ function renderAttachmentMetaRows(rows) {
   if (!rows.length) return "";
   return `
     <dl class="attachment-meta">
-      ${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(yesNo(value))}</dd>`).join("")}
+      ${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${hl(yesNo(value))}</dd>`).join("")}
     </dl>`;
 }
 
@@ -1574,11 +1577,11 @@ function renderAttachmentPartBody(part, rawEventKey, options = {}) {
   const showRawPayload = options.showRawPayload !== false;
   const heading = isDuplicateAttachmentSubtypeTitle(display)
     ? ""
-    : `<div class="attachment-display-heading"><strong>${esc(display.title)}</strong></div>`;
+    : `<div class="attachment-display-heading"><strong>${hl(display.title)}</strong></div>`;
   return `
     <div class="attachment-event" data-raw-event-key="${escAttr(rawEventKey)}" data-attachment-type="${escAttr(display.type)}">
       ${heading}
-      <p class="attachment-summary">${esc(display.summary)}</p>
+      <p class="attachment-summary">${hl(display.summary)}</p>
       ${renderAttachmentMetaRows(display.rows)}
       <div class="attachment-sections">
         ${display.sections.map((section) => renderAttachmentSection(section, rawEventKey)).join("")}
@@ -1591,7 +1594,7 @@ function renderSystemMetaRows(rows) {
   if (!rows.length) return "";
   return `
     <dl class="system-meta">
-      ${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(yesNo(value))}</dd>`).join("")}
+      ${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${hl(yesNo(value))}</dd>`).join("")}
     </dl>`;
 }
 
@@ -1599,7 +1602,7 @@ function renderSystemPartBody(part, rawEventKey) {
   const display = systemDisplayModel(part, rawEventKey);
   return `
     <div class="system-event" data-raw-event-key="${escAttr(rawEventKey)}" data-system-subtype="${escAttr(display.type)}">
-      <p class="system-summary">${esc(display.summary)}</p>
+      <p class="system-summary">${hl(display.summary)}</p>
       ${renderSystemMetaRows(display.rows)}
       <div class="system-sections">
         ${display.sections.map((section) => renderSystemSection(section, rawEventKey)).join("")}
@@ -1681,8 +1684,8 @@ function renderRawEventBody(rawEvent) {
   const display = rawEventDisplayModel(rawEvent);
   return `
     <div class="raw-event" data-raw-event-key="${escAttr(rawEventKey)}" data-raw-event-type="${escAttr(display.type)}">
-      <p class="raw-event-summary">${esc(display.summary)}</p>
-      ${display.rows.length ? `<dl class="raw-event-meta attachment-meta">${display.rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(yesNo(value))}</dd>`).join("")}</dl>` : ""}
+      <p class="raw-event-summary">${hl(display.summary)}</p>
+      ${display.rows.length ? `<dl class="raw-event-meta attachment-meta">${display.rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${hl(yesNo(value))}</dd>`).join("")}</dl>` : ""}
       <div class="raw-event-sections attachment-sections">
         ${display.sections.map((section) => renderAttachmentSection(section, rawEventKey)).join("")}
       </div>
@@ -2130,6 +2133,7 @@ function renderAgentSelector() {
 }
 
 function renderAgentTree() {
+  updateTextUtilsState();
   const childrenByParent = new Map();
   const activeTrackId = selectedTrackIdForLayout();
   const showReaderPanelState = state.layout === "reader";
@@ -2163,7 +2167,7 @@ function renderAgentTree() {
           <span class="agent-tree-disclosure ${hasChildren ? "expanded" : "empty"}" aria-hidden="true"></span>
           <button class="agent-tree-select" data-action="select-track" data-track-id="${escAttr(track.id)}" data-open="false" aria-current="${active ? "true" : "false"}">
             <span class="agent-option-kind">${isSubagent ? "subagent" : "main"}</span>
-            <span class="agent-option-title">${esc(compact(title, 58))}</span>
+            <span class="agent-option-title">${hl(compact(title, 58))}</span>
             <span class="agent-option-count">${track.messages.length}</span>
           </button>
           ${isSubagent && showReaderPanelState ? `<button class="agent-tree-toggle" data-action="toggle-panel" data-track-id="${escAttr(track.id)}" data-testid="subagent-toggle" aria-pressed="${open ? "true" : "false"}" aria-label="${open ? "Unpin panel for" : "Pin panel for"} ${escAttr(title)}" title="${open ? "Unpin panel" : "Pin panel"}"><svg class="agent-tree-pin-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5" /><path d="M5 17h14v-1.76a2 2 0 0 0-.59-1.42L16 11.41V6h1a1 1 0 0 0 1-1V2H6v3a1 1 0 0 0 1 1h1v5.41l-2.41 2.41A2 2 0 0 0 5 15.24Z" /></svg></button>` : '<span class="agent-tree-toggle-placeholder" aria-hidden="true"></span>'}
@@ -2194,6 +2198,7 @@ function renderLeftNavigation() {
 }
 
 function renderMessageIndex() {
+  updateTextUtilsState();
   if (state.layout === "graph") {
     els.messageIndex.innerHTML = '<div class="nav-item muted">Timeline uses tracks and message blocks for navigation.</div>';
     return;
@@ -2211,7 +2216,8 @@ function renderMessageIndex() {
       const problemText = problems.length === 1 ? "1 problem" : `${problems.length} problems`;
       const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
       const contentKinds = titleBarContentKinds(kind);
-      return `
+      window.TextUtils.beginCapsule(key);
+      const html = `
         <button class="nav-item portfolio-navigation-item message-index-item ${active ? "active selected" : ""} ${problems.length ? "has-problem" : ""}" data-action="focus-capsule" data-track-id="${escAttr(track.id)}" data-message-index="${capsule.messageIndex}" data-capsule-key="${escAttr(key)}" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(contentKinds.map((item) => item.label).join(","))}" aria-current="${active ? "true" : "false"}">
           <span class="portfolio-nav-line message-index-nav-line">
             ${renderMessageIndexKind(kind)}
@@ -2220,25 +2226,30 @@ function renderMessageIndex() {
               <span class="portfolio-nav-time message-index-time">${esc(formatTime(capsule.timestamp))}</span>
             </span>
           </span>
-          <span class="message-preview">${esc(compact(capsule.summary || "(no content)", 110))}</span>
+          <span class="message-preview">${hl(compact(capsule.summary || "(no content)", 110))}</span>
         </button>`;
+      window.TextUtils.endCapsule();
+      return html;
     })
     .join("") + (capsules.length > maxItems ? `<div class="nav-item muted">Showing first ${maxItems.toLocaleString()} of ${capsules.length.toLocaleString()} blocks.</div>` : ""));
 }
 
 function activeSearchOpen(layout = state.layout) {
-  return Boolean(state.searchOpenByLayout[layout === "graph" ? "graph" : "reader"]);
+  return Boolean(state.searchByLayout[layout === "graph" ? "graph" : "reader"].open);
 }
 
 function syncSearchInputs() {
-  if (els.timelineSearchInput && els.timelineSearchInput.value !== state.searchQuery) els.timelineSearchInput.value = state.searchQuery;
-  if (els.readerSearchInput && els.readerSearchInput.value !== state.searchQuery) els.readerSearchInput.value = state.searchQuery;
+  const graphText = state.searchByLayout.graph.queryText;
+  const readerText = state.searchByLayout.reader.queryText;
+  if (els.timelineSearchInput && els.timelineSearchInput.value !== graphText) els.timelineSearchInput.value = graphText;
+  if (els.readerSearchInput && els.readerSearchInput.value !== readerText) els.readerSearchInput.value = readerText;
 }
 
 function invalidateTimelineRender() {
   state.timelineHeaderKey = "";
   state.timelineTrackKey = "";
   state.timelineBlockKey = "";
+  state.timelineDetailKey = "";
   scheduleGraphRender();
   scheduleTimelineDetailDockLayout({ frames: 2 });
 }
@@ -2259,11 +2270,12 @@ function searchStatusText(count) {
 
 function renderTimelineSearchShelf() {
   if (!els.timelineSearchShelf) return;
-  const open = state.searchOpenByLayout.graph;
+  const open = state.searchByLayout.graph.open;
   const presentation = timelineSearchPresentation();
   els.timelineSearchShelf.dataset.open = String(open);
   els.timelineSearchShelf.setAttribute("aria-hidden", String(!open));
   syncSearchInputs();
+  renderSearchBadges("graph");
   if (els.timelineSearchStatus) els.timelineSearchStatus.textContent = searchStatusText(presentation.results.length);
   if (els.timelineSearchWarning) els.timelineSearchWarning.textContent = open ? presentation.warning : "";
   els.timelineSearchShelf.querySelectorAll("[data-search-mode]").forEach((button) => {
@@ -2276,12 +2288,13 @@ function renderTimelineSearchShelf() {
 
 function renderReaderSearchPanel() {
   if (!els.readerSearchPanel || !els.readerSearchResults) return;
-  const open = state.layout === "reader" && state.searchOpenByLayout.reader;
+  const open = state.layout === "reader" && state.searchByLayout.reader.open;
   els.readerSearchPanel.setAttribute("aria-hidden", String(!open));
   syncSearchInputs();
+  renderSearchBadges("reader");
   const results = searchResults();
   if (els.readerSearchStatus) els.readerSearchStatus.textContent = searchStatusText(results.length);
-  if (!isSearchQueryActive()) {
+  if (!isSearchQueryActive("reader")) {
     els.readerSearchResults.innerHTML = '<p class="search-results-empty">Type to search transcript content across all agents.</p>';
     return;
   }
@@ -2306,7 +2319,7 @@ function renderReaderSearchPanel() {
         .map((result) => {
           renderedRows += 1;
           const capsule = capsuleByKey.get(result.key);
-          const current = state.readerSearchCursorKey === result.key;
+          const current = state.searchByLayout.reader.cursorKey === result.key;
           return `
             <button class="search-result-row ${current ? "current" : ""}" type="button" role="listitem" data-action="search-result" data-capsule-key="${escAttr(result.key)}" data-testid="search-result-row">
               <span class="search-result-row-meta">
@@ -2334,8 +2347,87 @@ function renderReaderSearchPanel() {
   els.readerSearchResults.innerHTML = compactHtml(html + overflow);
 }
 
+function renderSearchBadges(target) {
+  const container = target === "graph" ? els.timelineSearchBadges : els.readerSearchBadges;
+  if (!container) return;
+  const ss = state.searchByLayout[target];
+  if (!ss.expression) { container.innerHTML = ""; return; }
+  const html = renderExprBadges(ss.expression);
+  container.innerHTML = compactHtml(html);
+}
+
+function renderExprBadges(expr) {
+  if (!expr) return "";
+  if (expr.op === "TERM") return renderBadge(expr);
+  if (expr.op === "AND") return expr.children.map(renderExprBadges).join('<span class="search-op">AND</span>');
+  if (expr.op === "OR") {
+    const parts = expr.children.map((c) => c.op === "AND" ? `<span class="search-paren">(</span>${renderExprBadges(c)}<span class="search-paren">)</span>` : renderExprBadges(c));
+    return parts.join('<span class="search-op">OR</span>');
+  }
+  return "";
+}
+
+function renderBadge(term) {
+  const catLabel = term.category === "key" ? "Field key" : "Field value";
+  return `<span class="search-badge" data-badge-id="${escAttr(term.id)}" data-badge-category="${escAttr(term.category)}">
+    <span class="search-badge-text">${esc(term.text)}</span>
+    <button type="button" class="search-badge-toggle" data-action="toggle-badge-category" data-badge-id="${escAttr(term.id)}" aria-label="Change category: ${catLabel}">${catLabel} <span class="search-badge-caret" aria-hidden="true">\u25BE</span></button>
+    <button type="button" class="search-badge-remove" data-action="remove-badge" data-badge-id="${escAttr(term.id)}" aria-label="Remove search term ${escAttr(term.text)}">\u00D7</button>
+  </span>`;
+}
+
+function setBadgeCategory(termId, category) {
+  const ss = searchStateForLayout(state.layout);
+  const terms = collectLeafTerms(ss.expression);
+  const term = terms.find((t) => t.id === termId);
+  if (!term) return;
+  term.category = category === "key" ? "key" : "value";
+  ss.categories[term.text] = term.category;
+  const results = state.layout === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
+  ss.cursorKey = results[0]?.key || "";
+  renderSearchPanels();
+  if (state.layout === "graph") invalidateTimelineRender();
+  if (state.layout === "reader") { renderReader(); renderLeftNavigation(); }
+}
+
+function toggleBadgeCategory(termId) {
+  const ss = searchStateForLayout(state.layout);
+  const terms = collectLeafTerms(ss.expression);
+  const term = terms.find((t) => t.id === termId);
+  if (!term) return;
+  setBadgeCategory(termId, term.category === "key" ? "value" : "key");
+}
+
+function removeTermFromExpr(expr, termId) {
+  if (!expr) return null;
+  if (expr.op === "TERM") return expr.id === termId ? null : expr;
+  if (expr.op === "AND" || expr.op === "OR") {
+    const children = expr.children.map((c) => removeTermFromExpr(c, termId)).filter(Boolean);
+    if (!children.length) return null;
+    if (children.length === 1) return children[0];
+    return { op: expr.op, children };
+  }
+  return expr;
+}
+
+function removeBadge(termId) {
+  const ss = searchStateForLayout(state.layout);
+  const terms = collectLeafTerms(ss.expression);
+  const term = terms.find((t) => t.id === termId);
+  if (!term) return;
+  delete ss.categories[term.text];
+  ss.expression = removeTermFromExpr(ss.expression, termId);
+  ss.queryText = serializeExpr(ss.expression);
+  syncSearchInputs();
+  const results = state.layout === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
+  ss.cursorKey = results[0]?.key || "";
+  renderSearchPanels();
+  if (state.layout === "graph") invalidateTimelineRender();
+  if (state.layout === "reader") { renderReader(); renderLeftNavigation(); }
+}
+
 function renderSearchPanels() {
-  const readerSearchOpen = state.layout === "reader" && state.searchOpenByLayout.reader;
+  const readerSearchOpen = state.layout === "reader" && state.searchByLayout.reader.open;
   els.workbench?.setAttribute("data-reader-search-open", String(readerSearchOpen));
   renderSearchButton();
   renderTimelineSearchShelf();
@@ -2354,11 +2446,11 @@ function focusSearchInput(layout = state.layout) {
 function setSearchOpen(layout, open, options = {}) {
   const target = layout === "graph" ? "graph" : "reader";
   const nextOpen = Boolean(open);
-  if (target === "reader" && nextOpen && !state.searchOpenByLayout.reader) {
+  if (target === "reader" && nextOpen && !state.searchByLayout.reader.open) {
     state.readerSearchReturnState = { agentTreeDrawerOpen: state.agentTreeDrawerOpen };
     if (state.agentTreeDrawerOpen) setAgentTreeDrawerOpen(false);
   }
-  state.searchOpenByLayout[target] = nextOpen;
+  state.searchByLayout[target].open = nextOpen;
   if (target === "reader" && !nextOpen) {
     const restoreState = state.readerSearchReturnState;
     state.readerSearchReturnState = null;
@@ -2371,6 +2463,10 @@ function setSearchOpen(layout, open, options = {}) {
     invalidateTimelineRender();
     scheduleTimelineDetailTransitionLayout();
   }
+  if (target === "reader" && state.layout === "reader") {
+    renderReader();
+    renderMessageIndex();
+  }
   if (options.focus && nextOpen) focusSearchInput(target);
 }
 
@@ -2378,27 +2474,55 @@ function toggleSearchForLayout(layout = state.layout) {
   setSearchOpen(layout, !activeSearchOpen(layout), { focus: true });
 }
 
-function setSearchQuery(value) {
-  state.searchQuery = String(value || "");
-  state.searchTokens = tokenizeSearchQuery(state.searchQuery);
-  const readerResults = searchResults();
-  const timelineResults = searchResults({ scope: "timeline" });
-  state.readerSearchCursorKey = readerResults[0]?.key || "";
-  state.timelineSearchCursorKey = timelineResults[0]?.key || "";
+let searchDebounceTimer = null;
+const SEARCH_DEBOUNCE_MS = 100;
+
+function updateTextUtilsState() {
+  const active = activeSearchOpen();
+  const ss = searchStateForLayout(state.layout);
+  window.TextUtils.setHighlightingActive(active && Boolean(ss.expression));
+  window.TextUtils.setExpression(active ? ss.expression : null);
+  window.TextUtils.setCurrentHitKey(active ? ss.cursorKey : "");
+}
+
+function applySearchQuery(target, text) {
+  const ss = state.searchByLayout[target];
+  ss.queryText = String(text || "");
+  ss.expression = parseSearchQuery(ss.queryText, ss.categories);
+  const results = target === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
+  ss.cursorKey = results[0]?.key || "";
   renderSearchPanels();
-  invalidateTimelineRender();
+  if (target === "graph") invalidateTimelineRender();
+  if (target === "reader" && state.layout === "reader") {
+    renderReader();
+    renderLeftNavigation();
+  }
+}
+
+function setSearchQuery(value) {
+  const target = state.layout === "graph" ? "graph" : "reader";
+  applySearchQuery(target, value);
+}
+
+function setSearchQueryDebounced(value) {
+  const target = state.layout === "graph" ? "graph" : "reader";
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+  searchDebounceTimer = setTimeout(() => {
+    searchDebounceTimer = null;
+    applySearchQuery(target, value);
+  }, SEARCH_DEBOUNCE_MS);
 }
 
 function setTimelineSearchMode(mode) {
   state.timelineSearchMode = mode === "hits" ? "hits" : "context";
-  state.timelineSearchCursorKey = searchResults({ scope: "timeline" })[0]?.key || "";
+  state.searchByLayout.graph.cursorKey = searchResults({ scope: "timeline" })[0]?.key || "";
   renderSearchPanels();
   invalidateTimelineRender();
 }
 
 function setTimelineSearchScope(scope) {
   state.timelineSearchScope = ["main", "subagents"].includes(scope) ? scope : "all";
-  state.timelineSearchCursorKey = searchResults({ scope: "timeline" })[0]?.key || "";
+  state.searchByLayout.graph.cursorKey = searchResults({ scope: "timeline" })[0]?.key || "";
   renderSearchPanels();
   invalidateTimelineRender();
 }
@@ -2408,12 +2532,11 @@ function searchResultsForLayout(layout = state.layout) {
 }
 
 function searchCursorKeyForLayout(layout = state.layout) {
-  return layout === "graph" ? state.timelineSearchCursorKey : state.readerSearchCursorKey;
+  return searchStateForLayout(layout).cursorKey;
 }
 
 function setSearchCursorForLayout(key, layout = state.layout) {
-  if (layout === "graph") state.timelineSearchCursorKey = key;
-  else state.readerSearchCursorKey = key;
+  searchStateForLayout(layout).cursorKey = key;
 }
 
 function focusSearchResult(key, layout = state.layout) {
@@ -2440,6 +2563,7 @@ function renderLegend() {
 }
 
 function renderReader() {
+  updateTextUtilsState();
   const mainTrack = model.tracks[0];
   els.readerMainStream.innerHTML = mainTrack ? renderTrack(mainTrack, { panel: false }) : "";
   renderPanels();
@@ -2730,7 +2854,7 @@ function renderTrack(track, options = {}) {
       <header class="reader-track-header">
         <div>
           <div class="agent-track-kicker">${track.depth === 0 ? "main agent" : "subagent"}</div>
-          <h2 title="${escAttr(title)}">${esc(title)}</h2>
+          <h2 title="${escAttr(title)}">${hl(title)}</h2>
         </div>
         <div class="agent-track-actions">
           <span class="count-pill">${capsules.length} blocks</span>
@@ -2765,8 +2889,10 @@ function renderAgentConnector(track) {
 }
 
 function renderReaderCapsule(capsule, track) {
-  if (capsule.rawOnly) return renderReaderRawEvent(capsule, track);
-  return renderReaderMessage(capsule.message, track, capsule.messageIndex);
+  window.TextUtils.beginCapsule(capsule.key);
+  const html = capsule.rawOnly ? renderReaderRawEvent(capsule, track) : renderReaderMessage(capsule.message, track, capsule.messageIndex);
+  window.TextUtils.endCapsule();
+  return html;
 }
 
 function renderReaderRawEvent(capsule, track) {
@@ -2780,7 +2906,7 @@ function renderReaderRawEvent(capsule, track) {
           <div class="message-header-left">
             ${renderMessageKindStack(kind)}
             <span class="message-meta">
-              <span>${esc(capsule.nav?.agentPath || "main")}</span>
+              <span>${hl(capsule.nav?.agentPath || "main")}</span>
               ${problems.length ? `<span class="problem-tag">${problems.length} problems</span>` : ""}
             </span>
           </div>
@@ -2812,8 +2938,8 @@ function renderReaderMessage(message, track, index) {
           <div class="message-header-left">
             ${renderMessageKindStack(kind)}
             <span class="message-meta">
-              ${message.modelID ? `<span>${esc(message.modelID)}</span>` : ""}
-              ${message.agent ? `<span>${esc(message.agent)}</span>` : ""}
+              ${message.modelID ? `<span>${hl(message.modelID)}</span>` : ""}
+              ${message.agent ? `<span>${hl(message.agent)}</span>` : ""}
               ${problems.length ? `<span class="problem-tag">${problems.length} problems</span>` : ""}
             </span>
           </div>
@@ -2873,15 +2999,15 @@ function renderPart(part, context) {
     : part.type === "tool"
     ? renderStructuredToolPayload(part)
     : part.type === "tool_result"
-    ? `<pre>${esc(partText(part) || "(no payload)")}</pre>`
-    : `<div class="part-text">${esc(partText(part) || "")}</div>`;
+    ? `<pre>${hl(partText(part) || "(no payload)")}</pre>`
+    : `<div class="part-text">${hl(partText(part) || "")}</div>`;
   return `
     <section class="reader-part ${escAttr(style)} ${part.state?.is_error ? "error" : ""}" data-nav-key="${escAttr(key)}" data-raw-event-key="${escAttr(rawEventKey)}" data-testid="${testId}">
       <header class="part-header">
-        <strong>${esc(partHeaderLabel)}</strong>
+        <strong>${part.type === "tool" && part.tool ? hl(partHeaderLabel, "value") : esc(partHeaderLabel)}</strong>
         <div class="part-actions">
           ${part.type === "tool" && part.tool ? `<span class="tag">${esc(partKind.label)}</span>` : ""}
-          ${part.nav?.toolUseId ? `<span class="tag">${esc(part.nav.toolUseId)}</span>` : ""}
+          ${part.nav?.toolUseId ? `<span class="tag">${hl(part.nav.toolUseId)}</span>` : ""}
           ${pairedKey ? `<button data-action="focus-capsule" data-capsule-key="${escAttr(pairedKey)}">${part.type === "tool" ? "Result" : "Call"}</button>` : ""}
           ${hasRawPayload ? `<button type="button" data-action="toggle-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}" aria-expanded="false">View payload</button><button type="button" data-action="copy-raw-payload" data-raw-event-key="${escAttr(rawEventKey)}">Copy JSON</button>` : ""}
         </div>
@@ -3054,10 +3180,30 @@ function timelineBlockKindLabel(capsule, index) {
 }
 
 function escapeRegExp(value) {
-  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return window.TextUtils.escapeRegExp(value);
 }
 
-function tokenizeSearchQuery(value) {
+function normalizeForSearch(value) {
+  return window.TextUtils.normalizeForSearch(value);
+}
+
+function flattenJsonKV(obj, prefix, out) {
+  if (obj === null || obj === undefined) return;
+  if (typeof obj !== "object") {
+    out.push({ key: prefix, value: String(obj) });
+    return;
+  }
+  if (Array.isArray(obj)) {
+    obj.forEach((item, i) => flattenJsonKV(item, prefix ? `${prefix}[${i}]` : `[${i}]`, out));
+    return;
+  }
+  Object.keys(obj).forEach((k) => {
+    const newPrefix = prefix ? `${prefix}.${k}` : k;
+    flattenJsonKV(obj[k], newPrefix, out);
+  });
+}
+
+function tokenizeSearchTokens(value) {
   return String(value || "")
     .trim()
     .toLowerCase()
@@ -3065,35 +3211,148 @@ function tokenizeSearchQuery(value) {
     .filter(Boolean);
 }
 
-function isSearchQueryActive() {
-  return state.searchTokens.length > 0;
+function tokenizeSearchQuery(value) {
+  const tokens = [];
+  const s = String(value || "");
+  let i = 0;
+  while (i < s.length) {
+    while (i < s.length && /\s/.test(s[i])) i += 1;
+    if (i >= s.length) break;
+    if (s[i] === "(") { tokens.push({ type: "LPAREN" }); i += 1; continue; }
+    if (s[i] === ")") { tokens.push({ type: "RPAREN" }); i += 1; continue; }
+    if (s[i] === '"') {
+      i += 1;
+      let text = "";
+      while (i < s.length && s[i] !== '"') { text += s[i]; i += 1; }
+      if (i < s.length) i += 1;
+      if (text.trim()) tokens.push({ type: "TEXT", text: text.trim() });
+      continue;
+    }
+    let word = "";
+    while (i < s.length && !/\s/.test(s[i]) && s[i] !== "(" && s[i] !== ")" && s[i] !== '"') {
+      word += s[i];
+      i += 1;
+    }
+    const upper = word.toUpperCase();
+    if (upper === "AND") tokens.push({ type: "AND" });
+    else if (upper === "OR") tokens.push({ type: "OR" });
+    else if (word.trim()) tokens.push({ type: "TEXT", text: word.trim() });
+  }
+  return tokens;
+}
+
+let searchTermIdCounter = 0;
+
+function parseSearchQuery(value, categories) {
+  const cats = categories || {};
+  const tokens = tokenizeSearchQuery(value);
+  let pos = 0;
+
+  function parseExpr() {
+    let left = parseTerm();
+    while (pos < tokens.length && tokens[pos].type === "OR") {
+      pos += 1;
+      const right = parseTerm();
+      if (right) left = left ? { op: "OR", children: [left, right] } : right;
+    }
+    return left;
+  }
+
+  function parseTerm() {
+    let left = parseFactor();
+    while (pos < tokens.length) {
+      const tok = tokens[pos];
+      if (tok.type === "OR" || tok.type === "RPAREN") break;
+      if (tok.type === "AND") { pos += 1; const right = parseFactor(); if (right) left = left ? { op: "AND", children: [left, right] } : right; }
+      else { const right = parseFactor(); if (right) left = left ? { op: "AND", children: [left, right] } : right; }
+    }
+    return left;
+  }
+
+  function parseFactor() {
+    if (pos >= tokens.length) return null;
+    const tok = tokens[pos];
+    if (tok.type === "LPAREN") {
+      pos += 1;
+      const expr = parseExpr();
+      if (pos < tokens.length && tokens[pos].type === "RPAREN") pos += 1;
+      return expr;
+    }
+    if (tok.type === "TEXT") {
+      pos += 1;
+      const text = tok.text;
+      const id = `term:${text}`;
+      const category = cats[text] || "value";
+      const toks = tokenizeSearchTokens(normalizeForSearch(text));
+      return { op: "TERM", id, text, category, tokens: toks };
+    }
+    pos += 1;
+    return parseFactor();
+  }
+
+  return parseExpr();
+}
+
+function serializeExpr(expr) {
+  if (!expr) return "";
+  if (expr.op === "TERM") {
+    const needsQuotes = expr.text.includes(" ");
+    return needsQuotes ? `"${expr.text}"` : expr.text;
+  }
+  if (expr.op === "AND") return expr.children.map(serializeExpr).join(" AND ");
+  if (expr.op === "OR") return expr.children.map((c) => c.op === "AND" ? `(${serializeExpr(c)})` : serializeExpr(c)).join(" OR ");
+  return "";
+}
+
+function collectLeafTerms(expr) {
+  if (!expr) return [];
+  if (expr.op === "TERM") return [expr];
+  if (expr.op === "AND" || expr.op === "OR") {
+    const result = [];
+    for (const child of expr.children) {
+      const childTerms = collectLeafTerms(child);
+      for (const t of childTerms) result.push(t);
+    }
+    return result;
+  }
+  return [];
+}
+
+function matchesExpr(record, expr) {
+  if (!expr) return false;
+  if (expr.op === "TERM") {
+    const haystack = expr.category === "key" ? record.keyHaystack : record.valueHaystack;
+    if (!haystack) return false;
+    return expr.tokens.every((term) => window.TextUtils.fuzzyMatchHaystack(haystack, term, 2));
+  }
+  if (expr.op === "AND") return expr.children.every((c) => matchesExpr(record, c));
+  if (expr.op === "OR") return expr.children.some((c) => matchesExpr(record, c));
+  return false;
+}
+
+function searchStateForLayout(layout) {
+  return state.searchByLayout[layout === "graph" ? "graph" : "reader"];
+}
+
+function isSearchQueryActive(layout) {
+  const ss = searchStateForLayout(layout || state.layout);
+  return Boolean(ss && ss.expression);
 }
 
 function capsuleSearchText(capsule, track) {
-  const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
   const parts = capsule.message?.parts || [];
   const partMeta = parts
-    .map((part) => [
-      part.type,
-      part.tool,
-      part.nav?.toolUseId,
-      part.state?.tool_use_id,
-      part.id,
-      partText(part),
-    ].filter(Boolean).join(" "))
+    .map((part) => [part.tool, part.nav?.toolUseId, part.state?.tool_use_id, partText(part)]
+      .filter(Boolean).join(" "))
     .filter(Boolean)
     .join("\n");
   return [
     capsule.summary,
-    kind?.fullLabel,
-    kind?.line?.label,
-    capsule.contentTypes?.join(" "),
     trackTitle(track),
     timelineTrackLabel(track, track?.index || 0),
     track?.agentDescription,
     track?.modelName,
     capsule.nav?.agentPath,
-    capsule.role,
     capsule.rawOnly ? rawText(capsule.rawEvent) : messageText(capsule.message || {}),
     partMeta,
   ].filter(Boolean).join("\n");
@@ -3105,6 +3364,13 @@ function buildSearchIndex() {
     const track = trackById.get(capsule.trackId);
     const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
     const sourceText = capsuleSearchText(capsule, track);
+    const rawObj = capsule.rawOnly ? capsule.rawEvent?.raw : capsule.message;
+    const flattened = [];
+    flattenJsonKV(rawObj, "", flattened);
+    const keyStrings = flattened.map((f) => f.key);
+    const rawValueStrings = flattened.map((f) => f.value);
+    const keyHaystack = normalizeForSearch(keyStrings.join(" "));
+    const valueHaystack = normalizeForSearch([...rawValueStrings, sourceText].join(" "));
     searchIndexByKey.set(capsule.key, {
       key: capsule.key,
       trackId: capsule.trackId,
@@ -3112,7 +3378,8 @@ function buildSearchIndex() {
       kindLabel: kind?.fullLabel || capsule.lineType || capsule.type,
       lineLabel: kind?.line?.label || capsule.lineType || capsule.type,
       sourceText,
-      haystack: sourceText.toLowerCase(),
+      keyHaystack,
+      valueHaystack,
     });
   });
 }
@@ -3124,46 +3391,41 @@ function searchResultTrackAllowed(track) {
   return true;
 }
 
-function searchResults(options = {}) {
-  const tokens = state.searchTokens;
-  if (!tokens.length) return [];
-  const scope = options.scope || "all";
+function searchResults(options) {
+  const scope = (options && options.scope) || "all";
+  const layout = scope === "timeline" ? "graph" : state.layout;
+  const ss = searchStateForLayout(layout);
+  const expr = ss && ss.expression;
+  if (!expr) return [];
   return model.capsules
     .map((capsule) => searchIndexByKey.get(capsule.key))
     .filter(Boolean)
     .filter((record) => {
       const track = trackById.get(record.trackId);
       if (scope === "timeline" && !searchResultTrackAllowed(track)) return false;
-      return tokens.every((token) => record.haystack.includes(token));
+      return matchesExpr(record, expr);
     });
 }
 
-function searchResultSnippet(record, maxLength = 118) {
-  const tokens = state.searchTokens;
+function searchResultSnippet(record, maxLength) {
+  const maxLen = maxLength || 118;
+  const ss = searchStateForLayout(state.layout);
+  const terms = ss && ss.expression ? window.TextUtils.collectTermsForScope(ss.expression, "value") : [];
   const source = String(record?.sourceText || "").replace(/\s+/g, " ").trim();
   if (!source) return "(no searchable text)";
   const lower = source.toLowerCase();
-  const positions = tokens
-    .map((token) => lower.indexOf(token))
-    .filter((position) => position >= 0);
+  const positions = terms.map((token) => lower.indexOf(token)).filter((p) => p >= 0);
   const first = positions.length ? Math.min(...positions) : 0;
-  const start = Math.max(0, first - Math.floor(maxLength * 0.35));
-  const snippet = `${start > 0 ? "..." : ""}${source.slice(start, start + maxLength)}${start + maxLength < source.length ? "..." : ""}`;
-  return snippet;
+  const start = Math.max(0, first - Math.floor(maxLen * 0.35));
+  return `${start > 0 ? "..." : ""}${source.slice(start, start + maxLen)}${start + maxLen < source.length ? "..." : ""}`;
 }
 
 function highlightSearchTerms(value) {
-  const tokens = [...state.searchTokens].sort((a, b) => b.length - a.length);
-  const source = String(value || "");
-  if (!tokens.length || !source) return esc(source);
-  const pattern = new RegExp(`(${tokens.map(escapeRegExp).join("|")})`, "ig");
-  return source.split(pattern)
-    .map((part) => tokens.includes(part.toLowerCase()) ? `<mark class="search-hit">${esc(part)}</mark>` : esc(part))
-    .join("");
+  return window.TextUtils.renderTextWithHighlights(value, { scope: "value" });
 }
 
 function timelineSearchActive() {
-  return state.searchOpenByLayout.graph && isSearchQueryActive();
+  return state.searchByLayout.graph.open && isSearchQueryActive("graph");
 }
 
 function timelineSearchPresentation() {
@@ -3229,7 +3491,8 @@ function timelineSearchPresentation() {
     layoutKeysByTrackId,
     warning,
     signature: [
-      state.searchQuery,
+      state.searchByLayout.graph.queryText,
+      JSON.stringify(state.searchByLayout.graph.categories),
       state.timelineSearchMode,
       state.timelineSearchScope,
       results.length,
@@ -3281,9 +3544,9 @@ function renderTimelineHeader() {
         <div class="timeline-header-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}" style="left:${track.x}px;width:${model.trackWidth}px">
           <button class="timeline-track-label ${isMainTrack ? "is-main" : ""} ${track.problemCount ? "has-problem" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}" data-testid="timeline-track-label" aria-selected="${selected ? "true" : "false"}" title="${escAttr(titleParts.join(" · "))}">
             <span class="timeline-track-kicker">${esc(isMainTrack ? "MAIN" : "SUBAGENT")}</span>
-            ${isMainTrack ? "" : `<strong>${esc(label)}</strong>
-            <span class="timeline-track-description">${esc(description || "No description")}</span>`}
-            <span class="timeline-track-model">${esc(modelLabel)}</span>
+            ${isMainTrack ? "" : `<strong>${hl(label)}</strong>
+            <span class="timeline-track-description">${hl(description || "No description")}</span>`}
+            <span class="timeline-track-model">${hl(modelLabel)}</span>
             <small>${esc(timelineTrackMeta(track))}</small>
             ${problemLabel ? `<span class="timeline-track-error-icon" aria-label="${escAttr(problemLabel)}" title="${escAttr(problemLabel)}">
               <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -3315,6 +3578,7 @@ function renderTimelineTracks(visibleTracks) {
 
 function renderGraphVirtual() {
   if (state.layout !== "graph") return;
+  updateTextUtilsState();
   const viewport = els.graphViewport;
   layoutGraph(viewport.clientWidth);
   const viewLeft = viewport.scrollLeft;
@@ -3375,7 +3639,7 @@ function renderGraphVirtual() {
         const blockNumber = capsule.messageIndex + 1;
         blockHtml.push(`
           <button class="portfolio-timeline-block timeline-block ${style.className} ${noSubtype} ${active ? "active" : ""} ${selected ? "selected" : ""} ${searchHit ? "timeline-search-hit" : ""} ${searchContext ? "timeline-search-context" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-track-id="${escAttr(track.id)}" data-message-index="${capsule.messageIndex}" data-layout-index="${layoutIndex}" data-testid="timeline-block" data-search-role="${searchHit ? "hit" : searchContext ? "context" : ""}" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" style="left:${capsule.x}px;top:${capsule.y}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${kind.fullLabel}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${blockNumber}, ${kind.fullLabel}${searchContext ? ", search context" : ""}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
-            <span class="portfolio-timeline-block-label timeline-block-label" data-full-label="${escAttr(timelineBlockKindLabel(capsule, layoutIndex))}">${esc(timelineBlockKindLabel(capsule, layoutIndex))}</span>
+            <span class="portfolio-timeline-block-label timeline-block-label" data-full-label="${escAttr(timelineBlockKindLabel(capsule, layoutIndex))}">${hl(timelineBlockKindLabel(capsule, layoutIndex), "value")}</span>
           </button>`);
       }
     });
@@ -3688,7 +3952,7 @@ function renderTimelineDetailRaw(displayCapsule, parts) {
     : rawEvents.length
       ? rawEvents.map((event) => event.raw)
       : fallback;
-  return `<pre class="portfolio-detail-raw timeline-detail-raw-code"><code>${esc(formatRawJsonlValue(rawValue) || "(raw JSONL unavailable)")}</code></pre>`;
+  return `<pre class="portfolio-detail-raw timeline-detail-raw-code"><code>${hl(formatRawJsonlValue(rawValue) || "(raw JSONL unavailable)", "raw")}</code></pre>`;
 }
 
 function pinIconSvg() {
@@ -3701,15 +3965,15 @@ function renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems
   return `
     <div class="portfolio-detail-form timeline-detail-form">
     <dl class="portfolio-meta timeline-detail-meta">
-      <dt>Line type</dt><dd>${esc(kind?.line?.label || displayCapsule.lineType || "Unknown")}</dd>
-      <dt>Content types</dt><dd>${esc(kind?.contentLabel || (displayCapsule.contentTypes || []).join(", ") || "Unknown")}</dd>
-      <dt>Agent</dt><dd>${esc(timelineTrackLabel(track))}</dd>
+      <dt>Line type</dt><dd>${hl(kind?.line?.label || displayCapsule.lineType || "Unknown", "value")}</dd>
+      <dt>Content types</dt><dd>${hl(kind?.contentLabel || (displayCapsule.contentTypes || []).join(", ") || "Unknown", "value")}</dd>
+      <dt>Agent</dt><dd>${hl(timelineTrackLabel(track))}</dd>
       <dt>Block</dt><dd>${displayCapsule.messageIndex + 1}</dd>
       <dt>Time</dt><dd>${timestamp ? esc(timestamp) : "Unknown"}</dd>
       <dt>Line</dt><dd>${displayCapsule.nav?.lineNumber || "Unknown"}</dd>
-      <dt>Path</dt><dd>${esc(displayCapsule.nav?.agentPath || "main")}</dd>
+      <dt>Path</dt><dd>${hl(displayCapsule.nav?.agentPath || "main")}</dd>
       <dt>Problems</dt><dd>${esc(problemSummary)}</dd>
-      <dt>Common failures</dt><dd>${commonFailures.length ? commonFailures.map(esc).join("<br>") : "None"}</dd>
+      <dt>Common failures</dt><dd>${commonFailures.length ? commonFailures.map(hl).join("<br>") : "None"}</dd>
     </dl>
     ${problems.length ? renderPortfolioFormTable(
       "Problems",
@@ -3722,6 +3986,7 @@ function renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems
 
 function renderTimelineDetailWindow(item, index) {
   const displayCapsule = item.capsule;
+  window.TextUtils.beginCapsule(displayCapsule.key);
   const pinned = item.mode === "pinned";
   const canPin = state.layout === "graph";
   const track = trackById.get(displayCapsule.trackId);
@@ -3742,7 +4007,7 @@ function renderTimelineDetailWindow(item, index) {
       </div>`;
   const metadataHtml = renderTimelineDetailMetadata(displayCapsule, track, timestamp, problems, parts, kind);
   const rawHtml = renderTimelineDetailRaw(displayCapsule, parts);
-  return `
+  const html = `
     <article class="portfolio-detail-window timeline-detail-window ${pinned ? "pinned" : "live"}" data-testid="timeline-detail-panel" data-detail-mode="${escAttr(item.mode)}" data-detail-capsule-key="${escAttr(displayCapsule.key)}" data-detail-index="${index}" data-detail-tab="${escAttr(initialTab)}">
       <header class="portfolio-detail-titlebar timeline-detail-titlebar" data-detail-section="titlebar">
         ${titlebarContent}
@@ -3770,9 +4035,12 @@ function renderTimelineDetailWindow(item, index) {
         </div>
       </section>
     </article>`;
+  window.TextUtils.endCapsule();
+  return html;
 }
 
 function renderTimelineDetailPanel(capsule) {
+  updateTextUtilsState();
   if (!els.timelineDetailPanel) {
     state.timelineDetailKey = "";
     state.pinnedTimelineDetailKeys = [];
@@ -3797,7 +4065,9 @@ function renderTimelineDetailPanel(capsule) {
     }
     return;
   }
-  const detailKey = windows.map((item) => `${item.mode}:${item.capsule.key}:${item.capsule.problemCount}`).join("|");
+  const detailKey = windows.map((item) => `${item.mode}:${item.capsule.key}:${item.capsule.problemCount}`).join("|")
+    + "::" + (state.searchByLayout[state.layout === "graph" ? "graph" : "reader"].queryText || "")
+    + "::" + JSON.stringify(state.searchByLayout[state.layout === "graph" ? "graph" : "reader"].categories);
   if (state.timelineDetailKey === detailKey) return;
   state.timelineDetailKey = detailKey;
   state.timelineDetailRenderCount += 1;
@@ -3985,8 +4255,8 @@ function renderReaderSearchActiveState() {
   document.querySelectorAll(".reader-message.search-current").forEach((node) => {
     node.classList.remove("search-current");
   });
-  if (!(state.layout === "reader" && state.searchOpenByLayout.reader && state.readerSearchCursorKey)) return;
-  const capsule = capsuleByKey.get(state.readerSearchCursorKey);
+  if (!(state.layout === "reader" && state.searchByLayout.reader.open && state.searchByLayout.reader.cursorKey)) return;
+  const capsule = capsuleByKey.get(state.searchByLayout.reader.cursorKey);
   if (!capsule) return;
   const element = document.getElementById(readerMessageId(capsule.trackId, capsule.messageIndex));
   element?.classList.add("search-current");
@@ -4414,7 +4684,7 @@ function timelineMetrics() {
       width: headerRect.width,
     },
     searchShelf: {
-      open: state.searchOpenByLayout.graph,
+      open: state.searchByLayout.graph.open,
       top: searchShelfRect.top,
       bottom: searchShelfRect.bottom,
       height: searchShelfRect.height,
@@ -4473,16 +4743,16 @@ function exposeDebugState() {
       openPanels: [...state.openPanelIds],
       agentTreeDrawerOpen: state.agentTreeDrawerOpen,
       search: {
-        query: state.searchQuery,
+        query: state.searchByLayout.graph.queryText,
         resultCount: searchResultsForLayout().length,
         timelineMode: state.timelineSearchMode,
         timelineScope: state.timelineSearchScope,
         timelineVisibleKeys: [...timelineSearchPresentation().visibleKeys],
         timelineContextKeys: [...timelineSearchPresentation().contextKeys],
         readerResultKeys: searchResults().map((result) => result.key),
-        searchOpenByLayout: { ...state.searchOpenByLayout },
-        timelineCursorKey: state.timelineSearchCursorKey,
-        readerCursorKey: state.readerSearchCursorKey,
+        searchOpenByLayout: { graph: state.searchByLayout.graph.open, reader: state.searchByLayout.reader.open },
+        timelineCursorKey: state.searchByLayout.graph.cursorKey,
+        readerCursorKey: state.searchByLayout.reader.cursorKey,
       },
     }),
     layoutMetrics,
@@ -4516,8 +4786,8 @@ els.layoutButtons.forEach((button) => {
   button.addEventListener("click", () => setLayout(button.dataset.layout));
 });
 
-els.timelineSearchInput?.addEventListener("input", (event) => setSearchQuery(event.target.value));
-els.readerSearchInput?.addEventListener("input", (event) => setSearchQuery(event.target.value));
+els.timelineSearchInput?.addEventListener("input", (event) => setSearchQueryDebounced(event.target.value));
+els.readerSearchInput?.addEventListener("input", (event) => setSearchQueryDebounced(event.target.value));
 
 els.leftTabs.forEach((button) => {
   button.addEventListener("click", () => setLeftNavTab(button.dataset.leftTab));
@@ -4626,6 +4896,18 @@ document.addEventListener("click", (event) => {
     copyRawPayload(button);
     return;
   }
+  if (action === "toggle-badge-category") {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleBadgeCategory(button.dataset.badgeId);
+    return;
+  }
+  if (action === "remove-badge") {
+    event.preventDefault();
+    event.stopPropagation();
+    removeBadge(button.dataset.badgeId);
+    return;
+  }
   event.preventDefault();
   if (action === "select-track") selectTrack(button.dataset.trackId, { open: button.dataset.open !== "false" });
   if (action === "toggle-panel") togglePanel(button.dataset.trackId);
@@ -4644,18 +4926,26 @@ document.addEventListener("keydown", (event) => {
   }
   if (searchInput && event.key === "Enter") {
     event.preventDefault();
-    moveSearchResult(event.shiftKey ? -1 : 1);
+    if (event.shiftKey) {
+      moveSearchResult(-1);
+    } else {
+      const ss = searchStateForLayout(state.layout);
+      if (ss.queryText) moveSearchResult(1);
+      else setSearchQuery(event.target.value);
+    }
     return;
   }
   if (searchInput && event.key === "Escape") {
     event.preventDefault();
-    if (state.searchQuery) setSearchQuery("");
+    const ss = searchStateForLayout(state.layout);
+    if (ss.queryText) setSearchQuery("");
     else setSearchOpen(state.layout, false);
     return;
   }
   if (event.key === "Escape") {
     if (activeSearchOpen()) {
-      if (state.searchQuery) setSearchQuery("");
+      const ss0 = searchStateForLayout(state.layout);
+      if (ss0.queryText) setSearchQuery("");
       else setSearchOpen(state.layout, false);
       return;
     }

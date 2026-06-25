@@ -2107,6 +2107,96 @@ article.message.has-problem > .message-card {
   -webkit-box-decoration-break: clone;
 }
 
+.search-hit.current,
+.reader-message.search-current .search-hit {
+  background: #ffc107;
+  color: #1a1300;
+}
+
+.search-badge-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-height: 0;
+}
+
+.search-badge-container:empty {
+  display: none;
+}
+
+.search-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--sv-panel-soft, #f1f5f9);
+  border: 1px solid var(--sv-border, #e2e8f0);
+  border-radius: 999px;
+  padding: 1px 2px 1px 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  max-width: 240px;
+}
+
+.search-badge-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.search-badge-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--sv-muted, #64748b);
+  padding: 2px 4px;
+  border-radius: 999px;
+}
+
+.search-badge-toggle:hover {
+  background: var(--sv-panel-strong, #e2e8f0);
+}
+
+.search-badge-caret {
+  font-size: 8px;
+}
+
+.search-badge-remove {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--sv-muted, #64748b);
+  padding: 1px 5px;
+  border-radius: 999px;
+}
+
+.search-badge-remove:hover {
+  background: var(--sv-danger, #ef4444);
+  color: #fff;
+}
+
+.search-op {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--sv-muted, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 2px;
+}
+
+.search-paren {
+  font-size: 11px;
+  color: var(--sv-muted, #64748b);
+  font-weight: 600;
+}
+
 .search-input-shell {
   display: flex;
   min-width: 0;

@@ -4971,6 +4971,122 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
             f"{timeline_compaction_metrics['maxLayoutYGap']:.0f}px"
         ),
     )
+
+    # --- Hit-text highlight validation ---
+    page.locator("#searchToggleBtn").click()
+    expect(page.get_by_test_id("timeline-search-shelf")).to_be_visible()
+    page.wait_for_timeout(120)
+    highlight_query = timeline_search_target["query"]
+    page.get_by_test_id("timeline-search-input").fill(highlight_query)
+    page.wait_for_function(
+        "() => window.SESSION_VIEWER.current().search.resultCount > 0"
+    )
+    page.wait_for_timeout(200)
+
+    timeline_highlight = page.evaluate(
+        """() => {
+            const headerMarks = document.querySelectorAll('.timeline-header mark.search-hit');
+            const kindBadgeMarks = document.querySelectorAll(
+                '.timeline-detail-type mark.search-hit, .message-line-kind mark.search-hit'
+            );
+            const hitBlock = document.querySelector('.timeline-block.timeline-search-hit');
+            if (hitBlock) hitBlock.click();
+            return {
+                headerMarks: headerMarks.length,
+                kindBadgeMarks: kindBadgeMarks.length,
+                clickedHit: Boolean(hitBlock),
+            };
+        }"""
+    )
+    page.wait_for_timeout(200)
+    timeline_detail_highlight = page.evaluate(
+        """() => {
+            const detailMarks = document.querySelectorAll('.timeline-detail-window mark.search-hit');
+            const detailCurrentMarks = document.querySelectorAll(
+                '.timeline-detail-window mark.search-hit.current'
+            );
+            return {
+                detailMarks: detailMarks.length,
+                detailCurrentMarks: detailCurrentMarks.length,
+                sampleMarkText: detailMarks[0]?.textContent || '',
+            };
+        }"""
+    )
+    assert timeline_highlight["kindBadgeMarks"] == 0, (
+        f"kind labels should not be highlighted, found {timeline_highlight['kindBadgeMarks']}"
+    )
+
+    # Switch to Waterfall and verify marks in message cards, nav items, agent tree
+    page.locator("#readerLayoutBtn").click()
+    page.wait_for_timeout(300)
+    page.locator("#searchToggleBtn").click()
+    page.wait_for_timeout(120)
+    page.get_by_test_id("reader-search-input").fill(highlight_query)
+    page.wait_for_function(
+        "() => window.SESSION_VIEWER.current().search.resultCount > 0"
+    )
+    page.wait_for_timeout(300)
+
+    reader_highlight = page.evaluate(
+        """() => {
+            const messageMarks = document.querySelectorAll('.reader-message mark.search-hit');
+            const navMarks = document.querySelectorAll('.message-index-item mark.search-hit');
+            const currentMarks = document.querySelectorAll('mark.search-hit.current');
+            const searchCurrentCard = document.querySelectorAll(
+                '.reader-message.search-current mark.search-hit'
+            );
+            const kindBadgeMarks = document.querySelectorAll(
+                '.message-line-kind mark.search-hit, .message-content-kind mark.search-hit'
+            );
+            // Check multi-hit: at least one element should have 2+ marks
+            let multiHit = false;
+            document.querySelectorAll('.reader-message').forEach((card) => {
+                const marks = card.querySelectorAll('mark.search-hit');
+                if (marks.length >= 2) multiHit = true;
+            });
+            return {
+                messageMarks: messageMarks.length,
+                navMarks: navMarks.length,
+                currentMarks: currentMarks.length,
+                searchCurrentCardMarks: searchCurrentCard.length,
+                kindBadgeMarks: kindBadgeMarks.length,
+                multiHit,
+            };
+        }"""
+    )
+    assert reader_highlight["messageMarks"] > 0, reader_highlight
+    assert reader_highlight["kindBadgeMarks"] == 0, (
+        f"kind labels should not be highlighted in reader, found {reader_highlight['kindBadgeMarks']}"
+    )
+    assert reader_highlight["multiHit"], "expected at least one card with multiple hit marks"
+
+    # Close search and verify highlights disappear (gating)
+    page.locator("#searchToggleBtn").click()
+    page.wait_for_timeout(200)
+    gated_marks = page.evaluate(
+        "() => document.querySelectorAll('mark.search-hit').length"
+    )
+    assert gated_marks == 0, f"highlights should disappear when search is closed, found {gated_marks}"
+
+    record(
+        page,
+        "search.hit_highlight",
+        kind="interaction",
+        flow="search.hit_text_highlight",
+        viewport=viewport,
+        selector="mark.search-hit",
+        assertion=(
+            f"Hit-text <mark> highlighting appears in Timeline detail ({timeline_detail_highlight['detailMarks']} marks, "
+            f"{timeline_detail_highlight['detailCurrentMarks']} current), "
+            f"Waterfall message cards ({reader_highlight['messageMarks']} marks), "
+            f"nav items ({reader_highlight['navMarks']} marks), "
+            f"with multi-hit-per-field support; "
+            f"kind labels excluded ({reader_highlight['kindBadgeMarks']} kind marks); "
+            f"highlights gate on search-open state"
+        ),
+    )
+    # --- End hit-text highlight validation ---
+
     problem_label_icons = page.evaluate(
         """() => {
             const problemLabels = Array.from(document.querySelectorAll('[data-testid="timeline-track-label"].has-problem'));

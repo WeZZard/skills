@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ conversation.summary.title }} | Session Viewer</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/css/base.css?v=20260624-search-panel-v1" />
+    <link rel="stylesheet" href="/static/css/base.css?v=20260625-detail-highlight-v2" />
   </head>
   <body>
     <script id="conversation-data" type="application/json">{{ conversation_json | safe }}</script>
@@ -119,6 +119,7 @@
               <h2>Search Waterfall</h2>
               <p id="readerSearchStatus" class="search-result-status">No query</p>
             </div>
+            <div id="readerSearchBadges" class="search-badge-container" data-testid="waterfall-search-badges"></div>
             <button type="button" class="reader-search-close icon-label" data-action="close-search" aria-label="Close search">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M18 6 6 18" />
@@ -191,6 +192,7 @@
                   <input id="timelineSearchInput" data-testid="timeline-search-input" type="search" autocomplete="off" spellcheck="false" placeholder="Search timeline content" />
                 </label>
                 <span id="timelineSearchStatus" class="search-result-status">No query</span>
+                <div id="timelineSearchBadges" class="search-badge-container" data-testid="timeline-search-badges"></div>
                 <div class="search-navigation-controls" role="group" aria-label="Timeline search navigation">
                   <button type="button" data-action="search-prev" data-testid="timeline-search-previous" aria-label="Previous search result">Prev</button>
                   <button type="button" data-action="search-next" data-testid="timeline-search-next" aria-label="Next search result">Next</button>
@@ -227,7 +229,8 @@
       </main>
     </div>
     <div id="timelineDetailPanel" class="timeline-detail-dock hidden" data-testid="timeline-detail-dock" aria-label="Selected message details"></div>
-    <script src="/static/js/opencode_renderer.js?v=20260624-search-panel-v1"></script>
-    <script src="/static/js/conversation.js?v=20260624-search-panel-v1"></script>
+    <script src="/static/js/text_utils.js?v=20260625-detail-highlight-v2"></script>
+    <script src="/static/js/opencode_renderer.js?v=20260625-detail-highlight-v2"></script>
+    <script src="/static/js/conversation.js?v=20260625-detail-highlight-v2"></script>
   </body>
 </html>

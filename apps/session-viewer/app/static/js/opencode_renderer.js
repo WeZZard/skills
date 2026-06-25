@@ -27,13 +27,15 @@
   ]);
 
   function esc(value) {
-    const div = document.createElement("div");
-    div.textContent = value === null || value === undefined ? "" : String(value);
-    return div.innerHTML;
+    return window.TextUtils.esc(value);
   }
 
   function escAttr(value) {
-    return esc(value).replaceAll('"', "&quot;");
+    return window.TextUtils.escAttr(value);
+  }
+
+  function hl(value) {
+    return window.TextUtils.renderTextWithHighlights(value, { scope: "value" });
   }
 
   function text(value) {
@@ -204,7 +206,7 @@
     const status = state.status || "";
     const actions = [];
     if (isTool || isResult) {
-      if (toolUseId) actions.push(`<span class="tag opencode-tool-id">${esc(toolUseId)}</span>`);
+      if (toolUseId) actions.push(`<span class="tag opencode-tool-id">${hl(toolUseId)}</span>`);
       if (isTool && status) actions.push(renderStatusBadge(status));
     }
     return actions.join("");
@@ -217,7 +219,7 @@
     return `
       <section class="portfolio-form-row opencode-form-row${multiline ? " multiline" : ""}">
         <header><strong>${esc(label)}</strong></header>
-        <pre class="${escAttr(preClass)}">${esc(valueText)}</pre>
+        <pre class="${escAttr(preClass)}">${hl(valueText)}</pre>
       </section>`;
   }
 
@@ -232,7 +234,7 @@
 
   function boundedPre(value, options = {}) {
     const valueText = hasValue(value) ? text(value) : options.emptyText || "(empty)";
-    return `<pre class="opencode-bounded-pre ${escAttr(options.preClass || "")}"><code>${esc(valueText)}</code></pre>`;
+    return `<pre class="opencode-bounded-pre ${escAttr(options.preClass || "")}"><code>${hl(valueText)}</code></pre>`;
   }
 
   function isScalarArray(items) {
@@ -263,7 +265,7 @@
         const cells = cols
           .map((key) => {
             const raw = item && typeof item === "object" ? item[key] : "";
-            return `<td>${esc(compact(raw, 200))}</td>`;
+            return `<td>${hl(compact(raw, 200))}</td>`;
           })
           .join("");
         return `<tr>${cells}</tr>`;
@@ -318,7 +320,7 @@
     }
 
     if (!body.trim()) {
-      body = `<div class="part-text opencode-tool-empty">${esc(compact(state.preview) || "No tool details available.")}</div>`;
+      body = `<div class="part-text opencode-tool-empty">${hl(compact(state.preview) || "No tool details available.")}</div>`;
     }
     return body;
   }
@@ -365,7 +367,7 @@
             else if (line.startsWith("-") && !line.startsWith("--- ")) cls = "diff-line-removed";
             else if (line.startsWith("@@")) cls = "diff-line-hunk";
             const num = String(index + 1).padStart(4, " ");
-            return `<div class="opencode-diff-line ${cls}"><span class="opencode-diff-line-number">${num}</span><code>${esc(line)}</code></div>`;
+            return `<div class="opencode-diff-line ${cls}"><span class="opencode-diff-line-number">${num}</span><code>${hl(line)}</code></div>`;
           })
           .join("")}
       </div>`;
@@ -406,11 +408,11 @@
   }
 
   function renderTextBody(state, partText) {
-    return `<div class="part-text opencode-text">${esc(partText || "")}</div>`;
+    return `<div class="part-text opencode-text">${hl(partText || "")}</div>`;
   }
 
   function renderReasoningBody(state, partText) {
-    return `<div class="part-text opencode-reasoning-text">${esc(partText || "")}</div>`;
+    return `<div class="part-text opencode-reasoning-text">${hl(partText || "")}</div>`;
   }
 
   function renderFallbackBody(state, partText) {

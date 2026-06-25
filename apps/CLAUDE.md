@@ -162,3 +162,30 @@ For frontend changes:
 - Check that focus, selected, error, and search states preserve layout.
 - Add focused browser validation when the change affects navigation, search,
   fixed overlays, virtualized layouts, or cross-view state.
+
+## Backward Compatibility
+
+### Browsers
+
+Apps under `apps/` may be viewed in embedded webviews (e.g. ChatGPT Atlas, Google Chrome, Apple Safari) that ship older WebKit versions than the system Safari. To avoid silent total-script failures, frontend JavaScript must not use ES2021+ features.
+
+**Do not use:**
+
+- `String.prototype.replaceAll` — use `.replace(/pattern/g, ...)` instead
+- `Promise.any` / `AggregateError`
+- `Numeric separators` (e.g. `1_000_000`)
+- `Object.fromEntries` is ES2019 and should be avoided in hot paths
+
+**Safe to use (ES2020 and earlier, supported since Safari 13.1 / macOS 10.15.4):**
+
+- Optional chaining (`?.`)
+- Nullish coalescing (`??`)
+- `Array.prototype.flat` / `Array.prototype.flatMap` (ES2019, Safari 12+)
+- `Object.entries` / `Object.values` (ES2017)
+- `async` / `await` (ES2017)
+
+When adding new JavaScript, run `node --check` on the file and test in both
+Chrome and an embedded webview if available. Bump the `?v=` cache-busting
+query parameter on `<script>` and `<link>` tags in the HTML template whenever
+static JS or CSS files change, so embedded webviews that cache aggressively
+pick up the new content.
