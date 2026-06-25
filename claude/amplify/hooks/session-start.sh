@@ -9,6 +9,7 @@ PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Read using-skills content
 using_skills_content=$(cat "${PLUGIN_ROOT}/references/using-skills.md" 2>&1 || echo "Error reading using-skills reference")
+communicaiton_style_guidelines_content=$(cat "${PLUGIN_ROOT}/references/communication-style-guidelines.md" 2>&1 || echo "Error reading communication-style-guidelines reference")
 
 # Escape outputs for JSON using pure bash
 escape_for_json() {
@@ -30,13 +31,14 @@ escape_for_json() {
 }
 
 using_skills_escaped=$(escape_for_json "$using_skills_content")
+communicaiton_style_guidelines_escaped=$(escape_for_json "$communicaiton_style_guidelines_content")
 
 # Output context injection as JSON
 cat <<EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionStart",
-    "additionalContext": "${using_skills_escaped}"
+    "additionalContext": "${using_skills_escaped}\n\n${communicaiton_style_guidelines_escaped}"
   }
 }
 EOF
