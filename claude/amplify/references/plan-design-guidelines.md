@@ -64,28 +64,28 @@ current state, not forward from the current state.
 You **MUST** use this template when the plan introduces or changes user-facing workflows that span multiple activities or steps.
 
 <USER_STORY_MAP_EXAMPLE>
+
 ```markdown
 ## User Story Map
 
               ── user's journey, left → right ───────────────────────►
- BACKBONE   │ [Activity A]        │ [Activity B]      │ [Activity C]       │   high-level activities
- TASKS      │ [task A1] [task A2] │ [task B1]         │ [task C1] [task C2]│   steps under each activity
+ ACTIVITIES │ [Activity A]        │ [Activity B]      │ [Activity C]       │
+ STEPS      │ [step A1] [step A2] │ [step B1]         │ [step C1] [step C2]│
  ───────────┼─────────────────────┼───────────────────┼────────────────────┤
- Release 1  │ [story A1.1]        │ [story B1.1]      │ [story C1.1]       │   top = highest priority
-   ▲ pri    │ [story A2.1]        │                   │ [story C2.1]       │
- ───────────┼─────────────────────┼───────────────────┼────────────────────┤
- Release 2  │ [story A1.2]        │ [story B1.2]      │ [story C2.2]       │   lower priority / later
+ STORIES    │ [story A1.1]        │ [story B1.1]      │ [story C1.1]       │
+            │ [story A2.1]        │                   │ [story C2.1]       │
 ```
+
 </USER_STORY_MAP_EXAMPLE>
 
 You **MUST** illustrate the user story map before AND after the changes.
 You **MUST** NOT just illustrate the user story map before OR after the changes and illustrate another with text descriptions.
 
-The user story map arranges user activities along the horizontal axis (the user's journey) and story detail/priority along the vertical axis.
+The user story map arranges user activities along the horizontal axis (the user's journey, left → right) and the stories that realize each step down the vertical axis. The vertical axis carries no priority and no release slices: everything on the map is in scope for this plan.
 
 You **MUST** illustrate with one of the following forms:
 
-- A grid-style diagram drawn with box-drawing characters, as in the example above (backbone of activities/tasks across the top, stories stacked by priority and cut into release slices down the side). This is a diagram, not a markdown table.
+- A grid-style diagram drawn with box-drawing characters, as in the example above (backbone of activities and steps across the top, stories listed under each step down the side). This is a diagram, not a markdown table.
 
 You **MUST NOT** illustrate with any of the following forms:
 

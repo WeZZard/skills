@@ -121,6 +121,106 @@ You **MUST NOT** include HTML comment blocks (<!-- HTML comments -->) inside the
 
 ---
 
+## Plan Coverage Audit
+
+Run this after the plan file is written or updated, before the plan is handed back for human review (**ExitPlanMode**). It checks that the plan's technical content (**Design**, **Tasks**, **Verification**) actually delivers every user story — catching a story the plan describes but never builds, and work the plan adds that no story asked for. These auditors are blind on purpose: they re-derive the story-to-task mapping from the plan alone, so they catch a story you believe is built but is not.
+
+**When to run:**
+
+1. You **MUST** run this audit when the plan has a **User Stories** or **User Story Map** component.
+2. You **MUST** skip this audit when the plan has neither.
+
+**Spawn the auditors:**
+
+1. You **MUST** enumerate the audit units from the written plan:
+    - one unit per **user story** in the **User Stories** list;
+    - one **reverse** unit for the whole **Tasks** section;
+    - one **journey** unit for the whole **User Story Map** (when the plan has one).
+2. You **MUST** spawn one `subagent(general-purpose)` per unit, in the background, in parallel (single message, multiple tool calls).
+3. You **MUST** keep each auditor blind. Its prompt contains only the plan file path and the one unit it checks. You **MUST NOT** pass this conversation, your own reasoning, or any story-to-task mapping you already have in mind.
+4. You **MUST** tell each auditor to read the plan file (and the repository read-only to confirm referenced paths exist) and to change nothing.
+
+**Per-story auditor prompt:**
+
+<PLAN_STORY_AUDIT_PROMPT>
+
+```markdown
+PLAN FILE: <absolute path to $SESSION_PLAN_FILE>
+STORY: <one user story, verbatim: "As a <role>, I want <capability>, so that <benefit>">
+
+You are a blind auditor. Read ONLY the plan file. Change nothing.
+Do not assume any task implements this story — find the evidence yourself.
+
+For this one story, check:
+1. Built — does at least one task build this story's capability? Cite task ids.
+2. Benefit — do those tasks deliver the "so that <benefit>" part, not just the capability? Name any benefit no task delivers.
+3. Proven — does at least one Verification case prove this story works end to end? Cite the case id.
+
+Return exactly:
+VERDICT: MET | PARTIAL | MISSED
+BUILT-BY: <task ids, or none>
+PROVEN-BY: <verification case ids, or none>
+GAP: <one line naming the missing piece, or none>
+```
+
+</PLAN_STORY_AUDIT_PROMPT>
+
+**Reverse auditor prompt:**
+
+<PLAN_REVERSE_AUDIT_PROMPT>
+
+```markdown
+PLAN FILE: <absolute path to $SESSION_PLAN_FILE>
+
+You are a blind auditor. Read ONLY the plan file. Change nothing.
+For every task in the Tasks section, name the user story it serves.
+A task may serve no story only if the plan gives an explicit non-story reason (for example a required setup or refactor step).
+
+Return one line per task:
+<task id>: SERVES <story number> | ORPHAN (<why no story>)
+```
+
+</PLAN_REVERSE_AUDIT_PROMPT>
+
+**Journey auditor prompt:**
+
+<PLAN_JOURNEY_AUDIT_PROMPT>
+
+```markdown
+PLAN FILE: <absolute path to $SESSION_PLAN_FILE>
+
+You are a blind auditor. Read ONLY the plan file's User Story Map. Change nothing.
+For every Activity and every Step in the map, check that at least one Story sits under it.
+
+Return one line per Activity/Step:
+<activity or step name>: HAS STORY | GAP (no story under it)
+```
+
+</PLAN_JOURNEY_AUDIT_PROMPT>
+
+**Act on the results:**
+
+1. You **MUST** collect every verdict into a coverage table and show it to the user:
+
+    ```
+    Story / Task / Step      Verdict    Built by   Proven by   Gap
+    1. <story>               MET        T2, T5     V1          —
+    2. <story>               PARTIAL    T3         —           benefit "…" not delivered; no E2E case
+    3. <story>               MISSED     none       none        no task builds <capability>
+    T7 <task>                ORPHAN     —          —           serves no story
+    Step "<step>"            GAP        —          —           no story under this step
+    ```
+
+2. You **MUST** treat any `MISSED`, `PARTIAL`, `ORPHAN`, or `GAP` as a real gap and fix the plan: add the missing task or verification case, attach the orphan task to a story or remove it, or add the missing story. Then re-spawn only the auditors whose units you changed.
+3. You **MUST** repeat until every row reads `MET` / `SERVES` / `HAS STORY`. Only then is the plan ready for human review.
+
+**MUST NOT:**
+
+1. You **MUST NOT** delete or weaken a user story just to clear a gap. Resolve a gap by building it, or ask the user.
+2. You **MUST NOT** let an auditor edit the plan or the repository; auditors only read and report.
+
+---
+
 ## Appendix A: Plan Format (Reference)
 
 ```markdown
