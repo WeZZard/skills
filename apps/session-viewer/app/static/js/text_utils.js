@@ -116,6 +116,11 @@
 
   function collectTermsForScope(expr, scope) {
     if (!expr) return [];
+    if (expr.op === "RAW") {
+      if (!expr.text) return [];
+      var normalized = expr.text.toLowerCase().replace(/[_-]+/g, " ").replace(/([a-z0-9])([A-Z])/g, "$1 $2").trim();
+      return normalized.split(/\s+/).filter(Boolean);
+    }
     if (expr.op === "TERM") {
       if (scope === "raw") return expr.tokens || [];
       if (expr.category === scope) return expr.tokens || [];

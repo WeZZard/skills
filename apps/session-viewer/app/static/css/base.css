@@ -2116,9 +2116,10 @@ article.message.has-problem > .message-card {
 .search-badge-container {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 2px;
   align-items: center;
   min-height: 0;
+  max-height: 22px;
 }
 
 .search-badge-container:empty {
@@ -2128,58 +2129,141 @@ article.message.has-problem > .message-card {
 .search-badge {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   background: var(--sv-panel-soft, #f1f5f9);
   border: 1px solid var(--sv-border, #e2e8f0);
   border-radius: 999px;
-  padding: 1px 2px 1px 8px;
+  padding: 0;
   font-size: 11px;
-  line-height: 1.3;
+  line-height: 1;
   max-width: 240px;
-}
-
-.search-badge-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 140px;
+  height: 22px;
+  vertical-align: middle;
+  box-sizing: border-box;
+  align-self: center;
+  flex: 0 0 auto;
 }
 
 .search-badge-toggle {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 2px;
   border: none;
-  background: none;
+  background: var(--sv-accent-soft, #dbeafe);
   cursor: pointer;
-  font-size: 10px;
-  color: var(--sv-muted, #64748b);
-  padding: 2px 4px;
-  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--sv-accent, #2563eb);
+  padding: 0 5px;
+  height: 20px;
+  min-height: 20px;
+  max-height: 20px;
+  line-height: 20px;
+  white-space: nowrap;
+  border-radius: 999px 0 0 999px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  align-self: center;
 }
 
 .search-badge-toggle:hover {
-  background: var(--sv-panel-strong, #e2e8f0);
+  background: var(--sv-accent, #2563eb);
+  color: #fff;
+}
+
+.search-badge-label {
+  display: inline;
+  line-height: 20px;
 }
 
 .search-badge-caret {
-  font-size: 8px;
+  display: block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+}
+
+.search-badge-text {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+  padding: 0 6px;
+  height: 20px;
+  min-height: 20px;
+  max-height: 20px;
+  line-height: 20px;
+  color: var(--sv-text, #1e293b);
+  box-sizing: border-box;
+  flex: 0 1 auto;
+  align-self: center;
 }
 
 .search-badge-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
-  background: none;
+  background: transparent;
   cursor: pointer;
   font-size: 12px;
-  line-height: 1;
+  line-height: 20px;
   color: var(--sv-muted, #64748b);
-  padding: 1px 5px;
-  border-radius: 999px;
+  padding: 0 6px;
+  height: 20px;
+  min-height: 20px;
+  max-height: 20px;
+  border-radius: 0 999px 999px 0;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.search-badge-close {
+  display: block;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
 }
 
 .search-badge-remove:hover {
-  background: var(--sv-danger, #ef4444);
-  color: #fff;
+  background: var(--sv-panel-strong, #e2e8f0);
+  color: var(--sv-danger, #ef4444);
+}
+
+.search-badge-dropdown {
+  display: flex;
+  flex-direction: column;
+  background: var(--sv-panel, #fff);
+  border: 1px solid var(--sv-border, #e2e8f0);
+  border-radius: var(--sv-radius-control, 6px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 2px;
+  min-width: 120px;
+}
+
+.search-badge-dropdown-item {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 8px;
+  text-align: left;
+  border-radius: var(--sv-radius-small, 4px);
+  color: var(--sv-text, #1e293b);
+}
+
+.search-badge-dropdown-item:hover {
+  background: var(--sv-panel-soft, #f1f5f9);
+}
+
+.search-badge-dropdown-item.selected {
+  font-weight: 600;
+  color: var(--sv-accent, #2563eb);
 }
 
 .search-op {
@@ -2199,15 +2283,17 @@ article.message.has-problem > .message-card {
 
 .search-input-shell {
   display: flex;
+  flex-wrap: nowrap;
   min-width: 0;
-  height: var(--sv-control-height);
   min-height: var(--sv-control-height);
   align-items: center;
-  gap: var(--sv-space-3);
+  gap: var(--sv-space-2);
   border: 1px solid var(--border);
   border-radius: var(--sv-radius-pill);
   background: var(--panel);
-  padding: 0 var(--sv-space-5);
+  padding: 2px var(--sv-space-5);
+  overflow: visible;
+}
   font-size: var(--sv-font-size-ui);
   line-height: var(--sv-line-height-ui);
 }
@@ -2217,7 +2303,7 @@ article.message.has-problem > .message-card {
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.12);
 }
 
-.search-input-shell svg {
+.search-input-shell > svg {
   flex: 0 0 auto;
   width: var(--sv-search-icon-size);
   height: var(--sv-search-icon-size);
@@ -2230,8 +2316,9 @@ article.message.has-problem > .message-card {
 
 .search-input-shell input {
   display: block;
-  width: 100%;
-  height: 100%;
+  flex: 1 1 120px;
+  min-width: 120px;
+  height: calc(var(--sv-control-height) - 4px);
   min-height: 0;
   border: 0;
   appearance: none;
@@ -2240,6 +2327,21 @@ article.message.has-problem > .message-card {
   font-size: var(--sv-font-size-ui);
   line-height: var(--sv-line-height-ui);
   outline: 0;
+}
+
+.search-input-shell input::placeholder {
+  color: var(--muted, #94a3b8);
+  opacity: 1;
+}
+
+.search-badge-container:not(:empty) ~ input::placeholder {
+  opacity: 0;
+}
+
+.search-input-shell input::-webkit-search-cancel-button,
+.search-input-shell input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .search-result-status {
@@ -4296,6 +4398,22 @@ article.message.has-problem > .message-card {
   padding: 4px 8px;
   font-size: var(--sv-font-size-meta);
   line-height: var(--sv-line-height-tight);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.timeline-search-option-group button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: #074b98;
+  font-weight: 600;
+}
+
+.timeline-search-option-group button[aria-pressed="false"]:hover {
+  background: var(--panel-soft);
+  color: var(--text);
 }
 
 .timeline-search-warning {
@@ -5231,6 +5349,15 @@ article.message.has-problem > .message-card {
 
   .dual-workbench[data-agent-tree-open="true"] {
     grid-template-columns: 240px 260px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1100px) {
+  .command-bar .icon-label > span {
+    display: none;
+  }
+  .command-bar .segmented-control .icon-label > span {
+    display: none;
   }
 }
 

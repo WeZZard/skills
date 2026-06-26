@@ -33,8 +33,8 @@ const state = {
   timelineDetailRenderCount: 0,
   agentTreeDrawerOpen: false,
   searchByLayout: {
-    graph: { queryText: "", expression: null, categories: {}, cursorKey: "", open: false },
-    reader: { queryText: "", expression: null, categories: {}, cursorKey: "", open: false },
+    graph: { queryText: "", stagingText: "", expression: null, categories: {}, cursorKey: "", open: false, pendingOperator: "" },
+    reader: { queryText: "", stagingText: "", expression: null, categories: {}, cursorKey: "", open: false, pendingOperator: "" },
   },
   timelineSearchMode: "context",
   timelineSearchScope: "all",
@@ -2239,10 +2239,10 @@ function activeSearchOpen(layout = state.layout) {
 }
 
 function syncSearchInputs() {
-  const graphText = state.searchByLayout.graph.queryText;
-  const readerText = state.searchByLayout.reader.queryText;
-  if (els.timelineSearchInput && els.timelineSearchInput.value !== graphText) els.timelineSearchInput.value = graphText;
-  if (els.readerSearchInput && els.readerSearchInput.value !== readerText) els.readerSearchInput.value = readerText;
+  const graphStaging = state.searchByLayout.graph.stagingText;
+  const readerStaging = state.searchByLayout.reader.stagingText;
+  if (els.timelineSearchInput && els.timelineSearchInput.value !== graphStaging) els.timelineSearchInput.value = graphStaging;
+  if (els.readerSearchInput && els.readerSearchInput.value !== readerStaging) els.readerSearchInput.value = readerStaging;
 }
 
 function invalidateTimelineRender() {
@@ -2351,15 +2351,19 @@ function renderSearchBadges(target) {
   const container = target === "graph" ? els.timelineSearchBadges : els.readerSearchBadges;
   if (!container) return;
   const ss = state.searchByLayout[target];
-  if (!ss.expression) { container.innerHTML = ""; return; }
-  const html = renderExprBadges(ss.expression);
+  const committedExpr = ss.queryText ? parseSearchQuery(ss.queryText, ss.categories) : null;
+  if (!committedExpr) { container.innerHTML = ""; return; }
+  const html = renderExprBadges(committedExpr);
   container.innerHTML = compactHtml(html);
 }
 
 function renderExprBadges(expr) {
   if (!expr) return "";
   if (expr.op === "TERM") return renderBadge(expr);
-  if (expr.op === "AND") return expr.children.map(renderExprBadges).join('<span class="search-op">AND</span>');
+  if (expr.op === "AND") {
+    const sep = expr.explicit ? '<span class="search-op">AND</span>' : "";
+    return expr.children.map(renderExprBadges).join(sep);
+  }
   if (expr.op === "OR") {
     const parts = expr.children.map((c) => c.op === "AND" ? `<span class="search-paren">(</span>${renderExprBadges(c)}<span class="search-paren">)</span>` : renderExprBadges(c));
     return parts.join('<span class="search-op">OR</span>');
@@ -2368,21 +2372,26 @@ function renderExprBadges(expr) {
 }
 
 function renderBadge(term) {
-  const catLabel = term.category === "key" ? "Field key" : "Field value";
+  const catLabel = term.category === "key" ? "KEY" : "VAL";
+  const caretSvg = '<svg class="search-badge-caret" width="7" height="7" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 L5 7 L8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const closeSvg = '<svg class="search-badge-close" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 2.5 L7.5 7.5 M7.5 2.5 L2.5 7.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
   return `<span class="search-badge" data-badge-id="${escAttr(term.id)}" data-badge-category="${escAttr(term.category)}">
+    <button type="button" class="search-badge-toggle" data-action="toggle-badge-category" data-badge-id="${escAttr(term.id)}" aria-label="Change category">${caretSvg}<span class="search-badge-label">${esc(catLabel)}</span></button>
     <span class="search-badge-text">${esc(term.text)}</span>
-    <button type="button" class="search-badge-toggle" data-action="toggle-badge-category" data-badge-id="${escAttr(term.id)}" aria-label="Change category: ${catLabel}">${catLabel} <span class="search-badge-caret" aria-hidden="true">\u25BE</span></button>
-    <button type="button" class="search-badge-remove" data-action="remove-badge" data-badge-id="${escAttr(term.id)}" aria-label="Remove search term ${escAttr(term.text)}">\u00D7</button>
+    <button type="button" class="search-badge-remove" data-action="remove-badge" data-badge-id="${escAttr(term.id)}" aria-label="Remove search term ${escAttr(term.text)}">${closeSvg}</button>
   </span>`;
 }
 
 function setBadgeCategory(termId, category) {
   const ss = searchStateForLayout(state.layout);
-  const terms = collectLeafTerms(ss.expression);
+  const committedExpr = parseSearchQuery(ss.queryText, ss.categories);
+  const terms = collectLeafTerms(committedExpr);
   const term = terms.find((t) => t.id === termId);
   if (!term) return;
   term.category = category === "key" ? "key" : "value";
   ss.categories[term.text] = term.category;
+  ss.queryText = serializeExpr(committedExpr);
+  ss.expression = buildSearchExpression(ss);
   const results = state.layout === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
   ss.cursorKey = results[0]?.key || "";
   renderSearchPanels();
@@ -2390,12 +2399,59 @@ function setBadgeCategory(termId, category) {
   if (state.layout === "reader") { renderReader(); renderLeftNavigation(); }
 }
 
-function toggleBadgeCategory(termId) {
+let searchBadgeDropdown = null;
+
+function closeBadgeDropdown() {
+  if (searchBadgeDropdown) {
+    searchBadgeDropdown.remove();
+    searchBadgeDropdown = null;
+  }
+}
+
+function openBadgeDropdown(button, termId) {
+  closeBadgeDropdown();
   const ss = searchStateForLayout(state.layout);
-  const terms = collectLeafTerms(ss.expression);
+  const committedExpr = ss.queryText ? parseSearchQuery(ss.queryText, ss.categories) : null;
+  const terms = collectLeafTerms(committedExpr);
   const term = terms.find((t) => t.id === termId);
   if (!term) return;
-  setBadgeCategory(termId, term.category === "key" ? "value" : "key");
+  const currentCat = term.category || "value";
+
+  const dropdown = document.createElement("div");
+  dropdown.className = "search-badge-dropdown";
+  dropdown.setAttribute("role", "menu");
+  dropdown.innerHTML = compactHtml([
+    `<button type="button" class="search-badge-dropdown-item ${currentCat === "value" ? "selected" : ""}" data-badge-category="value" role="menuitem">Field value</button>`,
+    `<button type="button" class="search-badge-dropdown-item ${currentCat === "key" ? "selected" : ""}" data-badge-category="key" role="menuitem">Field key</button>`,
+  ].join(""));
+
+  document.body.appendChild(dropdown);
+  searchBadgeDropdown = dropdown;
+  searchBadgeDropdown.dataset.termId = termId;
+
+  const rect = button.getBoundingClientRect();
+  dropdown.style.position = "absolute";
+  dropdown.style.left = `${rect.left}px`;
+  dropdown.style.top = `${rect.bottom + 2}px`;
+  dropdown.style.zIndex = "9999";
+
+  dropdown.addEventListener("click", (event) => {
+    const item = event.target.closest(".search-badge-dropdown-item");
+    if (!item) return;
+    const category = item.dataset.badgeCategory;
+    closeBadgeDropdown();
+    setBadgeCategory(termId, category);
+  });
+}
+
+function toggleBadgeCategory(termId, button) {
+  if (searchBadgeDropdown && searchBadgeDropdown.dataset.termId === termId) {
+    closeBadgeDropdown();
+    return;
+  }
+  if (searchBadgeDropdown) closeBadgeDropdown();
+  if (!button) return;
+  openBadgeDropdown(button, termId);
 }
 
 function removeTermFromExpr(expr, termId) {
@@ -2405,19 +2461,20 @@ function removeTermFromExpr(expr, termId) {
     const children = expr.children.map((c) => removeTermFromExpr(c, termId)).filter(Boolean);
     if (!children.length) return null;
     if (children.length === 1) return children[0];
-    return { op: expr.op, children };
+    return { op: expr.op, explicit: expr.explicit, children };
   }
   return expr;
 }
 
 function removeBadge(termId) {
   const ss = searchStateForLayout(state.layout);
-  const terms = collectLeafTerms(ss.expression);
+  const committedExpr = parseSearchQuery(ss.queryText, ss.categories);
+  const terms = collectLeafTerms(committedExpr);
   const term = terms.find((t) => t.id === termId);
   if (!term) return;
-  delete ss.categories[term.text];
-  ss.expression = removeTermFromExpr(ss.expression, termId);
-  ss.queryText = serializeExpr(ss.expression);
+  const newCommitted = removeTermFromExpr(committedExpr, termId);
+  ss.queryText = serializeExpr(newCommitted);
+  ss.expression = buildSearchExpression(ss);
   syncSearchInputs();
   const results = state.layout === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
   ss.cursorKey = results[0]?.key || "";
@@ -2474,8 +2531,8 @@ function toggleSearchForLayout(layout = state.layout) {
   setSearchOpen(layout, !activeSearchOpen(layout), { focus: true });
 }
 
-let searchDebounceTimer = null;
-const SEARCH_DEBOUNCE_MS = 100;
+let stageDebounceTimer = null;
+const STAGE_DEBOUNCE_MS = 100;
 
 function updateTextUtilsState() {
   const active = activeSearchOpen();
@@ -2485,10 +2542,36 @@ function updateTextUtilsState() {
   window.TextUtils.setCurrentHitKey(active ? ss.cursorKey : "");
 }
 
+function buildSearchExpression(ss) {
+  const committed = ss.queryText ? parseSearchQuery(ss.queryText, ss.categories) : null;
+  const stagedRaw = ss.stagingText && ss.stagingText.trim() ? ss.stagingText.trim() : "";
+  const stagedUpper = stagedRaw.toUpperCase();
+  if (!committed && !stagedRaw && !ss.pendingOperator) return null;
+  if (stagedUpper === "OR" || stagedUpper === "AND") {
+    if (!committed) return null;
+    return committed;
+  }
+  let effectiveOp = ss.pendingOperator || "";
+  let stagedText = stagedRaw;
+  if (committed && (stagedUpper.startsWith("OR ") || stagedUpper.startsWith("AND "))) {
+    const spaceIdx = stagedRaw.indexOf(" ");
+    effectiveOp = stagedUpper.substring(0, spaceIdx);
+    stagedText = stagedRaw.substring(spaceIdx + 1).trim();
+  }
+  const staged = stagedText ? parseSearchQuery(stagedText, ss.categories) : null;
+  if (!committed && !staged) return null;
+  if (committed && !staged) return committed;
+  if (!committed && staged) return staged;
+  if (effectiveOp === "OR") return { op: "OR", children: [committed, staged] };
+  if (effectiveOp === "AND") return { op: "AND", explicit: true, children: [committed, staged] };
+  return { op: "AND", explicit: false, children: [committed, staged] };
+}
+
 function applySearchQuery(target, text) {
   const ss = state.searchByLayout[target];
   ss.queryText = String(text || "");
-  ss.expression = parseSearchQuery(ss.queryText, ss.categories);
+  ss.stagingText = "";
+  ss.expression = buildSearchExpression(ss);
   const results = target === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
   ss.cursorKey = results[0]?.key || "";
   renderSearchPanels();
@@ -2499,18 +2582,82 @@ function applySearchQuery(target, text) {
   }
 }
 
+function commitStagedSearch(target, text) {
+  const ss = state.searchByLayout[target];
+  const trimmed = String(text || "").trim();
+  if (!trimmed) return;
+  if (stageDebounceTimer) { clearTimeout(stageDebounceTimer); stageDebounceTimer = null; }
+  const upper = trimmed.toUpperCase();
+  if (upper === "OR" || upper === "AND") {
+    if (!ss.queryText) return;
+    ss.pendingOperator = upper;
+    ss.stagingText = "";
+    syncSearchInputs();
+    renderSearchPanels();
+    return;
+  }
+  let effectiveOp = ss.pendingOperator || "";
+  let stagedText = trimmed;
+  if (ss.queryText && (upper.startsWith("OR ") || upper.startsWith("AND "))) {
+    const spaceIdx = trimmed.indexOf(" ");
+    effectiveOp = upper.substring(0, spaceIdx);
+    stagedText = trimmed.substring(spaceIdx + 1).trim();
+  }
+  if (!stagedText) return;
+  const stagedExpr = parseSearchQuery(stagedText, ss.categories);
+  if (!stagedExpr) return;
+  const canonicalStaged = serializeExpr(stagedExpr);
+  let newCommitted;
+  if (ss.queryText && effectiveOp === "OR") {
+    newCommitted = `${ss.queryText} OR ${canonicalStaged}`;
+  } else if (ss.queryText && effectiveOp === "AND") {
+    newCommitted = `${ss.queryText} AND ${canonicalStaged}`;
+  } else if (ss.queryText) {
+    newCommitted = `${ss.queryText} ${canonicalStaged}`;
+  } else {
+    newCommitted = canonicalStaged;
+  }
+  ss.pendingOperator = "";
+  const newExpr = parseSearchQuery(newCommitted, ss.categories);
+  ss.queryText = serializeExpr(newExpr);
+  ss.stagingText = "";
+  ss.expression = buildSearchExpression(ss);
+  const results = target === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
+  ss.cursorKey = results[0]?.key || "";
+  syncSearchInputs();
+  renderSearchPanels();
+  if (target === "graph") invalidateTimelineRender();
+  if (target === "reader" && state.layout === "reader") {
+    renderReader();
+    renderLeftNavigation();
+  }
+}
+
+function stageSearchText(target, text) {
+  const ss = state.searchByLayout[target];
+  ss.stagingText = String(text || "");
+  ss.expression = buildSearchExpression(ss);
+  const results = target === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
+  ss.cursorKey = results[0]?.key || "";
+  renderSearchPanels();
+  if (target === "graph") invalidateTimelineRender();
+  if (target === "reader" && state.layout === "reader") {
+    renderReader();
+    renderLeftNavigation();
+  }
+}
+
+function stageSearchTextDebounced(target, text) {
+  if (stageDebounceTimer) clearTimeout(stageDebounceTimer);
+  stageDebounceTimer = setTimeout(() => {
+    stageDebounceTimer = null;
+    stageSearchText(target, text);
+  }, STAGE_DEBOUNCE_MS);
+}
+
 function setSearchQuery(value) {
   const target = state.layout === "graph" ? "graph" : "reader";
   applySearchQuery(target, value);
-}
-
-function setSearchQueryDebounced(value) {
-  const target = state.layout === "graph" ? "graph" : "reader";
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-  searchDebounceTimer = setTimeout(() => {
-    searchDebounceTimer = null;
-    applySearchQuery(target, value);
-  }, SEARCH_DEBOUNCE_MS);
 }
 
 function setTimelineSearchMode(mode) {
@@ -3263,8 +3410,14 @@ function parseSearchQuery(value, categories) {
     while (pos < tokens.length) {
       const tok = tokens[pos];
       if (tok.type === "OR" || tok.type === "RPAREN") break;
-      if (tok.type === "AND") { pos += 1; const right = parseFactor(); if (right) left = left ? { op: "AND", children: [left, right] } : right; }
-      else { const right = parseFactor(); if (right) left = left ? { op: "AND", children: [left, right] } : right; }
+      if (tok.type === "AND") {
+        pos += 1;
+        const right = parseFactor();
+        if (right) left = left ? { op: "AND", explicit: true, children: [left, right] } : right;
+      } else {
+        const right = parseFactor();
+        if (right) left = left ? { op: "AND", explicit: false, children: [left, right] } : right;
+      }
     }
     return left;
   }
@@ -3299,7 +3452,10 @@ function serializeExpr(expr) {
     const needsQuotes = expr.text.includes(" ");
     return needsQuotes ? `"${expr.text}"` : expr.text;
   }
-  if (expr.op === "AND") return expr.children.map(serializeExpr).join(" AND ");
+  if (expr.op === "AND") {
+    const sep = expr.explicit ? " AND " : " ";
+    return expr.children.map(serializeExpr).join(sep);
+  }
   if (expr.op === "OR") return expr.children.map((c) => c.op === "AND" ? `(${serializeExpr(c)})` : serializeExpr(c)).join(" OR ");
   return "";
 }
@@ -3413,6 +3569,7 @@ function searchResultSnippet(record, maxLength) {
   const terms = ss && ss.expression ? window.TextUtils.collectTermsForScope(ss.expression, "value") : [];
   const source = String(record?.sourceText || "").replace(/\s+/g, " ").trim();
   if (!source) return "(no searchable text)";
+  if (!terms.length) return source.slice(0, maxLen);
   const lower = source.toLowerCase();
   const positions = terms.map((token) => lower.indexOf(token)).filter((p) => p >= 0);
   const first = positions.length ? Math.min(...positions) : 0;
@@ -3478,8 +3635,14 @@ function timelineSearchPresentation() {
     const layoutKeys = track.capsuleKeys.filter((key) => visibleKeys.has(key));
     if (layoutKeys.length) layoutKeysByTrackId.set(track.id, layoutKeys);
   });
-  const warning = state.timelineSearchMode === "hits" && hitTracksWithHiddenParents.size
-    ? "Hits Only hides subagent spawn context for some results."
+  const hasSubagentHits = results.some((r) => {
+    const t = trackById.get(r.trackId);
+    return t && t.depth > 0;
+  });
+  const warning = state.timelineSearchMode === "hits" && hasSubagentHits
+    ? (hitTracksWithHiddenParents.size
+      ? "Hits Only hides subagent spawn context for some results."
+      : "Hits Only mode: showing hits without subagent spawn context.")
     : "";
   return {
     active,
@@ -3492,6 +3655,7 @@ function timelineSearchPresentation() {
     warning,
     signature: [
       state.searchByLayout.graph.queryText,
+      state.searchByLayout.graph.stagingText,
       JSON.stringify(state.searchByLayout.graph.categories),
       state.timelineSearchMode,
       state.timelineSearchScope,
@@ -4067,6 +4231,7 @@ function renderTimelineDetailPanel(capsule) {
   }
   const detailKey = windows.map((item) => `${item.mode}:${item.capsule.key}:${item.capsule.problemCount}`).join("|")
     + "::" + (state.searchByLayout[state.layout === "graph" ? "graph" : "reader"].queryText || "")
+    + "::" + (state.searchByLayout[state.layout === "graph" ? "graph" : "reader"].stagingText || "")
     + "::" + JSON.stringify(state.searchByLayout[state.layout === "graph" ? "graph" : "reader"].categories);
   if (state.timelineDetailKey === detailKey) return;
   state.timelineDetailKey = detailKey;
@@ -4786,8 +4951,8 @@ els.layoutButtons.forEach((button) => {
   button.addEventListener("click", () => setLayout(button.dataset.layout));
 });
 
-els.timelineSearchInput?.addEventListener("input", (event) => setSearchQueryDebounced(event.target.value));
-els.readerSearchInput?.addEventListener("input", (event) => setSearchQueryDebounced(event.target.value));
+els.timelineSearchInput?.addEventListener("input", (event) => stageSearchTextDebounced("graph", event.target.value));
+els.readerSearchInput?.addEventListener("input", (event) => stageSearchTextDebounced("reader", event.target.value));
 
 els.leftTabs.forEach((button) => {
   button.addEventListener("click", () => setLeftNavTab(button.dataset.leftTab));
@@ -4814,6 +4979,9 @@ els.agentPaneToggle?.addEventListener("click", () => setAgentTreeDrawerOpen(!sta
 els.agentTreeDrawerClose?.addEventListener("click", () => setAgentTreeDrawerOpen(false));
 
 document.addEventListener("click", (event) => {
+  if (searchBadgeDropdown && !searchBadgeDropdown.contains(event.target) && !event.target.closest(".search-badge-toggle")) {
+    closeBadgeDropdown();
+  }
   if (els.sessionInfoButton?.getAttribute("aria-expanded") === "true") setSessionInfoOpen(false);
   const button = event.target.closest("[data-action]");
   if (!button) return;
@@ -4899,7 +5067,7 @@ document.addEventListener("click", (event) => {
   if (action === "toggle-badge-category") {
     event.preventDefault();
     event.stopPropagation();
-    toggleBadgeCategory(button.dataset.badgeId);
+    toggleBadgeCategory(button.dataset.badgeId, button);
     return;
   }
   if (action === "remove-badge") {
@@ -4924,29 +5092,79 @@ document.addEventListener("keydown", (event) => {
     setSearchOpen(state.layout, true, { focus: true });
     return;
   }
+  if (searchInput && event.key === "Backspace" && event.target.value === "") {
+    const target = state.layout === "graph" ? "graph" : "reader";
+    const ss = searchStateForLayout(state.layout);
+    if (!ss.queryText) return;
+    event.preventDefault();
+    const committedExpr = parseSearchQuery(ss.queryText, ss.categories);
+    const terms = collectLeafTerms(committedExpr);
+    if (!terms.length) return;
+    const lastTerm = terms[terms.length - 1];
+    const newCommitted = removeTermFromExpr(committedExpr, lastTerm.id);
+    ss.queryText = serializeExpr(newCommitted);
+    ss.expression = buildSearchExpression(ss);
+    const results = target === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
+    ss.cursorKey = results[0]?.key || "";
+    renderSearchPanels();
+    if (target === "graph") invalidateTimelineRender();
+    if (target === "reader" && state.layout === "reader") { renderReader(); renderLeftNavigation(); }
+    return;
+  }
   if (searchInput && event.key === "Enter") {
     event.preventDefault();
+    const target = state.layout === "graph" ? "graph" : "reader";
+    const ss = searchStateForLayout(state.layout);
     if (event.shiftKey) {
       moveSearchResult(-1);
-    } else {
-      const ss = searchStateForLayout(state.layout);
-      if (ss.queryText) moveSearchResult(1);
-      else setSearchQuery(event.target.value);
+    } else if (event.target.value && event.target.value.trim()) {
+      commitStagedSearch(target, event.target.value);
+    } else if (ss.expression) {
+      moveSearchResult(1);
     }
     return;
   }
   if (searchInput && event.key === "Escape") {
     event.preventDefault();
+    if (stageDebounceTimer) { clearTimeout(stageDebounceTimer); stageDebounceTimer = null; }
     const ss = searchStateForLayout(state.layout);
-    if (ss.queryText) setSearchQuery("");
-    else setSearchOpen(state.layout, false);
+    const target = state.layout === "graph" ? "graph" : "reader";
+    if (ss.stagingText && ss.stagingText.trim()) {
+      ss.stagingText = "";
+      syncSearchInputs();
+      ss.expression = buildSearchExpression(ss);
+      const results = target === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
+      ss.cursorKey = results[0]?.key || "";
+      renderSearchPanels();
+      if (target === "graph") invalidateTimelineRender();
+      if (target === "reader" && state.layout === "reader") { renderReader(); renderLeftNavigation(); }
+    } else if (ss.queryText) {
+      applySearchQuery(target, "");
+    } else {
+      setSearchOpen(state.layout, false);
+    }
     return;
   }
   if (event.key === "Escape") {
+    if (searchBadgeDropdown) { closeBadgeDropdown(); return; }
     if (activeSearchOpen()) {
+      if (stageDebounceTimer) { clearTimeout(stageDebounceTimer); stageDebounceTimer = null; }
       const ss0 = searchStateForLayout(state.layout);
-      if (ss0.queryText) setSearchQuery("");
-      else setSearchOpen(state.layout, false);
+      const target0 = state.layout === "graph" ? "graph" : "reader";
+      if (ss0.stagingText && ss0.stagingText.trim()) {
+        ss0.stagingText = "";
+        syncSearchInputs();
+        ss0.expression = buildSearchExpression(ss0);
+        const results0 = target0 === "graph" ? searchResults({ scope: "timeline" }) : searchResults();
+        ss0.cursorKey = results0[0]?.key || "";
+        renderSearchPanels();
+        if (target0 === "graph") invalidateTimelineRender();
+        if (target0 === "reader" && state.layout === "reader") { renderReader(); renderLeftNavigation(); }
+      } else if (ss0.queryText) {
+        applySearchQuery(target0, "");
+      } else {
+        setSearchOpen(state.layout, false);
+      }
       return;
     }
     setSessionInfoOpen(false);
