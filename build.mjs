@@ -124,7 +124,10 @@ function buildHooksJson(moments, binding) {
 // the exact esbuild flags recorded in the configurator's package.json build
 // script. esbuild output is deterministic (no timestamps), so a second build
 // yields identical bytes.
-async function bundleConfigurator(outFile) {
+//
+// `tool` ("claude" or "opencode") is baked in at bundle time via esbuild
+// `define` so the bundle contains no runtime `process.env.ZELDA_TOOL` lookup.
+async function bundleConfigurator(outFile, tool) {
   await esbuild({
     entryPoints: [join(SRC, "configurator", "src", "server.ts")],
     bundle: true,
@@ -134,6 +137,7 @@ async function bundleConfigurator(outFile) {
     outfile: outFile,
     banner: { js: "#!/usr/bin/env node" },
     logLevel: "warning",
+    define: { "process.env.ZELDA_TOOL": JSON.stringify(tool) },
   });
 }
 
@@ -177,7 +181,7 @@ async function buildClaude(outDir) {
   copyInto(join(SRC, "configurator", "package.json"), join(outDir, "configurator", "package.json"));
   copyInto(join(SRC, "configurator", "package-lock.json"), join(outDir, "configurator", "package-lock.json"));
   copyInto(join(SRC, "configurator", "src", "server.ts"), join(outDir, "configurator", "src", "server.ts"));
-  await bundleConfigurator(join(outDir, "configurator.mjs"));
+  await bundleConfigurator(join(outDir, "configurator.mjs"), "claude");
 }
 
 // ---------------------------------------------------------------------------
@@ -194,19 +198,23 @@ async function buildClaude(outDir) {
 //
 // The generator is fully data-driven from the binding:
 //   - each kind:"event" moment with a unique event.type becomes a plain branch;
-//   - an event.type bound by >1 moment (only session.idle today: task-complete
-//     scope=root vs subagent-done scope=child) becomes a disambiguating branch
-//     that inspects the Session's parentID — a child session has parentID set,
-//     a root session does not (verified against @opencode-ai/sdk types:
-//     EventSessionIdle.properties carries only sessionID, and Session.parentID
-//     is the parent linkage, so we resolve it via client.session.get);
-//   - kind:"prompt" (plan-ready) and kind:"dropped" moments emit no branch, so
-//     they invoke nothing, and any unmapped event.type falls through silently.
+//   - an event.type bound by >1 moment (only session.idle today) becomes a
+//     disambiguating branch: a child session (parentID set, via client.session.get)
+//     -> subagent-done; a root session whose just-finished turn ran in the `plan`
+//     agent (read from the last assistant message via client.session.messages)
+//     -> plan-ready; any other root session -> task-complete;
+//   - kind:"dropped" moments emit no branch, so they invoke nothing, and any
+//     unmapped event.type falls through silently.
 function buildOpenCodePlugin(binding) {
   // Preserve binding declaration order for deterministic output.
   const eventMoments = Object.entries(binding.moments)
     .filter(([, b]) => b.kind === "event")
-    .map(([id, b]) => ({ id, type: b.type, scope: b.scope ?? null }));
+    .map(([id, b]) => ({
+      id,
+      type: b.type,
+      scope: b.scope ?? null,
+      agent: b.agent ?? null,
+    }));
 
   // Group moments by event.type, preserving first-seen order.
   const byType = new Map();
@@ -224,12 +232,16 @@ function buildOpenCodePlugin(binding) {
   //   2. For event.type values that ARE in the union (e.g. "session.idle"), a
   //      `event.type === "session.idle"` guard narrows `event` to the matching
   //      member, so reading `event.properties.sessionID` type-checks.
+  let needChild = false;
+  let needAgent = false;
+  let needRejectGuard = false;
+  const hasQuestionAsked = eventMoments.some((m) => m.type === "question.asked");
   const branches = [];
   for (const [type, moments] of byType) {
     const typeLit = JSON.stringify(type);
-    if (moments.length === 1) {
-      // Unique mapping: event.type → moment id. No payload access needed, so we
-      // compare the widened string.
+    if (moments.length === 1 && !moments[0].scope && !moments[0].agent) {
+      // Unique, unqualified mapping: event.type → moment id. No payload access
+      // needed, so we compare the widened string.
       branches.push(
         `      if (eventType === ${typeLit}) {\n` +
           `        play(${JSON.stringify(moments[0].id)});\n` +
@@ -239,29 +251,127 @@ function buildOpenCodePlugin(binding) {
       continue;
     }
 
-    // Shared event.type: disambiguate by session scope via parentID. The event
-    // payload (e.g. EventSessionIdle) carries only sessionID, so we fetch the
-    // Session and branch on parentID: child → child-scoped moment, root →
-    // root-scoped moment. The `event.type === ...` guard narrows `event` so
-    // `event.properties.sessionID` type-checks.
+    // Scoped / agent-qualified event.type (only session.idle today). Disambiguate
+    // by session scope (parentID) and by the agent that ran the just-finished turn:
+    //   child session          → subagent-done
+    //   root + agent "plan"     → plan-ready (the plan agent stopped → plan ready)
+    //   root (no agent)         → task-complete
+    // The `event.type === ...` guard narrows `event` so `event.properties.sessionID`
+    // type-checks.
     const child = moments.find((m) => m.scope === "child");
-    const root = moments.find((m) => m.scope === "root");
-    if (!child || !root) {
+    const rootAgentMoments = moments.filter((m) => m.scope === "root" && m.agent);
+    const rootDefault = moments.find((m) => m.scope === "root" && !m.agent);
+    if (!rootDefault) {
       throw new Error(
         `opencode binding: event.type "${type}" is bound by multiple moments ` +
-          `without distinct root/child scope; cannot disambiguate`,
+          `but has no default (unqualified) root-scoped moment; cannot disambiguate`,
       );
     }
-    branches.push(
-      `      if (event.type === ${typeLit}) {\n` +
-        `        const isChild = await isChildSession(event.properties.sessionID);\n` +
-        `        play(isChild ? ${JSON.stringify(child.id)} : ${JSON.stringify(root.id)});\n` +
-        `        return;\n` +
-        `      }`,
+    const lines = [
+      `      if (event.type === ${typeLit}) {`,
+      `        const sessionID = event.properties.sessionID;`,
+    ];
+    if (hasQuestionAsked && type === "session.idle") {
+      // A dismissed question fires question.rejected then session.idle; that idle
+      // is not a completion, so suppress it.
+      needRejectGuard = true;
+      lines.push(
+        `        if (rejectedSessions.has(sessionID)) {`,
+        `          rejectedSessions.delete(sessionID);`,
+        `          return;`,
+        `        }`,
+      );
+    }
+    if (child) {
+      needChild = true;
+      lines.push(
+        `        if (await isChildSession(sessionID)) {`,
+        `          play(${JSON.stringify(child.id)});`,
+        `          return;`,
+        `        }`,
+      );
+    }
+    if (rootAgentMoments.length) {
+      needAgent = true;
+      lines.push(`        const lastAgent = await lastTurnAgent(sessionID);`);
+      for (const m of rootAgentMoments) {
+        lines.push(
+          `        if (lastAgent === ${JSON.stringify(m.agent)}) {`,
+          `          play(${JSON.stringify(m.id)});`,
+          `          return;`,
+          `        }`,
+        );
+      }
+    }
+    lines.push(
+      `        play(${JSON.stringify(rootDefault.id)});`,
+      `        return;`,
+      `      }`,
     );
+    branches.push(lines.join("\n"));
   }
 
-  const dispatchBody = branches.join("\n");
+  let dispatchBody = branches.join("\n");
+  if (needRejectGuard) {
+    // Record a rejected (dismissed) question so the following session.idle is
+    // suppressed instead of mistaken for task completion / plan-ready.
+    dispatchBody =
+      `      if (eventType === "question.rejected") {\n` +
+      `        const sid = (event as any).properties?.sessionID;\n` +
+      `        if (sid) rejectedSessions.add(sid);\n` +
+      `        return;\n` +
+      `      }\n` +
+      dispatchBody;
+  }
+
+  // Emit only the helper functions the dispatch actually references.
+  const helpers = [];
+  if (needChild) {
+    helpers.push(
+      "  // A child (subagent) session has `parentID` set; the root session does\n" +
+        "  // not. session.idle carries only sessionID, so we fetch the Session.\n" +
+        "  async function isChildSession(sessionID: string): Promise<boolean> {\n" +
+        "    try {\n" +
+        "      const res = await client.session.get({ path: { id: sessionID } });\n" +
+        "      return Boolean(res.data?.parentID);\n" +
+        "    } catch {\n" +
+        "      // If the session can't be resolved, treat it as a root session so\n" +
+        "      // the task-complete cue still fires rather than being dropped.\n" +
+        "      return false;\n" +
+        "    }\n" +
+        "  }",
+    );
+  }
+  if (needAgent) {
+    helpers.push(
+      "  // OpenCode plan mode == the read-only `plan` agent. At idle (the agent\n" +
+        "  // stopped) read which agent ran the just-finished turn from its last\n" +
+        "  // assistant message (`agent`/`mode`), so plan-ready fires only when the\n" +
+        "  // plan agent stops. Never console.log/error here — it corrupts the TUI.\n" +
+        "  async function lastTurnAgent(\n" +
+        "    sessionID: string,\n" +
+        "  ): Promise<string | undefined> {\n" +
+        "    try {\n" +
+        "      const res = await client.session.messages({ path: { id: sessionID } });\n" +
+        "      const items: any[] = (res as any).data ?? [];\n" +
+        "      for (let i = items.length - 1; i >= 0; i--) {\n" +
+        "        const info = items[i]?.info;\n" +
+        '        if (info?.role === "assistant") return info.agent ?? info.mode;\n' +
+        "      }\n" +
+        "    } catch {\n" +
+        "      // If messages can't be read, fall through to the default cue.\n" +
+        "    }\n" +
+        "    return undefined;\n" +
+        "  }",
+    );
+  }
+  const helpersBlock = helpers.length ? helpers.join("\n\n") + "\n\n" : "";
+  const rejectStateBlock = needRejectGuard
+    ? "  // Track sessions whose most recent question was rejected (dismissed), so\n" +
+      "  // the session.idle that immediately follows is suppressed rather than\n" +
+      "  // mistaken for completion.\n" +
+      "  const rejectedSessions = new Set<string>();\n\n"
+    : "";
 
   // The handler is hand-written boilerplate around the generated dispatch. The
   // player is spawned via `node` (always present in a Node/Bun OpenCode host),
@@ -270,9 +380,9 @@ function buildOpenCodePlugin(binding) {
 // Edit the canonical source under plugins/zelda-sounds/ and re-run \`node build.mjs\`.
 //
 // OpenCode plugin: plays Zelda sound cues on lifecycle events. Each bound event
-// spawns the bundled player (../hooks/play-configured-sound.mjs) with a tool-
-// neutral moment id; the player resolves the user's configured sound (shared at
-// ~/.config/zelda-sounds.json) or the packaged default and plays it.
+// resolves the user's configured sound (from ~/.config/zelda-sounds.json or the
+// packaged default) and spawns hooks/play-sound.sh directly — no Node/Bun
+// runtime dependency required.
 
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -304,12 +414,18 @@ function readMoments(file: string): Record<string, string | null> {
 
 // Resolve the moment's sound (user override, else packaged default) and play it
 // via the cross-platform shell player, detached so playback never blocks the bus.
+// User config is read from the opencode section first (data.opencode.moments),
+// with a legacy flat fallback (data.moments); defaults are always flat.
 function play(moment: string): void {
   const defaults = readMoments(DEFAULTS_JSON);
-  const user = readMoments(USER_CONFIG);
-  const sound = Object.prototype.hasOwnProperty.call(user, moment)
-    ? user[moment]
-    : defaults[moment];
+  let userSound: string | null | undefined;
+  try {
+    const data = JSON.parse(readFileSync(USER_CONFIG, "utf8")) as any;
+    userSound = data?.opencode?.moments?.[moment] ?? data?.moments?.[moment];
+  } catch {
+    // no user config — fall through to defaults
+  }
+  const sound = userSound !== undefined ? userSound : defaults[moment];
   if (!sound) return;
   const soundPath = join(SOUNDS_DIR, sound);
   if (!existsSync(soundPath) || !existsSync(PLAY_SOUND_SH)) return;
@@ -321,20 +437,7 @@ function play(moment: string): void {
 }
 
 export const ZeldaSounds: Plugin = async ({ client }) => {
-  // A child (subagent) session has \`parentID\` set; the root session does not.
-  // session.idle carries only sessionID, so we fetch the Session to read it.
-  async function isChildSession(sessionID: string): Promise<boolean> {
-    try {
-      const res = await client.session.get({ path: { id: sessionID } });
-      return Boolean(res.data?.parentID);
-    } catch {
-      // If the session can't be resolved, treat it as a root session so the
-      // task-complete cue still fires rather than being silently dropped.
-      return false;
-    }
-  }
-
-  return {
+${helpersBlock}${rejectStateBlock}  return {
     event: async ({ event }) => {
       const eventType: string = event.type;
 ${dispatchBody}
@@ -443,13 +546,17 @@ The plugin plays a cue on these events:
 | \`session.created\` | \`session-started\` |
 | \`session.idle\` (root session)  | \`task-complete\`   |
 | \`session.idle\` (child/subagent) | \`subagent-done\`   |
+| \`session.idle\` (root, \`plan\` agent) | \`plan-ready\`   |
 | \`question.asked\` | \`attention-needed\` |
 | \`session.error\`  | \`error\`           |
 | \`tui.toast.show\` | \`notification\`    |
 
 Root vs. child \`session.idle\` is disambiguated by the session's \`parentID\`
 (resolved via the OpenCode client): a child/subagent session has a parent, the
-root session does not.
+root session does not. A root \`session.idle\` plays \`plan-ready\` instead of
+\`task-complete\` when the just-finished turn ran in OpenCode's read-only \`plan\`
+agent (read from the last assistant message) — i.e. the plan agent stopped with a
+plan ready for your review.
 
 ### 2. Install the configurator skill
 
@@ -464,13 +571,6 @@ cp -R skill/configure-zelda-sounds ~/.config/opencode/skill/
 
 (You can also place it under a project's \`.opencode/skill/\` directory.) Then run
 the \`configure-zelda-sounds\` skill to launch the GUI and assign sounds.
-
-### 3. Enable the plan-ready cue (plan mode)
-
-OpenCode emits no plan-mode event to plugins, so the \`plan-ready\` cue is
-delivered by a plan-mode instruction. Append the contents of \`AGENTS.md\` (in
-this directory) to your OpenCode \`AGENTS.md\` (project root or
-\`~/.config/opencode/AGENTS.md\`) so the agent plays the cue when a plan is ready.
 
 ## Configuration
 
@@ -493,24 +593,9 @@ async function buildOpenCode(outDir) {
     buildOpenCodePlugin(opencodeBinding),
   );
 
-  // Player → hooks/ as a transformed variant: drop the CLAUDE_PLUGIN_ROOT env
-  // override so the OpenCode player derives its root from import.meta.url only.
-  // A stray ambient CLAUDE_PLUGIN_ROOT (e.g. an OpenCode user who also runs
-  // Claude Code) must not misroute the OpenCode player to a different dist root.
-  const PLAYER_SRC = join(SRC, "player", "play-configured-sound.mjs");
-  const canonicalPlayer = readFileSync(PLAYER_SRC, "utf8");
-  const ENV_OVERRIDE = "process.env.CLAUDE_PLUGIN_ROOT || resolve(__dirname, \"..\")";
-  const IMPORT_META_ONLY = "resolve(__dirname, \"..\")";
-  const occurrences = (canonicalPlayer.split(ENV_OVERRIDE).length - 1);
-  if (occurrences !== 1) {
-    throw new Error(
-      `build.mjs: expected exactly 1 occurrence of ${JSON.stringify(ENV_OVERRIDE)} ` +
-      `in ${PLAYER_SRC} but found ${occurrences}. ` +
-      `Update the OpenCode emitter transform in buildOpenCode() to match the new canonical player.`,
-    );
-  }
-  const opencodePlayer = canonicalPlayer.replace(ENV_OVERRIDE, IMPORT_META_ONLY);
-  writeText(join(outDir, "hooks", "play-configured-sound.mjs"), opencodePlayer);
+  // Shell player → hooks/ (byte-identical copy; preserves exec bit).
+  // The generated OpenCode plugin resolves the sound and spawns play-sound.sh
+  // directly — no .mjs player needed in the OpenCode distribution.
   copyInto(join(SRC, "player", "play-sound.sh"), join(outDir, "hooks", "play-sound.sh"));
 
   // Bundled sounds + generated defaults (reuse the Claude defaults builder so the
@@ -519,17 +604,17 @@ async function buildOpenCode(outDir) {
   writeText(join(outDir, "config", "defaults.json"), buildDefaultsJson(moments));
 
   // Configurator: deterministic esbuild bundle + its assets.
-  await bundleConfigurator(join(outDir, "configurator.mjs"));
+  await bundleConfigurator(join(outDir, "configurator.mjs"), "opencode");
   copyInto(join(SRC, "assets"), join(outDir, "assets"));
 
-  // Loose skill, plan-mode AGENTS.md, sample config, and install docs.
+  // Loose skill, sample config, and install docs. plan-ready is now an event
+  // (root session.idle while the `plan` agent ran), so there is no AGENTS.md hack.
   // OpenCode discovers skills as <dir>/<name>/SKILL.md (a folder named after the
   // skill containing SKILL.md), NOT a flat <name>.md file — mirror the Claude side.
   writeText(
     join(outDir, "skill", "configure-zelda-sounds", "SKILL.md"),
     buildOpenCodeSkill(),
   );
-  copyInto(join(SRC, "prompts", "plan-ready.agents.md"), join(outDir, "AGENTS.md"));
   writeText(join(outDir, "opencode.json.example"), buildOpenCodeJsonExample());
   writeText(join(outDir, "README.md"), buildOpenCodeReadme());
 }

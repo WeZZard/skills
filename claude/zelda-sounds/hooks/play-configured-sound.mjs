@@ -42,12 +42,12 @@ function readMomentMap(filepath) {
 const momentId = process.argv[2];
 if (!momentId) process.exit(1);
 
-const configPath = FIXED_USER_CONFIG_PATH;
 const defaults = readMomentMap(DEFAULTS_JSON);
-const userConfig = readMomentMap(resolveConfigPath(configPath));
-
-const hasOverride = Object.prototype.hasOwnProperty.call(userConfig, momentId);
-const soundFile = hasOverride ? userConfig[momentId] : defaults[momentId];
+const userConfigRaw = readJsonFile(resolveConfigPath(FIXED_USER_CONFIG_PATH), {});
+const soundFile =
+  userConfigRaw?.claude?.moments?.[momentId] ??
+  userConfigRaw?.moments?.[momentId] ??
+  defaults[momentId];
 
 if (!soundFile) process.exit(0);
 

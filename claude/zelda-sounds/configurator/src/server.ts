@@ -5,6 +5,8 @@ import { exec } from "node:child_process";
 import { homedir, platform } from "node:os";
 import { fileURLToPath } from "node:url";
 import momentsManifest from "../../moments.json";
+import claudeBinding from "../../bindings/claude.json";
+import opencodeBinding from "../../bindings/opencode.json";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -38,6 +40,17 @@ const SHOULD_OPEN_BROWSER = !["1", "true", "yes"].includes(
   (process.env.NO_OPEN || "").toLowerCase(),
 );
 
+// build.mjs bakes process.env.ZELDA_TOOL per distribution via esbuild define;
+// at dev time the env var selects the tool, defaulting to "claude".
+const TOOL = process.env.ZELDA_TOOL || "claude";
+
+type ToolBindingEntry = { kind?: string; [key: string]: unknown };
+type ToolBinding = { moments?: Record<string, ToolBindingEntry> };
+const BINDINGS: Record<string, ToolBinding> = {
+  claude: claudeBinding as unknown as ToolBinding,
+  opencode: opencodeBinding as unknown as ToolBinding,
+};
+
 // ── Semantic Moments ──────────────────────────────────────────────────
 
 interface SemanticMoment {
@@ -63,11 +76,16 @@ interface MomentViewModel {
   defaultSound: string | null;
 }
 
-const MOMENTS: SemanticMoment[] = momentsManifest.moments.map((m) => ({
-  id: m.id,
-  label: m.label,
-  description: m.description,
-}));
+const MOMENTS: SemanticMoment[] = momentsManifest.moments
+  .filter((m) => {
+    const entry = BINDINGS[TOOL]?.moments?.[m.id];
+    return entry?.kind !== "dropped";
+  })
+  .map((m) => ({
+    id: m.id,
+    label: m.label,
+    description: m.description,
+  }));
 
 const DEFAULT_MOMENT_SOUNDS: Record<string, string | null> = Object.fromEntries(
   momentsManifest.moments.map((m) => [m.id, m.default]),
@@ -166,8 +184,15 @@ function loadDefaultConfig() {
 
 function loadUserConfig(configPath: string = FIXED_USER_CONFIG_PATH) {
   const resolved = resolveConfigPath(configPath);
-  if (existsSync(resolved)) return readMomentMap(resolved);
-  return {};
+  if (!existsSync(resolved)) return {};
+  const data = readJsonFile<Record<string, unknown>>(resolved, {});
+  // New per-tool section takes precedence
+  const toolSection = data[TOOL] as { moments?: Record<string, string | null> } | undefined;
+  if (toolSection && typeof toolSection === "object" && "moments" in toolSection) {
+    return toolSection.moments || {};
+  }
+  // Legacy flat fallback — never rewrite the file here
+  return (data as { moments?: Record<string, string | null> }).moments || {};
 }
 
 function buildUserConfigDocument(storedMoments: Record<string, string | null>) {
@@ -220,23 +245,27 @@ function ensureUserConfigFile(configPath: string = FIXED_USER_CONFIG_PATH) {
   if (existsSync(resolvedConfigPath)) return resolvedConfigPath;
 
   mkdirSync(dirname(resolvedConfigPath), { recursive: true });
-  writeFileSync(resolvedConfigPath, buildUserConfigDocument({}));
+  writeFileSync(resolvedConfigPath, JSON.stringify({}, null, 2) + "\n");
   return resolvedConfigPath;
 }
 
 function doctorUserConfigFile(configPath: string = FIXED_USER_CONFIG_PATH) {
   const resolvedConfigPath = ensureUserConfigFile(configPath);
   const rawText = readFileSync(resolvedConfigPath, "utf-8");
-  let parsed: unknown = {};
+  let parsed: Record<string, unknown> = {};
 
   try {
-    parsed = JSON.parse(rawText);
+    parsed = JSON.parse(rawText) as Record<string, unknown>;
   } catch {
     parsed = {};
   }
 
-  const normalized = normalizeStoredMoments((parsed as { moments?: unknown }).moments);
-  writeFileSync(resolvedConfigPath, buildUserConfigDocument(normalized));
+  // Normalize this tool's section; fall back to the legacy flat moments for source
+  const toolData = parsed[TOOL] as { moments?: unknown } | undefined;
+  const sourceMoments = toolData?.moments ?? (parsed as { moments?: unknown }).moments;
+  const normalized = normalizeStoredMoments(sourceMoments);
+  const updated = { ...parsed, [TOOL]: { moments: normalized } };
+  writeFileSync(resolvedConfigPath, JSON.stringify(updated, null, 2) + "\n");
   return resolvedConfigPath;
 }
 
@@ -246,7 +275,7 @@ function getConfigState() {
   const configPath = FIXED_USER_CONFIG_PATH;
   const resolvedConfigPath = ensureUserConfigFile(configPath);
   const defaults = loadDefaultConfig();
-  const userConfig = readMomentMap(resolvedConfigPath);
+  const userConfig = loadUserConfig(configPath);
 
   const moments: MomentViewModel[] = MOMENTS.map((moment) => {
     const hasOverride = Object.prototype.hasOwnProperty.call(userConfig, moment.id);
@@ -295,7 +324,12 @@ function saveConfigState(configPath: string, storedMoments: Record<string, strin
   const resolvedConfigPath = resolveConfigPath(configPath);
   mkdirSync(dirname(resolvedConfigPath), { recursive: true });
 
-  writeFileSync(resolvedConfigPath, buildUserConfigDocument(storedMoments));
+  // Read existing content so we can preserve any other tool's section and legacy keys
+  const existing = existsSync(resolvedConfigPath)
+    ? readJsonFile<Record<string, unknown>>(resolvedConfigPath, {})
+    : {};
+  const updated = { ...existing, [TOOL]: { moments: storedMoments } };
+  writeFileSync(resolvedConfigPath, JSON.stringify(updated, null, 2) + "\n");
   writeFileSync(SETTINGS_JSON, JSON.stringify({ description: "Runtime settings for Zelda Sounds" }, null, 2) + "\n");
 
   return resolvedConfigPath;

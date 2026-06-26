@@ -23,6 +23,37 @@ var moments_default = {
   ]
 };
 
+// plugins/zelda-sounds/bindings/claude.json
+var claude_default = {
+  description: "Zelda sound effects for Claude Code events",
+  moments: {
+    "session-started": { event: "SessionStart", matcher: "startup|resume" },
+    "task-complete": { event: "Stop", matcher: null },
+    "attention-needed": { event: "PreToolUse", matcher: "AskUserQuestion" },
+    "plan-mode-entered": { event: "PostToolUse", matcher: "EnterPlanMode" },
+    "plan-ready": { event: "PreToolUse", matcher: "ExitPlanMode" },
+    "plan-approved": { event: "PostToolUse", matcher: "ExitPlanMode" },
+    "subagent-done": { event: "SubagentStop", matcher: ".*" },
+    notification: { event: "Notification", matcher: ".*" },
+    error: { event: "PostToolUseFailure", matcher: ".*" }
+  }
+};
+
+// plugins/zelda-sounds/bindings/opencode.json
+var opencode_default = {
+  moments: {
+    "session-started": { kind: "event", type: "session.created" },
+    "task-complete": { kind: "event", type: "session.idle", scope: "root" },
+    "attention-needed": { kind: "event", type: "question.asked" },
+    error: { kind: "event", type: "session.error" },
+    notification: { kind: "event", type: "tui.toast.show" },
+    "subagent-done": { kind: "event", type: "session.idle", scope: "child" },
+    "plan-ready": { kind: "event", type: "session.idle", scope: "root", agent: "plan" },
+    "plan-mode-entered": { kind: "dropped" },
+    "plan-approved": { kind: "dropped" }
+  }
+};
+
 // plugins/zelda-sounds/configurator/src/server.ts
 var __dirname = dirname(fileURLToPath(import.meta.url));
 function resolvePluginRoot() {
@@ -47,7 +78,15 @@ var PORT = Number.parseInt(process.env.PORT || "4321", 10);
 var SHOULD_OPEN_BROWSER = !["1", "true", "yes"].includes(
   (process.env.NO_OPEN || "").toLowerCase()
 );
-var MOMENTS = moments_default.moments.map((m) => ({
+var TOOL = "claude";
+var BINDINGS = {
+  claude: claude_default,
+  opencode: opencode_default
+};
+var MOMENTS = moments_default.moments.filter((m) => {
+  const entry = BINDINGS[TOOL]?.moments?.[m.id];
+  return entry?.kind !== "dropped";
+}).map((m) => ({
   id: m.id,
   label: m.label,
   description: m.description
@@ -130,15 +169,15 @@ function loadDefaultConfig() {
     ...readMomentMap(DEFAULT_CONFIG_JSON)
   };
 }
-function buildUserConfigDocument(storedMoments) {
-  return JSON.stringify(
-    {
-      description: "User overrides for Zelda Sounds",
-      moments: storedMoments
-    },
-    null,
-    2
-  ) + "\n";
+function loadUserConfig(configPath = FIXED_USER_CONFIG_PATH) {
+  const resolved = resolveConfigPath(configPath);
+  if (!existsSync(resolved)) return {};
+  const data = readJsonFile(resolved, {});
+  const toolSection = data[TOOL];
+  if (toolSection && typeof toolSection === "object" && "moments" in toolSection) {
+    return toolSection.moments || {};
+  }
+  return data.moments || {};
 }
 function normalizeStoredMoments(rawMoments) {
   const source = rawMoments && typeof rawMoments === "object" ? rawMoments : {};
@@ -170,7 +209,7 @@ function ensureUserConfigFile(configPath = FIXED_USER_CONFIG_PATH) {
   const resolvedConfigPath = resolveConfigPath(configPath);
   if (existsSync(resolvedConfigPath)) return resolvedConfigPath;
   mkdirSync(dirname(resolvedConfigPath), { recursive: true });
-  writeFileSync(resolvedConfigPath, buildUserConfigDocument({}));
+  writeFileSync(resolvedConfigPath, JSON.stringify({}, null, 2) + "\n");
   return resolvedConfigPath;
 }
 function doctorUserConfigFile(configPath = FIXED_USER_CONFIG_PATH) {
@@ -182,8 +221,11 @@ function doctorUserConfigFile(configPath = FIXED_USER_CONFIG_PATH) {
   } catch {
     parsed = {};
   }
-  const normalized = normalizeStoredMoments(parsed.moments);
-  writeFileSync(resolvedConfigPath, buildUserConfigDocument(normalized));
+  const toolData = parsed[TOOL];
+  const sourceMoments = toolData?.moments ?? parsed.moments;
+  const normalized = normalizeStoredMoments(sourceMoments);
+  const updated = { ...parsed, [TOOL]: { moments: normalized } };
+  writeFileSync(resolvedConfigPath, JSON.stringify(updated, null, 2) + "\n");
   return resolvedConfigPath;
 }
 function getConfigState() {
@@ -191,7 +233,7 @@ function getConfigState() {
   const configPath = FIXED_USER_CONFIG_PATH;
   const resolvedConfigPath = ensureUserConfigFile(configPath);
   const defaults = loadDefaultConfig();
-  const userConfig = readMomentMap(resolvedConfigPath);
+  const userConfig = loadUserConfig(configPath);
   const moments = MOMENTS.map((moment) => {
     const hasOverride = Object.prototype.hasOwnProperty.call(userConfig, moment.id);
     const configuredSound = hasOverride ? userConfig[moment.id] : null;
@@ -224,7 +266,9 @@ function saveConfigState(configPath, storedMoments) {
   ensureRuntimeFiles();
   const resolvedConfigPath = resolveConfigPath(configPath);
   mkdirSync(dirname(resolvedConfigPath), { recursive: true });
-  writeFileSync(resolvedConfigPath, buildUserConfigDocument(storedMoments));
+  const existing = existsSync(resolvedConfigPath) ? readJsonFile(resolvedConfigPath, {}) : {};
+  const updated = { ...existing, [TOOL]: { moments: storedMoments } };
+  writeFileSync(resolvedConfigPath, JSON.stringify(updated, null, 2) + "\n");
   writeFileSync(SETTINGS_JSON, JSON.stringify({ description: "Runtime settings for Zelda Sounds" }, null, 2) + "\n");
   return resolvedConfigPath;
 }

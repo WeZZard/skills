@@ -33,13 +33,17 @@ The plugin plays a cue on these events:
 | `session.created` | `session-started` |
 | `session.idle` (root session)  | `task-complete`   |
 | `session.idle` (child/subagent) | `subagent-done`   |
+| `session.idle` (root, `plan` agent) | `plan-ready`   |
 | `question.asked` | `attention-needed` |
 | `session.error`  | `error`           |
 | `tui.toast.show` | `notification`    |
 
 Root vs. child `session.idle` is disambiguated by the session's `parentID`
 (resolved via the OpenCode client): a child/subagent session has a parent, the
-root session does not.
+root session does not. A root `session.idle` plays `plan-ready` instead of
+`task-complete` when the just-finished turn ran in OpenCode's read-only `plan`
+agent (read from the last assistant message) — i.e. the plan agent stopped with a
+plan ready for your review.
 
 ### 2. Install the configurator skill
 
@@ -54,13 +58,6 @@ cp -R skill/configure-zelda-sounds ~/.config/opencode/skill/
 
 (You can also place it under a project's `.opencode/skill/` directory.) Then run
 the `configure-zelda-sounds` skill to launch the GUI and assign sounds.
-
-### 3. Enable the plan-ready cue (plan mode)
-
-OpenCode emits no plan-mode event to plugins, so the `plan-ready` cue is
-delivered by a plan-mode instruction. Append the contents of `AGENTS.md` (in
-this directory) to your OpenCode `AGENTS.md` (project root or
-`~/.config/opencode/AGENTS.md`) so the agent plays the cue when a plan is ready.
 
 ## Configuration
 
