@@ -1,0 +1,13 @@
+{
+  "moments": [
+    { "id": "session-started",   "label": "Session Started",   "description": "New or resumed session",                  "default": null },
+    { "id": "task-complete",     "label": "Task Complete",     "description": "Agent finished all work",                 "default": "Zelda-TotK-Historic-Item-Collected.mp3" },
+    { "id": "attention-needed",  "label": "Ask User Question", "description": "Claude is about to ask you something",    "default": "Zelda-TotK-Puzzle-Solved.mp3" },
+    { "id": "plan-mode-entered", "label": "Plan Mode Entered", "description": "Entered planning mode",                   "default": null },
+    { "id": "plan-ready",        "label": "Plan Ready",        "description": "Plan is ready, awaiting your review",     "default": "Zelda-TotK-Puzzle-Solved.mp3" },
+    { "id": "plan-approved",     "label": "Plan Approved",     "description": "You approved the plan, execution begins", "default": "Zelda-TotK-New-Location-Discovered.mp3" },
+    { "id": "subagent-done",     "label": "Subagents Done",    "description": "A subagent completed its work",           "default": null },
+    { "id": "notification",      "label": "Notification",      "description": "Claude sent a notification",              "default": null },
+    { "id": "error",             "label": "Error",             "description": "A tool call failed",                      "default": null }
+  ]
+}

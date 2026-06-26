@@ -1,0 +1,15 @@
+{
+  "//": "Scoped tsconfig for type-checking the GENERATED OpenCode plugin entry against @opencode-ai/plugin. Run: npx tsc -p tsconfig.opencode.json --noEmit",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "es2022",
+    "lib": ["es2022"],
+    "types": ["node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["opencode/zelda-sounds/plugin/zelda-sounds.ts"]
+}

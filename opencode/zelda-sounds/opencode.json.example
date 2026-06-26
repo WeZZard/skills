@@ -1,0 +1,6 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "file:///ABSOLUTE/PATH/TO/opencode/zelda-sounds/plugin/zelda-sounds.ts"
+  ]
+}

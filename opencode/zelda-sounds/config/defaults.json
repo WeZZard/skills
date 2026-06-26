@@ -1,0 +1,14 @@
+{
+  "description": "Packaged default sound mapping for Zelda Sounds",
+  "moments": {
+    "attention-needed": "Zelda-TotK-Puzzle-Solved.mp3",
+    "plan-ready": "Zelda-TotK-Puzzle-Solved.mp3",
+    "plan-approved": "Zelda-TotK-New-Location-Discovered.mp3",
+    "task-complete": "Zelda-TotK-Historic-Item-Collected.mp3",
+    "error": null,
+    "notification": null,
+    "subagent-done": null,
+    "session-started": null,
+    "plan-mode-entered": null
+  }
+}

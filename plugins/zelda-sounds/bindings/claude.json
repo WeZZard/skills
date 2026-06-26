@@ -1,0 +1,14 @@
+{
+  "description": "Zelda sound effects for Claude Code events",
+  "moments": {
+    "session-started":   { "event": "SessionStart",       "matcher": "startup|resume" },
+    "task-complete":     { "event": "Stop",               "matcher": null },
+    "attention-needed":  { "event": "PreToolUse",         "matcher": "AskUserQuestion" },
+    "plan-mode-entered": { "event": "PostToolUse",        "matcher": "EnterPlanMode" },
+    "plan-ready":        { "event": "PreToolUse",         "matcher": "ExitPlanMode" },
+    "plan-approved":     { "event": "PostToolUse",        "matcher": "ExitPlanMode" },
+    "subagent-done":     { "event": "SubagentStop",       "matcher": ".*" },
+    "notification":      { "event": "Notification",       "matcher": ".*" },
+    "error":             { "event": "PostToolUseFailure", "matcher": ".*" }
+  }
+}

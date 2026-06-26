@@ -1,0 +1,64 @@
+name: Check Generated zelda-sounds
+
+# Un-bypassable freshness gate: regenerate the zelda-sounds distributions from the
+# canonical source and fail if the committed claude/ and opencode/ outputs drift
+# from a fresh `node build.mjs`, or if the OpenCode plugin no longer type-checks.
+# A local pre-commit hook is convenience; this job is the guarantee, because a
+# contributor can skip the hook (unset core.hooksPath or `git commit --no-verify`)
+# but cannot skip CI.
+
+on:
+  push:
+    paths:
+      - 'plugins/zelda-sounds/**'
+      - 'claude/zelda-sounds/**'
+      - 'opencode/zelda-sounds/**'
+      - 'build.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.opencode.json'
+      - '.github/workflows/check-generated-zelda.yml'
+  pull_request:
+    paths:
+      - 'plugins/zelda-sounds/**'
+      - 'claude/zelda-sounds/**'
+      - 'opencode/zelda-sounds/**'
+      - 'build.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.opencode.json'
+      - '.github/workflows/check-generated-zelda.yml'
+
+jobs:
+  check-generated:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Deterministic, offline regeneration. build.mjs takes no args (= all
+      # emitters) and uses the pinned esbuild for the configurator bundle; it does
+      # NOT touch the network, a model provider, or run opencode.
+      - name: Regenerate distributions
+        run: node build.mjs
+
+      # Freshness gate: any drift between the committed generated outputs and a
+      # fresh build fails the job (and blocks merge). This catches a canonical
+      # source change that was not rebuilt, or a hand-edited generated file —
+      # including changes committed with `git commit --no-verify`.
+      - name: Verify generated outputs are fresh
+        run: git diff --exit-code -- claude/zelda-sounds opencode/zelda-sounds
+
+      # Static type-check of the generated OpenCode plugin against
+      # @opencode-ai/plugin. Offline; no opencode runtime invoked.
+      - name: Type-check OpenCode plugin
+        run: npx tsc -p tsconfig.opencode.json --noEmit

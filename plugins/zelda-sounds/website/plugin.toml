@@ -1,0 +1,6 @@
+# Zelda Sounds - Plugin Configuration
+# This file configures the plugin detail page content
+
+display_name = "Zelda Sounds"
+tagline = "Breath of the Wild sound cues for Claude Code events."
+repo = "WeZZard/skills"
