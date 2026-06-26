@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/WeZZard/skills/main/opencode/vision/schemas/visual-judgment-report.v1.json",
+  "title": "Visual Judgment Report v1",
+  "description": "Typed report envelope returned by a vision subagent after analyzing images against a visual-judgment-request.",
+  "type": "object",
+  "required": ["$schema", "id", "status"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "const": "https://raw.githubusercontent.com/WeZZard/skills/main/opencode/vision/schemas/visual-judgment-report.v1.json",
+      "description": "Schema version identifier."
+    },
+    "id": {
+      "type": "string",
+      "description": "Correlation id — MUST echo the request id."
+    },
+    "status": {
+      "enum": ["ok", "error", "insufficient-evidence"],
+      "description": "ok = analysis succeeded; error = could not analyze (image corrupt, model unavailable); insufficient-evidence = analyzed but cannot reach a verdict."
+    },
+    "verdict": {
+      "enum": ["pass", "fail", "inconclusive"],
+      "description": "pass = criterion met; fail = criterion not met; inconclusive = informational (diff/describe) or genuinely undeterminable."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "0.0–1.0. How confident the subagent is in the verdict."
+    },
+    "observations": {
+      "type": "array",
+      "description": "Typed observations about what was seen in each image. Structure varies per judgment.type by convention.",
+      "items": {
+        "type": "object",
+        "required": ["imageLabel", "subject"],
+        "additionalProperties": false,
+        "properties": {
+          "imageLabel": { "type": "string", "description": "Label of the image this observation is about (matches request images[].label)." },
+          "subject": { "type": "string", "description": "What this observation describes, e.g. 'Submit button', 'footer text'." },
+          "properties": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Type-specific findings, e.g. {found:true,position:'bottom-center'} for presence, {centerOffsetPx:42} for alignment, {knobPosition:'right',trackColor:'blue'} for state."
+          },
+          "note": { "type": "string", "description": "Free-form clarifying note." }
+        }
+      }
+    },
+    "diff": {
+      "type": "array",
+      "description": "Structured change list (populated for judgment.type=diff).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "string", "description": "What was there in the baseline." },
+          "to": { "type": "string", "description": "What is there in the current." },
+          "description": { "type": "string", "description": "Human-readable description of the change." }
+        }
+      }
+    },
+    "reasoning": {
+      "type": "string",
+      "description": "One-paragraph justification linking observations to verdict."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Populated when status=error. One entry per image that could not be analyzed.",
+      "items": {
+        "type": "object",
+        "required": ["imageLabel", "code"],
+        "additionalProperties": false,
+        "properties": {
+          "imageLabel": { "type": "string" },
+          "code": { "type": "string", "description": "e.g. 'file_not_found', 'unsupported_format', 'model_unavailable'." }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "ok" } } },
+      "then": { "required": ["verdict", "confidence", "observations"] }
+    }
+  ]
+}
