@@ -1,13 +1,26 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { readFileSync } from "node:fs"
+import { readFileSync, existsSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
+// Resolve sibling data files (vision-models.json, subagent-body.md) relative
+// to the bundle. When run from source, `import.meta.url` is plugin.ts and the
+// files sit next to it. When run from the built dist/index.js, the files ship
+// in the package root (one level up from dist/) per `files` in package.json.
+// Try a list of candidate directories and use the first that has both files.
+const bundleDir = dirname(fileURLToPath(import.meta.url))
+const candidateDirs = [bundleDir, join(bundleDir, "..")]
+const dataDir =
+  candidateDirs.find(
+    (d) =>
+      existsSync(join(d, "vision-models.json")) &&
+      existsSync(join(d, "subagent-body.md"))
+  ) ?? bundleDir
+
 const manifest = JSON.parse(
-  readFileSync(join(__dirname, "vision-models.json"), "utf8")
+  readFileSync(join(dataDir, "vision-models.json"), "utf8")
 )
-const bodyTpl = readFileSync(join(__dirname, "subagent-body.md"), "utf8")
+const bodyTpl = readFileSync(join(dataDir, "subagent-body.md"), "utf8")
 
 const PERMISSION = {
   edit: "deny",

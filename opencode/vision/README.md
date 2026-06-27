@@ -23,27 +23,29 @@ delegates to a vision subagent, and parses a typed report.
 
 ## Install
 
-Add the plugin and the skill to your `~/.config/opencode/opencode.json`:
+Add the plugin to your `~/.config/opencode/opencode.json`:
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "<repo>/opencode/vision/plugin.ts"
+    "opencode-vision"
   ],
   "skills": {
     "paths": [
-      "<repo>/opencode/vision"
+      "~/.cache/opencode/node_modules/opencode-vision"
     ]
   }
 }
 ```
 
-Replace `<repo>` with the absolute path to this repository on your
-machine.
+opencode auto-installs the npm package via Bun on next launch — no separate
+`npm install` step needed. The skill ships inside the package (in `SKILL.md`),
+so point `skills.paths` at the installed package location so opencode's skill
+loader can find it.
 
 The old `~/.config/opencode/agents/visual-judge.md` subagent is removed —
-the plugin replaces it with 10 typed `vision-*` subagents. Delete the old
+this plugin replaces it with 10 typed `vision-*` subagents. Delete the old
 file if present:
 
 ```bash
@@ -51,6 +53,15 @@ rm -f ~/.config/opencode/agents/visual-judge.md
 ```
 
 Restart opencode for the config to take effect.
+
+> **Why `skills.paths` points at the installed package:** opencode's plugin
+> loader resolves the npm package to its `dist/index.js` entrypoint and
+> runs the `config(cfg)` hook that registers the 10 subagents. But opencode's
+> *skill* loader scans directories for `SKILL.md` — it does not look inside
+> npm packages automatically. So we point `skills.paths` at the installed
+> package directory, where `SKILL.md` ships as a published file. The path
+> above (`~/.cache/opencode/node_modules/opencode-vision`) is where Bun
+> caches opencode plugins; adjust if your cache lives elsewhere.
 
 ## Verify
 
@@ -90,11 +101,14 @@ The orchestrator should:
 4. Delegate to the chosen `vision-*` subagent.
 5. Parse the report and tell you pass/fail with the button's position.
 
-## File layout
+## File layout (source)
 
 ```
-opencode/vision/
-  plugin.ts                        # registers 10 vision-* subagents via config(cfg)
+opencode/vision/                  # this sub-package, published as opencode-vision
+  package.json                    # npm package metadata; main -> dist/index.js
+  plugin.ts                        # source: registers 10 vision-* subagents via config(cfg)
+  dist/                            # built on prepublishOnly (gitignored)
+    index.js                       # built bundle — the package entrypoint
   vision-models.json              # 10-entry manifest (one top-tier per provider × family)
   subagent-body.md                 # shared subagent prompt template
   SKILL.md                         # intent-capture protocol + per-session question + MCP integration
@@ -103,6 +117,18 @@ opencode/vision/
     visual-judgment-report.v1.json
   README.md                        # this file
 ```
+
+## Build & publish (maintainers)
+
+```bash
+cd opencode/vision
+bun run build                     # builds dist/index.js
+npm publish                       # runs prepublishOnly -> build -> publish
+```
+
+The `files` field in `package.json` controls what ships: `dist/`,
+`SKILL.md`, `schemas/`, `subagent-body.md`, `vision-models.json`,
+`README.md`. No source `.ts` or `node_modules` leak.
 
 ## Catalog (10 models, 4 providers)
 

@@ -1,0 +1,55 @@
+{
+  "name": "opencode-vision",
+  "version": "0.1.0",
+  "description": "Typed visual-judgment skill for opencode. Registers 10 vision subagents (one per top-tier vision model across OpenAI, Kimi for Coding, Ollama Cloud, and opencode-go) and a skill that teaches a text-only orchestrator to extract visual-judgment intent, classify it into a typed judgment, and delegate to a vision subagent with a versioned request/report contract.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "SKILL.md",
+    "schemas",
+    "subagent-body.md",
+    "vision-models.json",
+    "README.md"
+  ],
+  "scripts": {
+    "prebuild": "rm -rf dist",
+    "build": "bun build ./plugin.ts --outfile ./dist/index.js --target node --format esm --packages external",
+    "prepublishOnly": "bun run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "opencode-ai",
+    "vision",
+    "visual-judgment",
+    "image-analysis",
+    "screenshot",
+    "subagent",
+    "skill"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WeZZard/skills.git",
+    "directory": "opencode/vision"
+  },
+  "homepage": "https://github.com/WeZZard/skills/tree/main/opencode/vision#readme",
+  "bugs": {
+    "url": "https://github.com/WeZZard/skills/issues"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.4.7"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.4.7",
+    "@types/node": "^22.13.9",
+    "typescript": "^5.8.2"
+  }
+}
