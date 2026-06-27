@@ -33,7 +33,7 @@ Add the plugin to your `~/.config/opencode/opencode.json`:
   ],
   "skills": {
     "paths": [
-      "~/.cache/opencode/node_modules/opencode-vision"
+      "~/.cache/opencode/packages/opencode-vision/node_modules/opencode-vision"
     ]
   }
 }
@@ -59,9 +59,10 @@ Restart opencode for the config to take effect.
 > runs the `config(cfg)` hook that registers the 10 subagents. But opencode's
 > *skill* loader scans directories for `SKILL.md` — it does not look inside
 > npm packages automatically. So we point `skills.paths` at the installed
-> package directory, where `SKILL.md` ships as a published file. The path
-> above (`~/.cache/opencode/node_modules/opencode-vision`) is where Bun
-> caches opencode plugins; adjust if your cache lives elsewhere.
+> package directory, where `SKILL.md` ships as a published file. opencode
+> caches npm plugins under `~/.cache/opencode/packages/<name>/node_modules/<name>/`
+> (note the nested `node_modules`), not the flat
+> `~/.cache/opencode/node_modules/<name>/` you might expect.
 
 ## Verify
 
