@@ -49,14 +49,14 @@ A shared exclusive resource takes two forms:
 **MUST:**
 
 1. You **MUST** output the tasks with: (1) a task list and (2) a paired execution diagram.
-2. You **MUST** output the execution diagram before the tast list.
+2. You **MUST** output the execution diagram before the task list.
 3. You **MUST** output the task list in an ordered list follows the format in **Appendix B: Task List Format**.
 4. You **MUST** output the execution diagram follows the format in **Appendix A: Execution Diagram Format**.
 5. You **MUST** ensure contents in the execution diagram and the task list consistent and aligned with each other.
 
 **MUST NOT:**
 
-1. You **MUST NOT** output the execution diagram after the tast list.
+1. You **MUST NOT** output the execution diagram after the task list.
 
 ## Appendix A: Execution Diagram Format
 

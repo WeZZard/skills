@@ -11,7 +11,7 @@ The implementer executor is **always** `subagent(general-purpose)`. You **MUST N
 
 You design only the implementer's **model tier** and its read-only tools:
 
-### Built-tin Agents Model-Tier Selection
+### Built-in Agents Model-Tier Selection
 
 You **MUST** choose the model tier from the task's actual complexity. You **MUST NOT** default to a single tier for every task.
 
@@ -69,7 +69,7 @@ When an implementer is re-spawned because the auditor returned a failure, its pr
 
 This is the implementer's prompt; `execute-plan` spawns the chosen `impl.executor` with it under the single spawn strategy in its scheduling loop (the model follows **Model-Tier Selection**). Replace every `<...>` placeholder. Omit the `PRIOR AUDIT FINDINGS` block on the first attempt; include it (verbatim from the auditor) on a re-spawn.
 
-<IMPLEMENTER_SPAWNINING_PROMPT_TEMPLATE>
+<IMPLEMENTER_SPAWNING_PROMPT_TEMPLATE>
 
 ````markdown
 ## Goal
@@ -141,6 +141,6 @@ STATUS: COMPLETE | BLOCKED — <reason if blocked>
 - You **MUST NOT** use `BLOCKED` to signal that the audit might fail.
 ````
 
-<IMPLEMENTER_SPAWNINING_PROMPT_TEMPLATE>
+<IMPLEMENTER_SPAWNING_PROMPT_TEMPLATE>
 
 </IMPLEMENTER_DESIGN_GUIDELINES>

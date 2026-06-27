@@ -51,7 +51,7 @@ Transcribe the plan's task list into a JSON file — a **faithful 1:1 transcript
 ```
 
 1. You **MUST** set `nodes[].type` to `"implement"` on every node you author — the dump only ever emits `implement` nodes. The implementer always runs `subagent(general-purpose)`, so you **MUST NOT** emit a per-implementer `executor`; specialized GUI/behavioral work is an auditor choice, resolved at runtime by the audit-resolver. (The `resolve`/`audit`/`reduce` node types exist in the registry but are created at runtime by the lifecycle, never by this dump.)
-2. You **MUST** set `nodes[].human_gate` to `false` is the task **IS NTO** a human gate or **HAVEN'T MENTIONED ITSELF** as a human gate.
+2. You **MUST** set `nodes[].human_gate` to `false` if the task **IS NOT** a human gate or **HAVEN'T MENTIONED ITSELF** as a human gate.
 3. You **MUST** set each `nodes[].design_aspect` to the task's `(Aspect: …)` design component (e.g. Architecture, Data Structure, User Interaction).
 4. You **MUST** set `plan_file` to the absolute path of the session plan file.
 5. You **MUST** fill `variables` with the latest values of the following in-session variable as key-value pairs:
@@ -104,7 +104,7 @@ Every `<task-notification>` from a subagent you dispatched is a **resume signal*
 
       It prints `HELD` (acquired — it then keeps holding the kernel `flock`) or `BUSY owner=<owner>` (held by this run **or another Claude Code session**). On `BUSY`, **defer** `S` and record its blocked resource `R` (an in-session holder's completion will re-dispatch it; an external holder is handled by the **idle-Monitor step below**). On `HELD`, proceed and remember `(R, "<GRAPH_ID>:<S>")` to release when `S` finishes. If `resource-of` prints nothing, `E` is non-exclusive — skip this gate.
    2. **Build the spawning prompt by role:**
-      - implemeter: You **MUST** build `implementer`'s spawning prompt by following the guidelines: `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md`
+      - implementer: You **MUST** build `implementer`'s spawning prompt by following the guidelines: `${CLAUDE_PLUGIN_ROOT}/references/implementer-design-guidelines.md`
       - audit-resolver: You **MUST** build `subagent(amplify:audit-resolver)`'s spawning prompt with the following template:
          <AUDIT_RESOLVER_SPAWNING_PROMPT_TEMPLATE>
 
