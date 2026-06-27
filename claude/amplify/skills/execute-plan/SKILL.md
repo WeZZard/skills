@@ -155,7 +155,7 @@ Every `<task-notification>` from a subagent you dispatched is a **resume signal*
 5. **Idle on a busy resource → arm a Monitor (don't end the turn idle).** When nothing is in flight, run `report --id <GRAPH_ID>`; if every task is PASS/FAILED, **stop**. Otherwise the only thing blocking progress is a deferred subnode whose exclusive resource is held — by this run or, with no completion event coming, **another Claude Code session/process**. Arm a **persistent Monitor** whose command waits for any blocked resource to free:
 
    ```bash
-   node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" wait-free --resource <comma-joined blocked classes>
+   node "${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs" wait-for-free --resource <comma-joined blocked classes>
    ```
 
    It heartbeats while held and prints `RELEASED <resource>` then exits as soon as one frees (`FREE` or a dead/`STALE` holder). On that completion, re-attempt `hold` for the deferred subnodes, dispatch the acquirers, and resume the loop (step 2). In-session contention rarely reaches here — the holder's completion event re-dispatches the deferred subnode first; the Monitor exists for **external** holders, which emit no completion event of their own.
@@ -187,7 +187,7 @@ Audit exhaustion is **not** a stop condition — it is logged as a `failed` task
 
 - Each task is implement-and-audit; never skip the auditor.
 - Dispatch every subagent in the **background** (`run_in_background: true`) and react to each completion; don't block on a batch.
-- You **MUST** drive the engine with `ready` / `complete` / `resolve` / `fail`, and gate exclusive executors with `resource-of` → `hold` → `release`; when idle on a busy resource, arm a `wait-free` Monitor and resume on `RELEASED`.
+- You **MUST** drive the engine with `ready` / `complete` / `resolve` / `fail`, and gate exclusive executors with `resource-of` → `hold` → `release`; when idle on a busy resource, arm a `wait-for-free` Monitor and resume on `RELEASED`.
 - Re-spawn a failed implementer with the auditor's findings; stop only on genuine blockers.
 - Finish with the integration check and the audit-table report.
 - You **MUST** treat every background-completion notification as a signal to resume the scheduling loop; you **MUST NOT** end your turn while `report` shows any `INCOMPLETE` task or any subagent is in flight.

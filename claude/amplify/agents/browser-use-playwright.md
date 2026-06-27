@@ -46,7 +46,7 @@ This driver defines NO response format of its own. Your spawning prompt carries 
 - You **MUST NOT** run `task.mjs hold`
 - You **MUST NOT** run `task.mjs release`
 - You **MUST NOT** run `task.mjs holds`
-- You **MUST NOT** run `task.mjs wait-free`
+- You **MUST NOT** run `task.mjs wait-for-free`
 - You **MUST NOT** run `task.mjs resource-of`
 - You **MUST NOT** run `task.mjs report`
 - You **MUST NOT** run `task.mjs status`

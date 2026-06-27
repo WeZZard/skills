@@ -19,8 +19,9 @@
 //   init     --graph <file> [--salt <text>]            -> prints GRAPH_ID
 //   ready    --id <GRAPH_ID>                            -> prints ready subnodes
 //   dispatch --id <GRAPH_ID> --node <subnode-id>        -> marks a pending subnode running
-//   active   [--cwd <dir>] [--session <id>] [--json]    -> lists still-active graphs (global);
-//                                                          --cwd/--session scope to a project/chat window
+//   active   [--id <GRAPH_ID>] [--cwd <dir>] [--session <id>] [--json]
+//                                                       -> lists still-active graphs (global);
+//                                                          --id/--cwd/--session narrow the scan
 //   complete --id <GRAPH_ID> --node <subnode-id>        -> prints newly-ready subnodes
 //   resolve  --id <GRAPH_ID> --node <T>.resolve --panel <json>
 //                                                       -> registers auditors, prints ready
@@ -29,7 +30,7 @@
 //                                                           blocks holding the lock | BUSY (exit 9)
 //   release  --resource <name> [--owner <id>]            -> kill the holder, freeing the flock
 //   holds    --resource <name>                           -> HELD <owner> | STALE | FREE
-//   wait-free --resource <name[,name…]> [--interval <s>] -> block until any frees (prints RELEASED)
+//   wait-for-free --resource <name[,name…]> [--interval <s>] -> block until any frees (prints RELEASED)
 //   resource-of --executor <subagent(...)>               -> prints the exclusive resource class, if any
 //   variables --id <GRAPH_ID>                        -> prints each injected variable as "<name>\t<value>"
 //   resolve-context --id <GRAPH_ID> --node <task-id> -> dumps the audit-resolver's context for one task
@@ -714,6 +715,34 @@ function readySet(state) {
   return ready.sort();
 }
 
+function readyDispatchability(state) {
+  const readyIds = readySet(state);
+  let dispatchableReady = 0;
+  let resourceBlockedReady = 0;
+  const blockedResources = new Set();
+  for (const id of readyIds) {
+    const sub = state.subnodes[id];
+    const resource = resourceOf(sub.executor);
+    if (!resource) {
+      dispatchableReady++;
+      continue;
+    }
+    const meta = readLockMeta(lockPath(resource));
+    if (!meta || !pidAlive(meta.pid)) {
+      dispatchableReady++;
+    } else {
+      resourceBlockedReady++;
+      blockedResources.add(resource);
+    }
+  }
+  return {
+    ready: readyIds.length,
+    dispatchableReady,
+    resourceBlockedReady,
+    blockedResources: [...blockedResources].sort(),
+  };
+}
+
 function emitReady(state) {
   for (const id of readySet(state)) {
     process.stdout.write(`${id}\t${state.subnodes[id].executor}\n`);
@@ -1196,11 +1225,11 @@ function cmdResolveContext(opts) {
 // Block until any of the given resources frees, polling `holds` on an escalating
 // cadence (no deadline) and emitting heartbeats meanwhile — the Monitor command
 // execute-plan arms when it would otherwise idle on a busy (possibly external) lock.
-function cmdWaitFree(opts) {
+function cmdWaitForFree(opts) {
   const raw = typeof opts.resource === "string" ? opts.resource : null;
-  if (!raw) die("wait-free requires --resource <name[,name...]>");
+  if (!raw) die("wait-for-free requires --resource <name[,name...]>");
   const resources = raw.split(",").map((s) => s.trim()).filter(Boolean);
-  if (!resources.length) die("wait-free requires at least one resource");
+  if (!resources.length) die("wait-for-free requires at least one resource");
   for (const r of resources) if (!RESOURCE_RE.test(r)) die(`invalid resource "${r}"`);
   const step = Math.max(1, Number(opts.interval ?? 5)) * 1000;
   const MAX = 60 * 1000;
@@ -1268,10 +1297,12 @@ function cmdStatus(opts) {
 
 // Global: scan stateDir for graph state files and report the ones still active
 // (>=1 INCOMPLETE task, using the SAME verdict as `report`), with per-graph
-// ready/running counts, optionally filtered to the cwd stamped at init. Lets a
-// hook detect an active execute-plan run (and a true stall: running == 0).
+// ready/running counts, optionally filtered to the id/cwd/session stamped at
+// init. Lets a hook detect an active execute-plan run and whether ready work is
+// actually dispatchable now or waiting behind a held exclusive resource.
 function cmdActive(opts) {
   const dir = stateDir();
+  const filterId = typeof opts.id === "string" ? opts.id : null;
   const filterCwd = typeof opts.cwd === "string" ? opts.cwd : null;
   const filterSession = typeof opts.session === "string" ? opts.session : null;
   let files = [];
@@ -1289,6 +1320,8 @@ function cmdActive(opts) {
       continue; // skip malformed/unreadable state files
     }
     if (!state || typeof state !== "object" || !state.tasks || !state.subnodes) continue;
+    const graphId = state.runId ?? state.graphId ?? file.replace(/\.json$/, "");
+    if (filterId !== null && graphId !== filterId) continue;
     // A graph without a stored cwd cannot match a --cwd filter (treat as non-matching).
     if (filterCwd !== null && state.cwd !== filterCwd) continue;
     // Same for --session: scope to the chat window that owns the run. A graph
@@ -1298,13 +1331,13 @@ function cmdActive(opts) {
     const incomplete = Object.keys(state.tasks)
       .filter((taskId) => taskVerdict(state, taskId) === "INCOMPLETE").length;
     if (incomplete < 1) continue; // not active
-    const ready = readySet(state).length;
+    const ready = readyDispatchability(state);
     const running = Object.values(state.subnodes)
       .filter((s) => s.status === "running").length;
     // Wire-stable: emit `graphId` key (loop-resume.mjs:36,38 reads g.graphId).
     // Internally state stores `runId`; fall back to `graphId` for legacy state
     // files written before this rename (same sha256 value, different key name).
-    out.push({ graphId: state.runId ?? state.graphId, incomplete, ready, running });
+    out.push({ graphId, incomplete, ...ready, running });
   }
   out.sort((a, b) => (a.graphId < b.graphId ? -1 : a.graphId > b.graphId ? 1 : 0));
   if (opts.json) {
@@ -1337,14 +1370,14 @@ function main() {
     case "hold": return cmdHold(opts);
     case "release": return cmdRelease(opts);
     case "holds": return cmdHolds(opts);
-    case "wait-free": return cmdWaitFree(opts);
+    case "wait-for-free": return cmdWaitForFree(opts);
     case "resource-of": return cmdResourceOf(opts);
     case "variables": return cmdVariables(opts);
     case "resolve-context": return cmdResolveContext(opts);
     case "report": return cmdReport(opts);
     case "status": return cmdStatus(opts);
     default:
-      die(`unknown verb "${verb || ""}". Use: init | ready | dispatch | active | complete | resolve | fail | spawn-task | remove-task | add-dep | remove-dep | hold | release | holds | wait-free | resource-of | variables | resolve-context | report | status`);
+      die(`unknown verb "${verb || ""}". Use: init | ready | dispatch | active | complete | resolve | fail | spawn-task | remove-task | add-dep | remove-dep | hold | release | holds | wait-for-free | resource-of | variables | resolve-context | report | status`);
   }
 }
 

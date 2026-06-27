@@ -5,7 +5,8 @@
 // orchestrator). A SubagentStop hook's additionalContext is delivered to the
 // subagent that stopped, not the parent orchestrator (per Claude Code's hooks
 // reference), so re-priming the scheduling loop must run on the main agent's
-// Stop. On a true stall (an active graph with running == 0) it blocks turn-end.
+// Stop. It prevents turn-end when the loop has dispatchable ready work or no
+// running subagents left to wake the scheduler.
 //
 // Scoping: it passes the hook payload's session_id to `active --session` so it
 // only counts graphs owned by THIS chat window. Two windows sharing one project
@@ -31,26 +32,39 @@ function readStdin() {
 }
 
 function buildContext(graphs) {
-  const lines = graphs.map(
-    (g) =>
-      `  - graph ${g.graphId}: ${g.ready} ready, ${g.running} running, ${g.incomplete} incomplete`
-  );
+  const lines = graphs.map((g) => {
+    const dispatchable = g.dispatchableReady ?? g.ready ?? 0;
+    const resourceBlocked = g.resourceBlockedReady ?? 0;
+    const resources = Array.isArray(g.blockedResources) && g.blockedResources.length
+      ? `; held resources: ${g.blockedResources.join(",")}`
+      : "";
+    return `  - graph ${g.graphId}: ${g.ready} ready (${dispatchable} dispatchable, ${resourceBlocked} resource-held${resources}), ${g.running} running, ${g.incomplete} incomplete`;
+  });
   const primary = graphs[0].graphId;
   return [
     "<EXTREMELY_IMPORTANT>",
-    "The amplify:execute-plan scheduling loop is NOT done. You MUST NOT end your turn.",
+    "The amplify:execute-plan scheduling loop is NOT done. You MUST continue it before ending your turn.",
     "",
-    "A subnode just finished. Do the following now:",
-    "  1. Apply the just-completed subnode's result with the engine verb (complete / fail / resolve).",
+    "Resume the scheduling loop now:",
+    "  1. If this resume followed a subagent completion, apply that result first with the engine verb (complete / fail / resolve).",
     `  2. Run  task.mjs ready --id ${primary}  (and for every other active graph below) to recompute ready subnodes.`,
-    "  3. Dispatch each newly-ready subnode in the background as you spawn it",
+    "  3. Dispatch each resource-available ready subnode in the background as you spawn it",
     "     (task.mjs dispatch --id <graphId> --node <subnode>), then keep reacting to completions.",
+    "  4. If nothing is in flight and only held resources remain, arm task.mjs wait-for-free for those resources.",
     "Do NOT end your turn while report shows INCOMPLETE tasks.",
     "",
     "Active graphs:",
     ...lines,
     "</EXTREMELY_IMPORTANT>",
   ].join("\n");
+}
+
+function shouldContinueLoop(graphs) {
+  return graphs.some((g) => {
+    const dispatchable = Number(g.dispatchableReady ?? g.ready ?? 0);
+    const running = Number(g.running ?? 0);
+    return dispatchable > 0 || running === 0;
+  });
 }
 
 async function main() {
@@ -78,7 +92,7 @@ async function main() {
       dirname(fileURLToPath(import.meta.url)),
       "..",
       "scripts",
-      "task.mjs"
+      "task.mjs",
     );
     // Scope to this chat window via --session when the payload carries one; fall
     // back to --cwd only on an older harness that omits session_id.
@@ -99,20 +113,21 @@ async function main() {
   const ctx = buildContext(graphs);
 
   if (event === "Stop") {
-    const stalled = graphs.some((g) => g.running === 0);
-    if (stalled) {
+    if (shouldContinueLoop(graphs)) {
       console.log(
         JSON.stringify({
           decision: "block",
-          reason: "amplify:execute-plan loop has ready work but no subagents in flight — re-priming the scheduling loop.",
+          reason:
+            "amplify:execute-plan has dispatchable work or no in-flight subagents — continuing the scheduling loop.",
           hookSpecificOutput: {
             hookEventName: "Stop",
             additionalContext: ctx,
           },
-        })
+        }),
       );
     } else {
-      // Every active graph is waiting on in-flight subagents — allow idle.
+      // Active graphs are waiting on in-flight subagents or held resources that
+      // those subagents can release — allow this turn to end.
       console.log(JSON.stringify({}));
     }
     process.exit(0);

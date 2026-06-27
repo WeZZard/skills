@@ -62,7 +62,7 @@ You **MUST NOT** run the graph engine (`${CLAUDE_PLUGIN_ROOT}/scripts/task.mjs`)
 - You **MUST NOT** run `task.mjs hold`
 - You **MUST NOT** run `task.mjs release`
 - You **MUST NOT** run `task.mjs holds`
-- You **MUST NOT** run `task.mjs wait-free`
+- You **MUST NOT** run `task.mjs wait-for-free`
 - You **MUST NOT** run `task.mjs resource-of`
 - You **MUST NOT** run `task.mjs report`
 - You **MUST NOT** run `task.mjs status`
@@ -154,7 +154,7 @@ You **MUST NOT** run the graph engine (`task.mjs`). The only engine call any sub
 - You **MUST NOT** run `task.mjs hold`
 - You **MUST NOT** run `task.mjs release`
 - You **MUST NOT** run `task.mjs holds`
-- You **MUST NOT** run `task.mjs wait-free`
+- You **MUST NOT** run `task.mjs wait-for-free`
 - You **MUST NOT** run `task.mjs resource-of`
 - You **MUST NOT** run `task.mjs report`
 - You **MUST NOT** run `task.mjs status`

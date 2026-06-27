@@ -239,12 +239,28 @@ test("active: lists graphs with an INCOMPLETE task and correct ready/running cou
 
   // fresh: two ready impls, none running, both tasks INCOMPLETE
   const j1 = JSON.parse(run(stateDir, ["active", "--cwd", cwd, "--json"]).stdout);
-  assert.deepEqual(j1, [{ graphId: id, incomplete: 2, ready: 2, running: 0 }]);
+  assert.deepEqual(j1, [{
+    graphId: id,
+    incomplete: 2,
+    ready: 2,
+    dispatchableReady: 2,
+    resourceBlockedReady: 0,
+    blockedResources: [],
+    running: 0,
+  }]);
 
   // dispatch one -> ready drops to 1, running rises to 1
   run(stateDir, ["dispatch", "--id", id, "--node", "A.impl"]);
   const j2 = JSON.parse(run(stateDir, ["active", "--cwd", cwd, "--json"]).stdout);
-  assert.deepEqual(j2, [{ graphId: id, incomplete: 2, ready: 1, running: 1 }]);
+  assert.deepEqual(j2, [{
+    graphId: id,
+    incomplete: 2,
+    ready: 1,
+    dispatchableReady: 1,
+    resourceBlockedReady: 0,
+    blockedResources: [],
+    running: 1,
+  }]);
 
   // text form: one line per active graph
   const text = run(stateDir, ["active", "--cwd", cwd]).stdout.trim();
@@ -287,7 +303,15 @@ test("active: skips malformed state files and graphs without a cwd under a --cwd
   }));
   // no filter -> the cwd-less graph is included
   const noFilter = JSON.parse(run(stateDir, ["active", "--json"]).stdout);
-  assert.deepEqual(noFilter, [{ graphId: "0000000000000000", incomplete: 1, ready: 1, running: 0 }]);
+  assert.deepEqual(noFilter, [{
+    graphId: "0000000000000000",
+    incomplete: 1,
+    ready: 1,
+    dispatchableReady: 1,
+    resourceBlockedReady: 0,
+    blockedResources: [],
+    running: 0,
+  }]);
   // with a --cwd filter -> the cwd-less graph is excluded
   assert.deepEqual(JSON.parse(run(stateDir, ["active", "--cwd", dir, "--json"]).stdout), []);
 });
@@ -354,6 +378,24 @@ test("active --session: a graph with no stored session is excluded under a --ses
     JSON.parse(run(stateDir, ["active", "--json"]).stdout).map((g) => g.graphId),
     [id],
   );
+});
+
+test("active --id: filters to one graph and composes with cwd/session filters", () => {
+  const { dir, stateDir } = ws();
+  const a = initAs(stateDir, dir, "sess-A", { version: 1, nodes: [task("A")] });
+  const b = initAs(stateDir, dir, "sess-B", { version: 1, nodes: [task("X")] });
+  const idA = a.stdout.trim(), idB = b.stdout.trim();
+  const cwd = realpathSync(dir);
+  assert.notEqual(idA, idB);
+
+  const onlyA = JSON.parse(run(stateDir, ["active", "--id", idA, "--json"]).stdout);
+  assert.deepEqual(onlyA.map((g) => g.graphId), [idA]);
+
+  const matchingSession = JSON.parse(run(stateDir, ["active", "--id", idA, "--cwd", cwd, "--session", "sess-A", "--json"]).stdout);
+  assert.deepEqual(matchingSession.map((g) => g.graphId), [idA]);
+
+  assert.deepEqual(JSON.parse(run(stateDir, ["active", "--id", idA, "--session", "sess-B", "--json"]).stdout), []);
+  assert.deepEqual(JSON.parse(run(stateDir, ["active", "--id", idB, "--cwd", "/no/such/dir", "--json"]).stdout), []);
 });
 
 test("flow: complete .impl readies .resolve; resolve registers audits; audits done readies successor SET", () => {
@@ -1351,9 +1393,9 @@ function startHold(stateDir, resource, owner, extra = []) {
   return h;
 }
 
-// Start a background `wait-free`; resolve `released` when it prints RELEASED (or exits).
-function startWaitFree(stateDir, resources, extra = ["--interval", "1"]) {
-  const child = spawn("node", [ENGINE, "wait-free", "--resource", resources, ...extra], {
+// Start a background `wait-for-free`; resolve `released` when it prints RELEASED (or exits).
+function startWaitForFree(stateDir, resources, extra = ["--interval", "1"]) {
+  const child = spawn("node", [ENGINE, "wait-for-free", "--resource", resources, ...extra], {
     env: { ...process.env, AMPLIFY_STATE_DIR: stateDir },
     detached: true,
   });
@@ -1424,31 +1466,71 @@ test("resource-of: maps exclusive executors, empty otherwise", () => {
   assert.equal(run(stateDir, ["resource-of", "--executor", "subagent(general-purpose)"]).stdout.trim(), "");
 });
 
-test("wait-free: returns immediately when the resource is free", () => {
+test("active: classifies dispatchable and resource-blocked ready work", { skip: !PERL_OK }, async () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [task("A"), task("B")] });
+  assert.equal(r.status, 0, r.stderr);
+  const id = r.stdout.trim();
+  run(stateDir, ["complete", "--id", id, "--node", "A.impl"]);
+  run(stateDir, ["resolve", "--id", id, "--node", "A.resolve", "--panel", panel([
+    { focus: "computer", executor: "subagent(amplify:computer-use)" },
+  ])]);
+
+  const free = JSON.parse(run(stateDir, ["active", "--id", id, "--json"]).stdout)[0];
+  assert.equal(free.ready, 2);
+  assert.equal(free.dispatchableReady, 2);
+  assert.equal(free.resourceBlockedReady, 0);
+  assert.deepEqual(free.blockedResources, []);
+
+  const holder = startHold(stateDir, "computer-use", "external-owner");
+  assert.equal(await holder.first, "HELD");
+  const held = JSON.parse(run(stateDir, ["active", "--id", id, "--json"]).stdout)[0];
+  assert.equal(held.ready, 2);
+  assert.equal(held.dispatchableReady, 1);
+  assert.equal(held.resourceBlockedReady, 1);
+  assert.deepEqual(held.blockedResources, ["computer-use"]);
+
+  run(stateDir, ["dispatch", "--id", id, "--node", "B.impl"]);
+  const onlyBlocked = JSON.parse(run(stateDir, ["active", "--id", id, "--json"]).stdout)[0];
+  assert.equal(onlyBlocked.ready, 1);
+  assert.equal(onlyBlocked.running, 1);
+  assert.equal(onlyBlocked.dispatchableReady, 0);
+  assert.equal(onlyBlocked.resourceBlockedReady, 1);
+
+  killHold(holder);
+  await delay(400);
+  const stale = JSON.parse(run(stateDir, ["active", "--id", id, "--json"]).stdout)[0];
+  assert.equal(stale.ready, 1);
+  assert.equal(stale.dispatchableReady, 1);
+  assert.equal(stale.resourceBlockedReady, 0);
+  assert.deepEqual(stale.blockedResources, []);
+});
+
+test("wait-for-free: returns immediately when the resource is free", () => {
   const { stateDir } = ws(); ensureDir(stateDir);
-  const r = run(stateDir, ["wait-free", "--resource", "computer-use", "--interval", "1"]);
+  const r = run(stateDir, ["wait-for-free", "--resource", "computer-use", "--interval", "1"]);
   assert.equal(r.status, 0);
   assert.match(r.stdout, /^RELEASED computer-use/m);
 });
 
-test("wait-free: blocks while held, returns RELEASED when the holder dies", { skip: !PERL_OK }, async () => {
+test("wait-for-free: blocks while held, returns RELEASED when the holder dies", { skip: !PERL_OK }, async () => {
   const { stateDir } = ws(); ensureDir(stateDir);
   const a = startHold(stateDir, "computer-use", "sessX:T");   // simulate an external holder
   assert.equal(await a.first, "HELD");
-  const wf = startWaitFree(stateDir, "computer-use");
+  const wf = startWaitForFree(stateDir, "computer-use");
   // still waiting while held
   assert.equal(await Promise.race([wf.released.then(() => "R"), delay(800).then(() => "W")]), "W");
   killHold(a);                                                // external release
   assert.equal(await wf.released, "RELEASED");
 });
 
-test("wait-free: comma-separated returns when ANY listed resource frees", { skip: !PERL_OK }, async () => {
+test("wait-for-free: comma-separated returns when ANY listed resource frees", { skip: !PERL_OK }, async () => {
   const { stateDir } = ws(); ensureDir(stateDir);
   const a = startHold(stateDir, "computer-use", "X");
   const b = startHold(stateDir, "chrome-devtools", "Y");
   assert.equal(await a.first, "HELD");
   assert.equal(await b.first, "HELD");
-  const wf = startWaitFree(stateDir, "computer-use,chrome-devtools");
+  const wf = startWaitForFree(stateDir, "computer-use,chrome-devtools");
   assert.equal(await Promise.race([wf.released.then(() => "R"), delay(800).then(() => "W")]), "W");
   killHold(a);                                                // free one of the two
   assert.equal(await wf.released, "RELEASED");
