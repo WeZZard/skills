@@ -16,7 +16,7 @@ description: >-
   user once per session which vision model to use, assembles a versioned
   request, delegates, parses the typed report. Image paths from
   screenshot_out_file/filePath; inline-only images saved to /tmp via node
-  (not shell echo, to avoid embedding image bytes in commands).
+  (avoids embedding image bytes in shell commands).
 ---
 
 # Vision — Visual Judgment Skill
@@ -209,9 +209,10 @@ always pass `filePath` / `filename`. This avoids the inline-only case
 entirely and is the safest path.
 
 If you must handle an inline-only image, write the base64 payload to a
-file using `node -e` (not `echo | base64 -d`, which embeds the raw
-image data in a shell command — screenshots may contain sensitive
-content like tokens or credentials):
+file using `node -e` (which avoids passing the base64 through the shell
+command line — screenshots may contain sensitive data like tokens or
+credentials, and embedding raw image bytes in shell commands creates an
+exfiltration risk):
 
 ```
 If a tool result has attachments[].url starting "data:image/...;base64,"
@@ -227,9 +228,9 @@ but no file path:
   3. Use that path in the request's images[].path.
 ```
 
-Do not use `echo "<base64>" | base64 -d` — it embeds the raw image
-bytes in the shell command, creating an exfiltration risk if the
-screenshot contains sensitive data.
+Do not embed the raw base64 payload in a shell command — screenshots
+may contain sensitive content (tokens, credentials) that should not
+appear in shell history, transcripts, or logs.
 
 ## Step 4. Pick model (once per session)
 
