@@ -195,3 +195,4 @@ Audit exhaustion is **not** a stop condition — it is logged as a `failed` task
 **MUST NOT:**
 
 - You **MUST NOT** track the graph by memory.
+- You **MUST NOT** decide an external agent driver's completion (codex, kimi) by scanning or killing host processes (`ps`/`pgrep`/`pkill`); its subagent's completion is the only signal, and its `[amplify-external-agent]` trailer reports the external pid and exit — read the verdict above it.

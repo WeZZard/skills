@@ -52,6 +52,7 @@ function buildContext(graphs) {
     "     (task.mjs dispatch --id <graphId> --node <subnode>), then keep reacting to completions.",
     "  4. If nothing is in flight and only held resources remain, arm task.mjs wait-for-free for those resources.",
     "Do NOT end your turn while report shows INCOMPLETE tasks.",
+    "A subagent's completion notification (and the verdict it returns) is the ONLY signal that its work — including any external codex/kimi process — is done. Do NOT run ps/pgrep/pkill against codex or kimi to judge completion, and do NOT kill host processes; unrelated codex/kimi processes the user started are never this run's agents.",
     "",
     "Active graphs:",
     ...lines,

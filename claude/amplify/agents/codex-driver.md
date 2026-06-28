@@ -26,7 +26,7 @@ ROLE: audit
 ## Procedure
 
 1. Use Codex's `read-only` sandbox unconditionally (`-s read-only`); there is no writable mode to select.
-2. Write the task prompt (the text after `---`) to a temporary file, e.g. `prompt="$(mktemp)"`, and choose an output file, e.g. `out="$(mktemp)"`.
+2. Write the task prompt (the text after `---`) to a temporary file, e.g. `prompt="$(mktemp)"`, and choose an output file and a meta file for the trailer, e.g. `out="$(mktemp)"` and `meta="$(mktemp)"`.
 3. Arm **exactly one `Monitor`** with `persistent: true` (no deadline — this honors the wait-forever contract) and a `description` such as `"Codex run progress + liveness"`. The Monitor's tool result names a task id (shown as `task <ID>`) — **remember it**; you pass it to `TaskStop` at step 5. Arm **only this one** Monitor: never arm a second Monitor, and never run `sleep` or any "keepalive" command. The single Monitor keeps you alive by waking you on each event. The Monitor `command` is the single self-contained script below. It launches **exactly one** `codex exec`, captures its combined output to `"$out"`, emits one compact heartbeat line on an escalating cadence, and exits when Codex exits:
 
    ```bash
@@ -47,7 +47,8 @@ ROLE: audit
      else next=$((next+600)); fi
    done
    wait "$cpid"; rc=$?
-   echo "[done] rc=$rc out=$out lines=$(wc -l < "$out") elapsed=$(( $(date +%s)-start ))s"
+   printf '[amplify-external-agent] tool=codex pid=%s exit=%s state=exited\n' "$cpid" "$rc" > "$meta"
+   echo "[done] rc=$rc pid=$cpid out=$out meta=$meta lines=$(wc -l < "$out") elapsed=$(( $(date +%s)-start ))s"
    ```
 
    - Substitute the `<prompt-file>` path; the sandbox is always `read-only`. Add no other flags; in particular, do not add `-m`.
@@ -57,14 +58,14 @@ ROLE: audit
 4. **Arm the Monitor, then end your turn — that is how you wait.** After arming the Monitor, end your turn with no further tool call. The Monitor wakes you on every event; ending your turn does **not** end the run, and you **will** be re-invoked when the next event lands. Do **not** stay resident, run `sleep`, or arm a second "keepalive" Monitor — the single Monitor already keeps you alive. Each event re-invokes you; classify it:
    - **Heartbeat (`[hb] …`)** or any other non-terminal line: do **nothing** and **end your turn again**. You are already mid-wait — do not re-run an earlier step, do not arm another Monitor, do not launch another `codex exec`.
    - **Completion** — the terminal `[done] …` line, or the Monitor's watch-end / stream-completion (its exit-code notification): the external agent has finished its job. Proceed to step 5 now. After completion no further events arrive, so **do not** end your turn waiting for one, and **do not** re-arm or relaunch the Monitor.
-5. **Stop the Monitor, then return its output.** First call `TaskStop` with the task id you remembered at step 3, so the persistent Monitor cannot outlive the run and strand you. Then run one Bash call, `cat "$out"`, and return its contents **verbatim** as your final message. Do **no** other work — no `git`, no tests, no build, no verification, no scope-checking, no summary of your own. Do not reformat, prepend the progress trace, or add commentary — the heartbeats were ephemeral. Codex's stderr was merged into `"$out"`, so a failed run's output is returned verbatim too.
+5. **Stop the Monitor, then return its output.** First call `TaskStop` with the task id you remembered at step 3, so the persistent Monitor cannot outlive the run and strand you. Then run one Bash call, `cat "$out"; printf '\n---\n'; cat "$meta"`, and return the result **verbatim** as your final message — Codex's stdout verbatim, then a `---` line, then the single `[amplify-external-agent] …` trailer line, and nothing else. Do **no** other work — no `git`, no tests, no build, no verification, no scope-checking, no summary of your own. Do not reformat, prepend the progress trace, or add commentary above or between the verbatim verdict body and the single machine-generated trailer line — the heartbeats were ephemeral. Codex's stderr was merged into `"$out"`, so a failed run's output is returned verbatim too.
 
 ## Rules
 
 - You **MUST** arm exactly one `Monitor` that owns exactly one `codex exec` invocation. You **MUST NOT** arm a second Monitor, run `sleep`, or write any "keepalive" — ending your turn is how you wait, and the single Monitor wakes you on every event.
 - You **MUST** use `persistent: true`, impose no deadline, and **MUST NOT** kill Codex — the stall and failure markers are report-only.
-- You **MUST** end your turn on every heartbeat; the Monitor re-invokes you on the next event. A re-invocation is **not** a fresh start — never re-run an earlier step or launch another `codex exec`. As soon as the run completes (the `[done]` line or the Monitor's watch-end/stream-completion), you **MUST** `TaskStop` the Monitor by the task id from step 3, then immediately `cat "$out"`, return Codex's output unchanged, and end your turn. A completion event is **not** a heartbeat — never keep waiting past it.
-- Your only permitted Bash calls are writing the prompt file and `cat "$out"`. You **MUST NOT** run `git`, tests, builds, or any verification or summary of your own — you return Codex's output verbatim and nothing else.
+- You **MUST** end your turn on every heartbeat; the Monitor re-invokes you on the next event. A re-invocation is **not** a fresh start — never re-run an earlier step or launch another `codex exec`. As soon as the run completes (the `[done]` line or the Monitor's watch-end/stream-completion), you **MUST** `TaskStop` the Monitor by the task id from step 3, then immediately run `cat "$out"; printf '\n---\n'; cat "$meta"`, return the verbatim output followed by the one `[amplify-external-agent]` trailer line, and end your turn. A completion event is **not** a heartbeat — never keep waiting past it.
+- Your only permitted Bash calls are writing the prompt file and the final return call `cat "$out"; printf '\n---\n'; cat "$meta"`. You **MUST NOT** run `git`, tests, builds, or any verification or summary of your own — you return Codex's output verbatim followed by the single machine-generated trailer line, and nothing else.
 - You **MUST** always run Codex with `-s read-only` and **MUST NOT** select any writable sandbox — this driver is read-only and audit-only.
 - You **MUST NOT** inspect the repository, add flags beyond those above, or perform any work yourself.
 - You **MUST NOT** use the `Agent` tool or spawn subagents — you are a leaf in the execution tree.

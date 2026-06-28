@@ -26,7 +26,7 @@ ROLE: audit
 ## Procedure
 
 1. This driver always runs read-only; there is no writable mode to select.
-2. Write the audit prompt (the text after `---`) to a temporary file, e.g. `prompt="$(mktemp)"`, and choose an output file, e.g. `out="$(mktemp)"`.
+2. Write the audit prompt (the text after `---`) to a temporary file, e.g. `prompt="$(mktemp)"`, and choose an output file and a meta file, e.g. `out="$(mktemp)"` and `meta="$(mktemp)"`.
 3. Always build a read-only permission home so the invocation cannot modify files. Kimi loads its config from `$KIMI_CODE_HOME/config.toml`; relocate it to a temp dir and write deny rules for the file-modifying built-in tools:
 
    ```bash
@@ -68,7 +68,8 @@ ROLE: audit
      else next=$((next+600)); fi
    done
    wait "$kpid"; rc=$?
-   echo "[done] rc=$rc out=$out lines=$(wc -l < "$out") elapsed=$(( $(date +%s)-start ))s"
+   printf '[amplify-external-agent] tool=kimi pid=%s exit=%s state=exited\n' "$kpid" "$rc" > "$meta"
+   echo "[done] rc=$rc out=$out pid=$kpid meta=$meta lines=$(wc -l < "$out") elapsed=$(( $(date +%s)-start ))s"
    ```
 
    - Substitute the `<prompt-file>` path. Add no other flags; in particular, do not add `-m`.
@@ -79,14 +80,14 @@ ROLE: audit
 5. **Arm the Monitor, then end your turn — that is how you wait.** After arming the Monitor, end your turn with no further tool call. The Monitor wakes you on every event; ending your turn does **not** end the run, and you **will** be re-invoked when the next event lands. Do **not** stay resident, run `sleep`, or arm a second "keepalive" Monitor — the single Monitor already keeps you alive. Each event re-invokes you; classify it:
    - **Heartbeat (`[hb] …`)** or any other non-terminal line: do **nothing** and **end your turn again**. You are already mid-wait — do not re-run an earlier step, do not arm another Monitor, do not launch another `kimi -p`.
    - **Completion** — the terminal `[done] …` line, or the Monitor's watch-end / stream-completion (its exit-code notification): the external agent has finished its job. Proceed to step 6 now. After completion no further events arrive, so **do not** end your turn waiting for one, and **do not** re-arm or relaunch the Monitor.
-6. **Stop the Monitor, then return its output.** First call `TaskStop` with the task id you remembered at step 4, so the persistent Monitor cannot outlive the run and strand you. Then run one Bash call, `cat "$out"`, and return its contents **verbatim** as your final message. Do **no** other work — no `git`, no tests, no build, no verification, no scope-checking, no summary of your own. Do not reformat, prepend the progress trace, or add commentary — the heartbeats were ephemeral. Kimi's stderr was merged into `"$out"`, so a failed run's output is returned verbatim too.
+6. **Stop the Monitor, then return its output.** First call `TaskStop` with the task id you remembered at step 4, so the persistent Monitor cannot outlive the run and strand you. Then run one Bash call, `cat "$out"; printf '\n---\n'; cat "$meta"`, and return its output as your final message: Kimi's stdout **verbatim**, then a `---` line, then the single `[amplify-external-agent] …` trailer line, and nothing else. Do **no** other work — no `git`, no tests, no build, no verification, no scope-checking, no summary of your own. Do not reformat, prepend the progress trace, or add commentary to the verbatim verdict body — the heartbeats were ephemeral and the only machine-generated addition is that one trailer line appended after Kimi's output. Kimi's stderr was merged into `"$out"`, so a failed run's output is returned verbatim too (plus the trailer carrying the real pid and exit code).
 
 ## Rules
 
 - You **MUST** arm exactly one `Monitor` that owns exactly one `kimi -p` invocation. You **MUST NOT** arm a second Monitor, run `sleep`, or write any "keepalive" — ending your turn is how you wait, and the single Monitor wakes you on every event.
 - You **MUST** use `persistent: true`, impose no deadline, and **MUST NOT** kill Kimi — the stall and failure markers are report-only.
-- You **MUST** end your turn on every heartbeat; the Monitor re-invokes you on the next event. A re-invocation is **not** a fresh start — never re-run an earlier step or launch another `kimi -p`. As soon as the run completes (the `[done]` line or the Monitor's watch-end/stream-completion), you **MUST** `TaskStop` the Monitor by the task id from step 4, then immediately `cat "$out"`, return Kimi's output unchanged, and end your turn. A completion event is **not** a heartbeat — never keep waiting past it.
-- Your only permitted Bash calls are writing the prompt file, the read-only permission-home setup, and `cat "$out"`. You **MUST NOT** run `git`, tests, builds, or any verification or summary of your own — you return Kimi's output verbatim and nothing else.
+- You **MUST** end your turn on every heartbeat; the Monitor re-invokes you on the next event. A re-invocation is **not** a fresh start — never re-run an earlier step or launch another `kimi -p`. As soon as the run completes (the `[done]` line or the Monitor's watch-end/stream-completion), you **MUST** `TaskStop` the Monitor by the task id from step 4, then immediately run `cat "$out"; printf '\n---\n'; cat "$meta"`, return its output (Kimi's verbatim output followed by the one trailer line) unchanged, and end your turn. A completion event is **not** a heartbeat — never keep waiting past it.
+- Your only permitted Bash calls are writing the prompt file, the read-only permission-home setup, and the final return call `cat "$out"; printf '\n---\n'; cat "$meta"`. You **MUST NOT** run `git`, tests, builds, or any verification or summary of your own — you return Kimi's output verbatim followed by exactly one machine-generated trailer line (`[amplify-external-agent] tool=kimi pid=<kpid> exit=<rc> state=exited`) and nothing else.
 - You **MUST** always run Kimi read-only via the deny-writes permission home and **MUST NOT** enable a writable mode — this driver is read-only and audit-only.
 - You **MUST NOT** define a response format — the delegated body (after `---`) carries the exact response contract.
 - You **MUST NOT** inspect the repository, add flags beyond those above, or perform any work yourself.

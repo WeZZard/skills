@@ -113,6 +113,8 @@ test("Stop hook continues when ready work is dispatchable despite running work",
   assert.equal(out.decision, "block");
   assert.match(out.reason, /continuing the scheduling loop/);
   assert.match(out.hookSpecificOutput.additionalContext, /1 dispatchable/);
+  assert.match(out.hookSpecificOutput.additionalContext, /pgrep/);
+  assert.match(out.hookSpecificOutput.additionalContext, /only signal/i);
 });
 
 test("Stop hook allows idle when ready work is only resource-held and running work exists", async () => {
