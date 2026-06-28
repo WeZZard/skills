@@ -50,8 +50,9 @@ npx skills add WeZZard/skills -a opencode -g --skill vision
 
 This uses the [open agent skills CLI](https://github.com/vercel-labs/skills)
 to fetch `SKILL.md` from this repo and drop it into
-`~/.config/opencode/skills/vision/SKILL.md` — a directory opencode scans by
-default. No `skills.paths` config entry needed.
+`~/.agents/skills/vision/SKILL.md` — a directory opencode scans by default
+(along with `~/.config/opencode/skills/`). No `skills.paths` config entry
+needed.
 
 The old `~/.config/opencode/agents/visual-judge.md` subagent is removed —
 this plugin replaces it with 10 typed `vision-*` subagents. Delete the old
