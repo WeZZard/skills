@@ -1,6 +1,6 @@
 {
   "name": "opencode-vision",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Typed visual-judgment skill for opencode. Registers 10 vision subagents (one per top-tier vision model across OpenAI, Kimi for Coding, Ollama Cloud, and opencode-go) and a skill that teaches a text-only orchestrator to extract visual-judgment intent, classify it into a typed judgment, and delegate to a vision subagent with a versioned request/report contract.",
   "type": "module",
   "main": "./dist/index.js",
