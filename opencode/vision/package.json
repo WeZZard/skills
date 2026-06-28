@@ -21,6 +21,7 @@
     "prebuild": "rm -rf dist",
     "build": "bun build ./plugin.ts --outfile ./dist/index.js --target node --format esm --packages external",
     "prepublishOnly": "bun run build",
+    "sync:skill": "cp SKILL.md ../../skills/vision/SKILL.md",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
