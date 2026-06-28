@@ -23,26 +23,35 @@ delegates to a vision subagent, and parses a typed report.
 
 ## Install
 
-Add the plugin to your `~/.config/opencode/opencode.json`:
+Two parts: the plugin (registers subagents) and the skill (the SKILL.md the
+agent sees). Both are one-line commands.
+
+### 1. Install the plugin (subagent registration)
+
+Add to your `~/.config/opencode/opencode.json`:
 
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     "opencode-vision"
-  ],
-  "skills": {
-    "paths": [
-      "~/.cache/opencode/packages/opencode-vision/node_modules/opencode-vision"
-    ]
-  }
+  ]
 }
 ```
 
-opencode auto-installs the npm package via Bun on next launch — no separate
-`npm install` step needed. The skill ships inside the package (in `SKILL.md`),
-so point `skills.paths` at the installed package location so opencode's skill
-loader can find it.
+opencode auto-installs the npm package via Bun on next launch. The plugin's
+`config(cfg)` hook registers 10 `vision-*` subagents programmatically.
+
+### 2. Install the skill (SKILL.md discovery)
+
+```bash
+npx skills add WeZZard/skills -a opencode -g --skill vision
+```
+
+This uses the [open agent skills CLI](https://github.com/vercel-labs/skills)
+to fetch `SKILL.md` from this repo and drop it into
+`~/.config/opencode/skills/vision/SKILL.md` — a directory opencode scans by
+default. No `skills.paths` config entry needed.
 
 The old `~/.config/opencode/agents/visual-judge.md` subagent is removed —
 this plugin replaces it with 10 typed `vision-*` subagents. Delete the old
@@ -52,17 +61,16 @@ file if present:
 rm -f ~/.config/opencode/agents/visual-judge.md
 ```
 
-Restart opencode for the config to take effect.
+Restart opencode for both changes to take effect.
 
-> **Why `skills.paths` points at the installed package:** opencode's plugin
-> loader resolves the npm package to its `dist/index.js` entrypoint and
-> runs the `config(cfg)` hook that registers the 10 subagents. But opencode's
-> *skill* loader scans directories for `SKILL.md` — it does not look inside
-> npm packages automatically. So we point `skills.paths` at the installed
-> package directory, where `SKILL.md` ships as a published file. opencode
-> caches npm plugins under `~/.cache/opencode/packages/<name>/node_modules/<name>/`
-> (note the nested `node_modules`), not the flat
-> `~/.cache/opencode/node_modules/<name>/` you might expect.
+> **Why two steps?** opencode's plugin loader resolves the npm package to its
+> `dist/index.js` entrypoint and runs the `config(cfg)` hook that registers
+> the 10 subagents. But opencode's *skill* loader scans filesystem directories
+> for `SKILL.md` — it does not look inside npm packages automatically. The
+> `npx skills` command bridges this gap by placing `SKILL.md` where opencode's
+> default skill scan finds it. This is a workaround for opencode bug #33896
+> (plugin-registered skills not discoverable); it will be withdrawn once the
+> upstream fix (PR #33918) ships.
 
 ## Verify
 
@@ -117,6 +125,9 @@ opencode/vision/                  # this sub-package, published as opencode-visi
     visual-judgment-request.v1.json
     visual-judgment-report.v1.json
   README.md                        # this file
+
+skills/vision/SKILL.md             # symlink → ../../opencode/vision/SKILL.md
+                                   # lets npx skills discover and install the skill
 ```
 
 ## Build & publish (maintainers)
@@ -164,3 +175,18 @@ Published via GitHub raw URLs (branch `main`):
 The files also live in this repo under `opencode/vision/schemas/` for
 editing. The URL is the canonical `$id`/`$schema` reference used by the
 SKILL.md and subagent body.
+
+## Withdraw the skill workaround
+
+When opencode bug [#33896](https://github.com/anomalyco/opencode/issues/33896)
+is fixed (PR [#33918](https://github.com/anomalyco/opencode/pull/33918)
+merged and shipped), the plugin can self-register the skill via the v2
+`ctx.skill.transform()` API. At that point the `npx skills`-installed file
+becomes redundant:
+
+```bash
+npx skills remove vision -a opencode -g
+```
+
+The plugin will then handle both subagent registration and skill discovery,
+making the install a single `"plugin": ["opencode-vision"]` line.

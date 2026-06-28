@@ -22,6 +22,18 @@ const manifest = JSON.parse(
 )
 const bodyTpl = readFileSync(join(dataDir, "subagent-body.md"), "utf8")
 
+// Vision-capable orchestrator models — derived from the manifest. If the
+// configured default orchestrator model (cfg.model) is itself vision-capable,
+// the vision-* subagents are pointless (the orchestrator can see images
+// itself), so the config(cfg) hook skips registering them. This gate only
+// checks the configured default at startup; mid-session /model switches are
+// handled by the skill's self-gate note ("When NOT to invoke").
+const VISION_CAPABLE_ORCHESTRATORS = new Set(
+  (manifest.models as Array<{ provider: string; model_id: string }>).map(
+    (m) => `${m.provider}/${m.model_id}`
+  )
+)
+
 const PERMISSION = {
   edit: "deny",
   read: "allow",
@@ -48,6 +60,14 @@ function subagentName(entry: {
 
 const plugin: Plugin = async () => ({
   config: async (cfg) => {
+    // Startup gate (B): if the configured default orchestrator model is
+    // itself vision-capable, skip registering the vision-* subagents — they
+    // would be redundant. The skill still loads via skills.paths and self-gates
+    // in its body ("When NOT to invoke").
+    const orchestrator = cfg.model
+    if (orchestrator && VISION_CAPABLE_ORCHESTRATORS.has(orchestrator)) {
+      return
+    }
     cfg.agent ??= {}
     for (const e of manifest.models) {
       const name = subagentName(e)

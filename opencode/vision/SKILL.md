@@ -1,29 +1,49 @@
 ---
 name: vision
 description: >-
-  Use when you must verify, check, or evaluate what is visually rendered in
-  one or more images — e.g. "visually verify the screenshot shows a centered
-  button", "check the icon is visible", "does the layout match the design",
-  acceptance criteria mentioning on-screen state. Captures visual-judgment
-  intent from user prompts or MCP task outputs, classifies it into a typed
-  judgment, asks the user once per session which vision model to use,
-  assembles a versioned request, delegates to a vision subagent, and parses
-  the typed report. Requires locally-stored image files (cua-driver
-  screenshots, Playwright/chrome-devtools captures, user-provided paths).
+  Use when a tool result contains an image attachment the current model
+  cannot see (attachments[].mime = "image/png",
+  url = "data:image/png;base64,...") OR the user asks to visually
+  verify/check rendered content ("visually verify", "screenshot shows",
+  "centered/visible/hidden", "looks right", "matches the design").
+  Triggers on screenshots from chrome-devtools_take_screenshot,
+  playwright_browser_take_screenshot,
+  cua-driver_get_window_state/zoom/take_screenshot. Routes image bytes
+  to a vision-* subagent when the orchestrator's model is text-only
+  (e.g. glm-5.2, deepseek-v4-pro) and cannot see images itself.
+  Classifies intent into a typed judgment (presence/absence/alignment/
+  ordering/equality/layout/readability/state/diff/describe), asks the
+  user once per session which vision model to use, assembles a versioned
+  request, delegates, parses the typed report. Image paths from
+  screenshot_out_file/filePath; inline-only images saved to /tmp via
+  base64 -d.
 ---
 
 # Vision — Visual Judgment Skill
 
-You are a text-only orchestrator (GLM 5.2). You cannot see images. When a
-task requires visual verification, you delegate to a vision subagent that
-returns a typed report. This skill defines the extraction pipeline:
+When a task requires visual verification and the orchestrator's model
+cannot see images, this skill routes image bytes to a vision subagent
+that returns a typed report. The extraction pipeline is:
 **Detect → Classify → Assemble → Pick model → Delegate → Parse**.
+
+## When NOT to invoke this skill
+
+If the orchestrator's model is itself vision-capable (e.g. you are
+running on `kimi-for-coding/k2p7`, `openai/gpt-5.5`,
+`ollama-cloud/gemini-3-flash-preview`, `opencode-go/qwen3.7-plus`, etc. —
+the same models listed in Step 4's mapping table), do NOT delegate to a
+vision subagent. Analyze the image attachment directly — you can see it.
+This skill is only for orchestrators whose model cannot see images
+(e.g. `ollama-cloud/glm-5.2`, `deepseek/deepseek-v4-pro`).
 
 ## Why this skill exists
 
-You are text-only (`attachment: false`). You cannot verify visual properties
-yourself — alignment, color, readability, layout. A vision subagent can.
-This skill gives you a stable contract for talking to one.
+Tool results in opencode can carry image attachments (`attachments[]`
+with `mime: "image/*"` and `url: "data:image/...;base64,..."`). A model
+trained without multimodal support sees the text part of these results
+but the image bytes are invisible to it. This skill recognizes when such
+an attachment is present and routes it to a vision subagent that can see
+it, giving you a stable typed contract for the exchange.
 
 ## The two schemas
 
@@ -34,7 +54,7 @@ This skill gives you a stable contract for talking to one.
 
 ## Step 1. Detect
 
-Visual-judgment intent arrives from two sources. Recognize both.
+Visual-judgment intent arrives from three sources. Recognize all three.
 
 ### Source A — explicit visual-judgment language in a user prompt
 
@@ -66,6 +86,27 @@ It returns `/tmp/dashboard.png` + "sidebar with nav items, bar chart,
 welcome header." The text describes structure, but "looks right" is a
 visual layout quality the text can't fully prove → you detect a
 visual-judgment need.
+
+### Source C — image attachment in a tool result
+
+When any tool result in the transcript contains an `attachments[]` entry
+with `mime` starting `image/`, that is an image the orchestrator cannot
+see. This is a trigger regardless of whether the user explicitly asked for
+visual verification — the image's mere presence means a visual judgment
+*could* be needed. Recognize these patterns:
+
+| Tool | Signal in result | File path available? |
+|---|---|---|
+| `chrome-devtools_take_screenshot` | `attachments[].mime = image/png` | Yes, if `filePath` was passed to the tool |
+| `playwright_browser_take_screenshot` | `attachments[].mime = image/png` | Yes, if `filename` was passed (saved to output dir) |
+| `cua-driver_get_window_state` | `screenshot` field (base64) + `screenshot_file_path` if `screenshot_out_file` was passed | Yes if `screenshot_out_file` set |
+| `cua-driver_zoom` | Cropped JPEG returned inline | **No** — inline only, must be saved to disk first (see 3f) |
+| `cua-driver_take_screenshot` | `attachments[].mime = image/png` | Yes if `filePath` set |
+
+**Gating rule**: auto-invoke only when the user's current task has a
+visual component (layout, alignment, presence, state, readability — see
+Step 2). If the task has no visual component, do nothing; note the image
+is available if needed later.
 
 ## Step 2. Classify
 
@@ -147,9 +188,30 @@ screenshot-save instructions.
 ### 3e. Edge case — built-in computer-use MCP
 
 The built-in Claude Code `computer-use` MCP returns screenshots as inline
-base64 images, not file paths. You cannot see inline images (you are
-text-only), and the vision subagent needs a file path to `read`. Prefer
-`cua-driver` for desktop visual judgments — it has `screenshot_out_file`.
+base64 images, not file paths. The vision subagent needs a file path to
+`read`. Prefer `cua-driver` for desktop visual judgments — it has
+`screenshot_out_file`.
+
+### 3f. Inline-only image attachments (no file path)
+
+Some tool results return image attachments with
+`attachments[].url = "data:image/...;base64,..."` but **no file path** —
+e.g. `cua-driver_zoom` (inline-only, no path param), or
+`playwright_browser_take_screenshot` called without a `filename`. The
+vision subagent needs a file path to `read`. Save the inline image to
+disk first:
+
+```
+If a tool result has attachments[].url starting "data:image/...;base64,"
+but no file path:
+  1. Extract the base64 payload from the data URL (the part after
+     ";base64,").
+  2. Write it to /tmp/vision-<random>.png via bash:
+       echo "<base64>" | base64 -d > /tmp/vision-<random>.png
+  3. Use that path in the request's images[].path.
+```
+
+This is the recommended handling for any inline-only image result.
 
 ## Step 4. Pick model (once per session)
 

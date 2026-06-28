@@ -1,0 +1,1 @@
+../../opencode/vision/SKILL.md
