@@ -15,8 +15,8 @@ description: >-
   ordering/equality/layout/readability/state/diff/describe), asks the
   user once per session which vision model to use, assembles a versioned
   request, delegates, parses the typed report. Image paths from
-  screenshot_out_file/filePath; inline-only images saved to /tmp via
-  base64 -d.
+  screenshot_out_file/filePath; inline-only images saved to /tmp via node
+  (not shell echo, to avoid embedding image bytes in commands).
 ---
 
 # Vision — Visual Judgment Skill
@@ -199,19 +199,37 @@ Some tool results return image attachments with
 e.g. `cua-driver_zoom` (inline-only, no path param), or
 `playwright_browser_take_screenshot` called without a `filename`. The
 vision subagent needs a file path to `read`. Save the inline image to
-disk first:
+disk first.
+
+**Prefer avoiding inline images altogether**: when calling
+`cua-driver_get_window_state`, always pass `screenshot_out_file` so a
+file path is available directly. When calling
+`chrome-devtools_take_screenshot` or `playwright_browser_take_screenshot`,
+always pass `filePath` / `filename`. This avoids the inline-only case
+entirely and is the safest path.
+
+If you must handle an inline-only image, write the base64 payload to a
+file using `node -e` (not `echo | base64 -d`, which embeds the raw
+image data in a shell command — screenshots may contain sensitive
+content like tokens or credentials):
 
 ```
 If a tool result has attachments[].url starting "data:image/...;base64,"
 but no file path:
   1. Extract the base64 payload from the data URL (the part after
      ";base64,").
-  2. Write it to /tmp/vision-<random>.png via bash:
-       echo "<base64>" | base64 -d > /tmp/vision-<random>.png
+  2. Write it to /tmp/vision-<random>.png using node, which avoids
+     passing the base64 through the shell:
+       node -e "require('fs').writeFileSync('/tmp/vision-<random>.png',
+       Buffer.from('<base64>','base64'))"
+     Or write a small script to /tmp and run it, passing the base64 via
+     stdin to avoid it appearing in the command line.
   3. Use that path in the request's images[].path.
 ```
 
-This is the recommended handling for any inline-only image result.
+Do not use `echo "<base64>" | base64 -d` — it embeds the raw image
+bytes in the shell command, creating an exfiltration risk if the
+screenshot contains sensitive data.
 
 ## Step 4. Pick model (once per session)
 
