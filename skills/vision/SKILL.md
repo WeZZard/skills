@@ -278,14 +278,24 @@ Do not embed the raw base64 payload in a shell command — screenshots
 may contain sensitive content (tokens, credentials) that should not
 appear in shell history, transcripts, or logs.
 
-## Step 4. Pick model (once per session)
+## Step 4. Pick model (once per session, persisted across sessions)
 
-opencode has no per-call model override and no LLM-set session variable.
-The model choice is carried in your own context for the rest of the
-session.
+The user's vision-model choice is persisted in
+`~/.config/opencode/vision-model.txt` so it carries over to future
+sessions. At startup the vision plugin reads this file and, if it holds
+a known model id, appends a `[vision:model-choice]` line to the system
+prompt.
 
-**On the first visual-judgment need in a session**, before delegating,
-call the `question` tool once:
+**Before asking the user**, check the system prompt:
+
+- If the system prompt contains a `[vision:model-choice]` line, a
+  persisted choice is already active. Extract the model id from the line
+  (it appears right after "previously selected"), map it to its
+  `vision-*` subagent via the table below, and delegate directly. **Do
+  not ask the user again** — reuse the persisted choice for the rest of
+  the session.
+- If the system prompt has **no** `[vision:model-choice]` line (first
+  run, or the file was deleted/corrupt), call the `question` tool once:
 
 ```
 question({
@@ -315,9 +325,22 @@ answers:
 - Remember the choice for the rest of the session. Do not ask again.
   Reuse the chosen model for all subsequent visual judgments in this
   session.
+- **Persist the choice** by writing the `preferredModel` string (e.g.
+  `openai/gpt-5.5`) to `~/.config/opencode/vision-model.txt` so the
+  next session picks it up automatically. Use a single `node -e` or
+  `write` call — the file holds one line, the model id:
+  ```
+  node -e "require('fs').writeFileSync(require('path').join(require('os').homedir(),'.config','opencode','vision-model.txt'),'openai/gpt-5.5')"
+  ```
+  Replace the model id with the user's actual choice. On the next
+  session start, the plugin reads this file and injects the choice into
+  the system prompt, so Step 4's "check the system prompt" branch fires
+  and the question is skipped.
 - If the user picks "Other" and types a model id, map it to the closest
   matching `vision-*` subagent from the table, or fall back to
-  `vision-openai-gpt-5.5` if no match.
+  `vision-openai-gpt-5.5` if no match. Only persist the mapped
+  `preferredModel` (one of the known ids in the table), not the
+  free-form input — an unknown id would be ignored on next startup.
 
 ### `preferredModel → subagent_type` mapping table
 

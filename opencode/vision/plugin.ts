@@ -2,6 +2,7 @@ import type { Plugin } from "@opencode-ai/plugin"
 import { readFileSync, existsSync, writeFileSync, copyFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
+import { homedir } from "node:os"
 
 // Resolve sibling data files (vision-models.json, subagent-body.md) relative
 // to the bundle. When run from source, `import.meta.url` is plugin.ts and the
@@ -33,6 +34,22 @@ const VISION_CAPABLE_ORCHESTRATORS = new Set(
     (m) => `${m.provider}/${m.model_id}`
   )
 )
+
+// Known `preferredModel` values — used to validate a persisted choice so
+// a stale or corrupt vision-model.txt is ignored instead of injecting
+// garbage into the system prompt.
+const KNOWN_MODEL_IDS = new Set(
+  (manifest.models as Array<{ provider: string; model_id: string }>).map(
+    (m) => `${m.provider}/${m.model_id}`
+  )
+)
+
+// Where the chosen vision model is persisted across sessions. The file
+// holds a single line: the `preferredModel` string (e.g.
+// "openai/gpt-5.5"). The plugin reads it at startup and injects it into
+// the system prompt via experimental.chat.system.transform; the skill
+// writes it after the user answers the model-selection question.
+const VISION_MODEL_FILE = join(homedir(), ".config", "opencode", "vision-model.txt")
 
 const PERMISSION = {
   edit: "deny",
@@ -162,6 +179,30 @@ const plugin: Plugin = async () => ({
           `and delegate to a vision-* subagent.`
         ;(part as any).synthetic = true
       }
+    }
+  },
+
+  // Persist the user's vision-model choice across sessions. At startup
+  // (and on each system-prompt build), read ~/.config/opencode/vision-model.txt
+  // and, if it holds a known model id, append a one-line note to the system
+  // prompt so the orchestrator reuses it without re-asking. The skill writes
+  // the file after the user answers the model-selection question (Step 4).
+  "experimental.chat.system.transform": async (_input, output) => {
+    let choice: string | undefined
+    try {
+      if (existsSync(VISION_MODEL_FILE)) {
+        const raw = readFileSync(VISION_MODEL_FILE, "utf8").trim()
+        if (raw && KNOWN_MODEL_IDS.has(raw)) choice = raw
+      }
+    } catch {
+      // Read failure → no persisted choice; the skill will ask.
+    }
+    if (choice) {
+      output.system.push(
+        `[vision:model-choice] The user previously selected ${choice} for visual judgments. ` +
+          `Reuse this model for all vision-* delegations this session without asking. ` +
+          `To use a different model, write the new choice to ${VISION_MODEL_FILE} and delegate to the matching vision-* subagent.`,
+      )
     }
   },
 })
