@@ -2,27 +2,30 @@
 
 A prompt-authored visual response contract for text-only orchestrators
 (GLM 5.2, DeepSeek, and similar models). The orchestrator captures or
-receives an image, extracts the visual intent, writes a task-specific JSON
-response template directly in the spawning prompt, delegates to a vision
-subagent, and parses the returned JSON.
+receives image or video media, extracts the visual intent, writes a
+task-specific JSON response template directly in the spawning prompt,
+delegates to a vision subagent, and parses the returned JSON.
 
 ## What it gives you
 
-- **10 vision subagents** registered programmatically at init - one per
-  top-tier vision model across OpenAI, Kimi for Coding, Ollama Cloud, and
-  opencode-go.
-- **User-dropped image interception** - an
-  `experimental.chat.messages.transform` hook catches images dropped into
-  the chat, saves them to `/tmp/vision-<session>-<part>.png`, and replaces
-  the image `FilePart` with a `TextPart` carrying the path. This gives the
+- **Dynamic vision subagents** registered programmatically at init - one
+  per image/video-capable model in OpenCode's cached model catalog after
+  applying the user-level and project-level provider config.
+- **User-dropped media interception** - an
+  `experimental.chat.messages.transform` hook catches images and videos
+  dropped into the chat, saves them to `/tmp/vision-<session>-<part>.<ext>`,
+  and replaces the `FilePart` with a `[vision:dropped-media]` JSON marker
+  carrying the media type and path. This gives the
   orchestrator a stable file path to hand to a vision subagent. See
-  [Source D in SKILL.md](./SKILL.md#source-d---image-attached-to-a-user-message).
+  [Source D in SKILL.md](./SKILL.md#source-d---media-attached-to-a-user-message).
 - **Dynamic response templates** - each visual task includes the exact
   JSON object shape the subagent should return. There are no fixed
   request/report schema files.
 - **Script-backed model selection** - `scripts/vision-models.mjs`
-  exposes the currently registered models, matching `vision-*` subagents,
-  recommended default, and persisted user choice.
+  reads OpenCode's cached model catalog and OpenCode config files, then
+  exposes the configured image/video model intersection, matching
+  `vision-*` subagents, recommended default, and persisted image/video
+  choices.
 - **MCP integration** - works with chrome-devtools, Playwright, and
   cua-driver screenshots. Uses the a11y/AX tree when it answers the
   question; delegates to a vision subagent only when pixels matter.
@@ -39,6 +42,7 @@ Add to your `~/.config/opencode/opencode.json`:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
+  "enabled_providers": ["openai"],
   "plugin": [
     "opencode-vision"
   ]
@@ -46,8 +50,13 @@ Add to your `~/.config/opencode/opencode.json`:
 ```
 
 opencode auto-installs the npm package via Bun on next launch. The
-plugin's `config(cfg)` hook registers 10 `vision-*` subagents
-programmatically.
+plugin's `config(cfg)` hook registers `vision-*` subagents for configured
+providers whose cached models support image or video input.
+
+The plugin intentionally does not ship a fixed model catalog. Configure
+providers with `enabled_providers` and/or `provider` entries, and the
+model script will intersect that provider set with OpenCode's cached
+model catalog.
 
 ### 2. Install the skill
 
@@ -62,8 +71,8 @@ to fetch `SKILL.md` from this repo and drop it into
 is needed.
 
 The old `~/.config/opencode/agents/visual-judge.md` subagent is removed;
-this plugin replaces it with 10 `vision-*` subagents. Delete the old file
-if present:
+this plugin replaces it with dynamically registered `vision-*` subagents.
+Delete the old file if present:
 
 ```bash
 rm -f ~/.config/opencode/agents/visual-judge.md
@@ -73,28 +82,28 @@ Restart opencode for both changes to take effect.
 
 > **Why two steps?** opencode's plugin loader resolves the npm package to
 > its `dist/index.js` entrypoint and runs the `config(cfg)` hook that
-> registers the 10 subagents. But opencode's skill loader scans filesystem
-> directories for `SKILL.md`; it does not look inside npm packages
-> automatically. The `npx skills` command bridges this gap by placing
+> registers the dynamic subagents. But opencode's skill loader scans
+> filesystem directories for `SKILL.md`; it does not look inside npm
+> packages automatically. The `npx skills` command bridges this gap by placing
 > `SKILL.md` where opencode's default skill scan finds it.
 
 ## Verify
 
 ```bash
-opencode debug agent vision-openai-gpt-5.5
-```
-
-Should show the registered subagent with `model: openai/gpt-5.5`,
-`mode: subagent`.
-
-For the full available model list, run:
-
-```bash
 node opencode/vision/scripts/vision-models.mjs
 ```
 
-The script reads `vision-models.json` and returns each provider/model id
-with its matching `vision-*` subagent.
+The script should return `models[]` entries for configured providers. If
+it returns an empty list, add `enabled_providers` or `provider` entries to
+the relevant OpenCode config and restart opencode.
+
+To inspect one registered subagent, use any returned `subagentType`:
+
+```bash
+opencode debug agent vision-openai-gpt-5.2
+```
+
+The exact agent name depends on your configured provider/model set.
 
 ## Smoke test
 
@@ -108,29 +117,33 @@ The orchestrator should:
 2. Run the model discovery script, then reuse the persisted choice or ask
    you to choose from the returned model list.
 3. Build a visual task prompt that lists `/tmp/foo.png` under
-   `Images to inspect` and includes a centered-button JSON response
+   `Media to Inspect` and includes a centered-button JSON response
    template.
 4. Delegate to the chosen `vision-*` subagent.
 5. Parse the returned JSON and tell you the answer with visual evidence.
 
-### Dropped-image smoke test
+### Dropped-media smoke test
 
-Drop an image file into the opencode chat (for example, drag a PNG onto
-the input), then send any message.
+Drop an image or video file into the opencode chat, then send any message.
 
 The vision plugin's `experimental.chat.messages.transform` hook should:
 
-1. Save the dropped image to `/tmp/vision-<sessionID>-<partID>.png`.
-2. Replace the image `FilePart` with a `TextPart` containing a
-   `[vision:dropped-image]` marker and the `/tmp` path.
+1. Save the dropped media to `/tmp/vision-<sessionID>-<partID>.<ext>`.
+2. Replace the `FilePart` with a `TextPart` containing a
+   `[vision:dropped-media]` marker and JSON payload:
+
+   ```text
+   [vision:dropped-media] {"mediaType":"image","mime":"image/png","path":"/tmp/vision-...png","originalFilename":"screenshot.png"}
+   ```
 
 The orchestrator should then:
 
 3. Detect the Source D trigger.
 4. Extract the user's visual intent, defaulting to a concise description
    when no specific visual criterion was given.
-5. Run the model discovery script, then reuse the persisted choice or ask
-   you to choose from the returned model list.
+5. Run the model discovery script with `--media image`, `--media video`,
+   or `--media image,video`, then reuse the persisted media-specific
+   choice or ask you to choose from the returned model list.
 6. Delegate to a `vision-*` subagent with a task-specific response
    template.
 7. Relay the returned JSON fields and evidence back to you.
@@ -140,12 +153,11 @@ The orchestrator should then:
 ```text
 opencode/vision/                  # this sub-package, published as opencode-vision
   package.json                    # npm package metadata; main -> dist/index.js
-  plugin.ts                       # source: registers 10 vision-* subagents via config(cfg)
+  plugin.ts                       # source: registers dynamic vision-* subagents via config(cfg)
   dist/                           # built on prepublishOnly (gitignored)
     index.js                      # built bundle - package entrypoint
   scripts/
     vision-models.mjs             # model discovery + choice persistence
-  vision-models.json              # 10-entry manifest
   subagent-body.md                # shared subagent prompt template
   SKILL.md                        # intent-capture protocol + response-template workflow
   README.md                       # this file
@@ -158,70 +170,83 @@ skills/vision/SKILL.md            # copied from opencode/vision/SKILL.md for ski
 ```bash
 cd opencode/vision
 bun run build                     # builds dist/index.js
+bun run test                      # runs script CLI tests
 npm publish                       # runs prepublishOnly -> build -> publish
 ```
 
 The `files` field in `package.json` controls what ships: `dist/`,
-`SKILL.md`, `scripts/`, `subagent-body.md`, `vision-models.json`, and
-`README.md`. No source `.ts` or `node_modules` leak.
-
-## Catalog (10 models, 4 providers)
-
-Curation rule: one top-tier model per provider and vendor family; drop
-non-reasoning, drop superseded within a provider, drop coding-specialized,
-drop Pro/billing variants of the same family; keep cross-provider
-duplicates.
-
-| Provider | Model | Family |
-|---|---|---|
-| openai | gpt-5.5 | GPT-5.5 |
-| kimi-for-coding | k2p7 | Kimi K2.7 |
-| ollama-cloud | gemini-3-flash-preview | Gemini |
-| ollama-cloud | gemma4:31b | Gemma |
-| ollama-cloud | minimax-m3 | MiniMax |
-| ollama-cloud | qwen3.5:397b | Qwen 3.5 |
-| opencode-go | kimi-k2.7-code | Kimi K2.7 (cross-provider route) |
-| opencode-go | minimax-m3 | MiniMax |
-| opencode-go | qwen3.7-plus | Qwen 3.7 |
-| opencode-go | mimo-v2.5 | MiMo |
-
-To add a model: add one line to `vision-models.json` and restart
-opencode. The plugin re-reads the manifest at init, registers the
-matching subagent, and exposes the entry through the model discovery
-script.
+`SKILL.md`, `scripts/`, `subagent-body.md`, and `README.md`. No source
+`.ts` or `node_modules` leak.
 
 ## Model discovery script
 
 The plugin ships `scripts/vision-models.mjs`. Run it with no arguments to
-list the current manifest-backed model set:
+list image-capable models from OpenCode's cached model catalog after
+applying configured providers from user-level and project-level OpenCode
+config. Use `--media video` for video-capable models, or `--media
+image,video` when one model must support both media types:
+
+- Cached models: `OPENCODE_MODELS_PATH`, or
+  `~/.cache/opencode/models.json` by default.
+- Config files: `OPENCODE_CONFIG_DIR`, global `~/.config/opencode`,
+  `OPENCODE_CONFIG`, `OPENCODE_CONFIG_CONTENT`, and project
+  `opencode.json(c)` / `.opencode/opencode.json(c)` files.
+- Provider filters: `enabled_providers`, `disabled_providers`,
+  `provider`, provider `whitelist`, provider `blacklist`, and custom
+  `provider.<id>.models`.
 
 ```json
 {
   "ok": true,
   "saved": false,
-  "persistedChoice": null,
-  "recommendedModel": "openai/gpt-5.5",
+  "requestedMedia": ["image"],
+  "persistedChoices": {},
+  "recommendedModel": "openai/gpt-5.2",
   "models": [
     {
-      "model": "openai/gpt-5.5",
+      "model": "openai/gpt-5.2",
       "provider": "openai",
-      "modelID": "gpt-5.5",
-      "name": "GPT-5.5",
-      "subagentType": "vision-openai-gpt-5.5",
+      "modelID": "gpt-5.2",
+      "name": "GPT-5.2",
+      "subagentType": "vision-openai-gpt-5.2",
+      "supportsImage": true,
+      "supportsVideo": false,
       "recommended": true,
-      "pickerLabel": "openai/gpt-5.5",
-      "pickerDescription": "GPT-5.5 (Recommended)"
+      "pickerLabel": "openai/gpt-5.2",
+      "pickerDescription": "GPT-5.2 - image (Recommended)"
     }
-  ]
+  ],
+  "choiceFiles": {
+    "image": "/Users/me/.config/opencode/vision-model-image.txt",
+    "video": "/Users/me/.config/opencode/vision-model-video.txt"
+  },
+  "configuredProviders": ["openai"],
+  "providerSelection": {
+    "source": "enabled_providers",
+    "explicitProviders": ["openai"],
+    "enabledProviders": ["openai"],
+    "disabledProviders": []
+  },
+  "warnings": []
 }
 ```
 
-After the user chooses, run the script with `--select "<provider/model>"`
-to persist the selection to `~/.config/opencode/vision-model.txt`:
+After the user chooses, persist the image or video selection with
+`--media-type` and `--model`:
 
 ```bash
-node opencode/vision/scripts/vision-models.mjs --select openai/gpt-5.5
+node opencode/vision/scripts/vision-models.mjs --media-type=image --model openai/gpt-5.2
+node opencode/vision/scripts/vision-models.mjs --media-type=video --model openai/gpt-5
 ```
+
+Selections are stored separately:
+
+- Image: `~/.config/opencode/vision-model-image.txt`
+- Video: `~/.config/opencode/vision-model-video.txt`
+
+If `models[]` is empty, the script will return warnings explaining
+whether the missing piece is the OpenCode cache or explicit provider
+configuration.
 
 ## Dynamic response templates
 
@@ -232,7 +257,7 @@ prompt includes:
 Visual task:
 Determine whether the primary Submit button is horizontally centered.
 
-Images to inspect:
+Media to inspect:
 - current: /tmp/foo.png - screenshot under test
 
 Response template:
@@ -247,9 +272,9 @@ Return exactly one JSON object shaped like this:
 }
 
 Response rules:
-- Use only the listed images.
+- Use only the listed media.
 - Match the response template exactly; no markdown, prose wrapper, or extra keys.
-- Include evidence from the image for every conclusion.
+- Include evidence from the media for every conclusion.
 - Use null when a requested measurement or fact cannot be determined.
 ```
 
