@@ -583,7 +583,7 @@ function discoverVisionModels(catalog, config, providerSelection) {
   }
 
   models.sort(compareModels)
-  return { models: models.map(withPickerDescription), missingProviders }
+  return { models, missingProviders }
 }
 
 function compareModels(a, b) {
@@ -715,9 +715,8 @@ function pickerModels(models, persistedChoice) {
   const ranked = latestModelsBySeries(models)
   const result = []
   const providerCounts = new Map()
-  const recommended = ranked[0]
 
-  addPickerEntry(result, providerCounts, recommended)
+  addPickerEntry(result, providerCounts, ranked[0])
   if (persistedChoice) {
     addPickerEntry(result, providerCounts, persistedChoice, { force: true })
   }
@@ -730,30 +729,24 @@ function pickerModels(models, persistedChoice) {
   return result
     .slice(0, PICKER_MODEL_LIMIT)
     .map((entry) =>
-      describeModel(entry, {
-        recommended: entry.model === recommended?.model,
+      pickerModelPayload(entry, {
         saved: entry.model === persistedChoice?.model,
       }),
     )
 }
 
-function describeModel(entry, options = {}) {
+function pickerModelPayload(entry, options = {}) {
   const status = entry.status === "active" ? "" : `, ${entry.status}`
   const tags = [
-    options.recommended ? "Recommended" : undefined,
     options.saved ? "Saved choice" : undefined,
   ].filter(Boolean)
   const suffix = tags.length > 0 ? ` (${tags.join(", ")})` : ""
   return {
-    ...entry,
-    recommended: Boolean(options.recommended),
-    savedChoice: Boolean(options.saved),
+    model: entry.model,
+    subagentType: entry.subagentType,
+    pickerLabel: entry.pickerLabel,
     pickerDescription: `${entry.name} - image${status}${suffix}`,
   }
-}
-
-function withPickerDescription(entry, index) {
-  return describeModel(entry, { recommended: index === 0 })
 }
 
 function readPersistedChoice(file, modelsByID) {
@@ -771,11 +764,9 @@ function choicePayload(entry) {
   if (!entry) return undefined
   return {
     model: entry.model,
-    provider: entry.provider,
-    modelID: entry.modelID,
     subagentType: entry.subagentType,
-    supportsImage: entry.supportsImage,
-    supportsTextOutput: entry.supportsTextOutput,
+    pickerLabel: entry.pickerLabel,
+    pickerDescription: `${entry.name} - image`,
   }
 }
 
@@ -797,11 +788,10 @@ function payload(input) {
   const picker = pickerModels(input.models, persistedChoice)
   const result = {
     persistedChoice: choicePayload(persistedChoice) ?? null,
-    recommendedModel: picker.find((entry) => entry.recommended)?.model ?? picker[0]?.model ?? null,
-    pickerModels: picker,
+    selectedModel: persistedChoice?.model ?? null,
+    selectionRequired: !persistedChoice && picker.length > 0,
     models: picker,
     modelCount: input.models.length,
-    pickerModelCount: picker.length,
     configuredProviders: input.providerSelection.ids,
     providerSelection: {
       source: input.providerSelection.source,

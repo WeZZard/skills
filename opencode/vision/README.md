@@ -24,7 +24,7 @@ delegates to a vision subagent, and parses the returned JSON.
 - **Script-backed model selection** - `scripts/vision-models.mjs`
   reads OpenCode's cached model catalog and OpenCode config files, then
   exposes the configured image-capable models, matching `vision-*`
-  subagents, recommended default, and persisted image choice.
+  subagents, ranked picker shortlist, and persisted image choice.
 - **MCP integration** - works with chrome-devtools, Playwright, and
   cua-driver screenshots. Uses the a11y/AX tree when it answers the
   question; delegates to a vision subagent only when pixels matter.
@@ -92,8 +92,8 @@ Restart opencode for both changes to take effect.
 node opencode/vision/scripts/vision-models.mjs
 ```
 
-The script should return a capped `models[]` / `pickerModels[]` shortlist
-for user questions. It discovers providers configured through OpenCode
+The script should return a capped `models[]` shortlist for user questions.
+It discovers providers configured through OpenCode
 config, saved OpenCode auth, or matching provider environment variables, then
 keeps only active image-input/text-output models. It ranks by reasoning,
 tool-call support, release date, context limit, and stable id; keeps only the
@@ -210,39 +210,17 @@ manual fuzzy matching.
   "ok": true,
   "saved": false,
   "persistedChoice": null,
-  "recommendedModel": "openai/gpt-5.5",
-  "pickerModels": [
-    {
-      "model": "openai/gpt-5.5",
-      "provider": "openai",
-      "modelID": "gpt-5.5",
-      "name": "GPT-5.5",
-      "subagentType": "vision-openai-gpt-5.5",
-      "supportsImage": true,
-      "supportsTextOutput": true,
-      "recommended": true,
-      "savedChoice": false,
-      "pickerLabel": "openai/gpt-5.5",
-      "pickerDescription": "GPT-5.5 - image (Recommended)"
-    }
-  ],
+  "selectedModel": null,
+  "selectionRequired": true,
   "models": [
     {
       "model": "openai/gpt-5.5",
-      "provider": "openai",
-      "modelID": "gpt-5.5",
-      "name": "GPT-5.5",
       "subagentType": "vision-openai-gpt-5.5",
-      "supportsImage": true,
-      "supportsTextOutput": true,
-      "recommended": true,
-      "savedChoice": false,
       "pickerLabel": "openai/gpt-5.5",
-      "pickerDescription": "GPT-5.5 - image (Recommended)"
+      "pickerDescription": "GPT-5.5 - image"
     }
   ],
   "modelCount": 42,
-  "pickerModelCount": 1,
   "choiceFile": "/Users/me/.config/opencode/vision-model-image.txt",
   "configuredProviders": ["openai"],
   "providerSelection": {

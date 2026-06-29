@@ -171,7 +171,7 @@ function modelIDs(result, field = "models") {
 }
 
 function pickerModelIDs(result) {
-  return modelIDs(result, "pickerModels")
+  return modelIDs(result)
 }
 
 test("lists image-capable models only", async () => {
@@ -187,6 +187,13 @@ test("lists image-capable models only", async () => {
     assert.equal(result.json.choiceFile, fx.imageChoice)
     assert.equal(result.json.modelCount, 3)
     assert.ok(result.json.models.length <= 6)
+    assert.deepEqual(Object.keys(result.json.models[0]).sort(), [
+      "model",
+      "pickerDescription",
+      "pickerLabel",
+      "subagentType",
+    ])
+    assert.equal("pickerModels" in result.json, false)
   })
 })
 
@@ -398,7 +405,8 @@ test("picker shortlist keeps only the latest model in each provider series", asy
     assert.equal(pickerModelIDs(result).includes("openai/gpt-5.4"), false)
     assert.equal(pickerModelIDs(result).includes("kimi/k2p5"), false)
     assert.equal(pickerModelIDs(result).includes("anthropic/claude-sonnet-4-5"), false)
-    assert.equal(result.json.recommendedModel, result.json.pickerModels[0].model)
+    assert.equal(result.json.selectionRequired, true)
+    assert.equal(result.json.selectedModel, null)
   })
 })
 
@@ -442,7 +450,7 @@ test("picker shortlist is capped while full models remain available", async () =
     assert.equal(result.code, 0)
     assert.equal(result.json.modelCount, 8)
     assert.equal(result.json.models.length, 2)
-    assert.equal(result.json.pickerModels.length, 2)
+    assert.equal(result.json.models.length, 2)
 
     const all = await runVision(fx, ["--all"])
     assert.equal(all.json.allModels.length, 8)
@@ -543,7 +551,7 @@ test("picker shortlist caps provider diversity", async () => {
       Object.fromEntries(
         ["alpha", "beta", "gamma"].map((provider) => [
           provider,
-          result.json.models.filter((model) => model.provider === provider).length,
+          result.json.models.filter((model) => model.model.startsWith(`${provider}/`)).length,
         ]),
       ),
       { alpha: 2, beta: 2, gamma: 2 },
@@ -584,12 +592,12 @@ test("persisted choice is included as saved without replacing recommendation", a
     await writeFile(fx.imageChoice, "alpha/atlas\n")
     const result = await runVision(fx)
     assert.equal(result.code, 0)
-    assert.equal(result.json.recommendedModel, "alpha/harbor")
+    assert.equal(result.json.models[0].model, "alpha/harbor")
+    assert.equal(result.json.selectedModel, "alpha/atlas")
+    assert.equal(result.json.selectionRequired, false)
 
     const saved = result.json.models.find((model) => model.model === "alpha/atlas")
     assert.ok(saved)
-    assert.equal(saved.savedChoice, true)
-    assert.equal(saved.recommended, false)
     assert.match(saved.pickerDescription, /Saved choice/)
   })
 })
@@ -652,6 +660,19 @@ test("stale persisted choices are ignored", async () => {
     const result = await runVision(fx)
     assert.equal(result.code, 0)
     assert.equal(result.json.persistedChoice, null)
+  })
+})
+
+test("empty persisted choice requires user selection", async () => {
+  await withFixture({}, async (fx) => {
+    await writeFile(fx.imageChoice, "\n")
+    const result = await runVision(fx)
+    assert.equal(result.code, 0)
+    assert.equal(result.json.persistedChoice, null)
+    assert.equal(result.json.selectedModel, null)
+    assert.equal(result.json.selectionRequired, true)
+    assert.equal("recommendedModel" in result.json, false)
+    assert.ok(result.json.models.length > 0)
   })
 })
 
