@@ -96,6 +96,18 @@ REUSE: <existing functions/utilities/patterns to prefer over new code>
 - You **MUST** treat each acceptance criterion as a requirement to satisfy.
 - You **MUST** self-check against each acceptance criterion before returning.
 
+## Contents Generation Principles
+
+**MUST:**
+
+1. You **MUST** write committed artifacts (source, tests, config, docs) as production code: names, assertions, and comments describe the behavior or domain concept — not the plan, task, or verification workflow.
+
+**MUST NOT:**
+
+1. You **MUST NOT** embed plan workflow metadata in committed files — no verification case ids (`1.3`, `V1.3`, `case 1.3`), no `[Verifies …]` tags, no task ids (`T2`), no acceptance-criterion numbering, and no references to "the plan," "execute-plan," or "write-plan."
+
+2. You **MUST NOT** use a comment or test name whose main job is linking code to a plan section; describe the behavior under test instead (e.g. "rejects empty input" not "V1.3" or "verifies case 1.3").
+
 ## Implementation Principles
 
 POSTURE: DRY, YAGNI; reuse over new code; TDD where the task is test-bearing
