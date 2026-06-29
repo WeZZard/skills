@@ -18,6 +18,10 @@ import { fileURLToPath } from "node:url";
 
 const ENGINE = fileURLToPath(new URL("./task.mjs", import.meta.url));
 const SCHEMA = fileURLToPath(new URL("../schemas/task-graph.schema.json", import.meta.url));
+// The producer helper under test (V10/V12): an absolute path so a generated `fn`
+// node's `module` resolves regardless of cwd, plus the helper imported directly.
+const LIFECYCLE = fileURLToPath(new URL("./lifecycle.mjs", import.meta.url));
+import { verifiedTaskNodes } from "./lifecycle.mjs";
 
 let ROOT;
 before(() => { ROOT = mkdtempSync(join(tmpdir(), "amplify-task-test-")); });
@@ -614,19 +618,31 @@ test("V-NT.1 typed implement: every existing test graph is a typed implement nod
   assert.deepEqual(ids(run(stateDir, ["ready", "--id", id]).stdout), ["A.impl"], "typed implement schedules as before");
 });
 
-test("V-NT.1 node-types.json is the source of truth validateGraph reads (declares the four types with executor+deps required)", () => {
+test("V-NT.1 node-types.json is the source of truth validateGraph reads (declares all types; executor required only when type dispatches a subagent)", () => {
   const nt = JSON.parse(readFileSync(NODE_TYPES_FILE, "utf8"));
-  assert.deepEqual(Object.keys(nt.types).sort(), ["audit", "implement", "reduce", "resolve"],
-    "node-types.json declares exactly the four node types");
+  assert.deepEqual(Object.keys(nt.types).sort(),
+    ["agent", "audit", "expand", "fn", "implement", "reduce", "resolve", "switch"],
+    "node-types.json declares all eight node types (legacy + generalized)");
   for (const [name, tmpl] of Object.entries(nt.types)) {
-    assert.ok(tmpl.required.includes("executor"), `${name} requires executor`);
+    // executor is required only on types that dispatch a subagent (implement, resolve, audit, reduce, agent)
+    if (tmpl.executor) {
+      assert.ok(tmpl.required.includes("executor"), `${name} requires executor (dispatches a subagent)`);
+    } else {
+      assert.ok(!tmpl.required.includes("executor"), `${name} must NOT require executor (engine-driven: fn/expand/switch)`);
+    }
     assert.ok(tmpl.required.includes("deps"), `${name} requires deps`);
     assert.ok(tmpl.required.includes("type"), `${name} requires the explicit type`);
   }
+  // Legacy types: fixed executors
   assert.equal(nt.types.implement.executor.const, "subagent(general-purpose)");
   assert.equal(nt.types.resolve.executor.const, "subagent(amplify:audit-resolver)");
   assert.equal(nt.types.reduce.executor.const, "subagent(amplify:audit-reducer)");
   assert.ok(nt.types.audit.executor.matchesGrammar, "audit's executor is the open grammar (authored sub-agent)");
+  // Generalized types with executor: agent uses open grammar; fn/expand/switch have no executor rule.
+  assert.ok(nt.types.agent.executor.matchesGrammar, "agent's executor is the open grammar");
+  assert.equal(nt.types.fn.executor, undefined, "fn has no executor rule (engine-driven)");
+  assert.equal(nt.types.expand.executor, undefined, "expand has no executor rule (engine-driven)");
+  assert.equal(nt.types.switch.executor, undefined, "switch has no executor rule (engine-driven)");
 });
 
 test("V-NT.5 consistency: node-types.json and task-graph.schema.json agree on every type's executor rule, property set, and required set", () => {
@@ -634,35 +650,48 @@ test("V-NT.5 consistency: node-types.json and task-graph.schema.json agree on ev
   // only the dump's offline JSON-Schema validation. Nothing else asserts the two
   // hand-maintained declarations agree, so this guards against silent drift: an
   // edit to one file that isn't mirrored in the other fails here.
+  // fn/expand/switch have no executor rule (engine-driven); the consistency check
+  // handles them by skipping the executor-rule assertions for those types.
   const nt = JSON.parse(readFileSync(NODE_TYPES_FILE, "utf8")).types;
   const schema = JSON.parse(readFileSync(SCHEMA, "utf8"));
-  for (const type of ["implement", "resolve", "audit", "reduce"]) {
+  for (const type of Object.keys(nt)) {
     const tmpl = nt[type];
     const def = schema.$defs[type];
     assert.ok(def, `schema declares $defs.${type}`);
 
     // 1. Property set: node-types' required ∪ optional == schema's declared properties.
     assert.deepEqual(
-      [...new Set([...tmpl.required, ...tmpl.optional])].sort(),
+      [...new Set([...tmpl.required, ...(tmpl.optional || [])])].sort(),
       Object.keys(def.properties).sort(),
       `${type}: property sets must match across the two files`,
     );
 
     // 2. Executor rule: a fixed (const) executor mirrors the schema const; the
-    //    open-grammar (audit) executor mirrors the schema $ref to #/$defs/executor.
-    if ("const" in tmpl.executor) {
-      assert.equal(def.properties.executor.const, tmpl.executor.const,
-        `${type}: executor const must match`);
+    //    open-grammar (audit/agent) executor mirrors the schema $ref to #/$defs/executor.
+    //    Types with no executor rule (fn/expand/switch) have no executor in their schema
+    //    properties either — skip the executor-rule assertions for those.
+    if (tmpl.executor) {
+      if ("const" in tmpl.executor) {
+        assert.equal(def.properties.executor.const, tmpl.executor.const,
+          `${type}: executor const must match`);
+      } else {
+        assert.ok(tmpl.executor.matchesGrammar, `${type}: executor is the open grammar`);
+        assert.equal(def.properties.executor.$ref, "#/$defs/executor",
+          `${type}: open-grammar executor must $ref the shared executor grammar`);
+      }
     } else {
-      assert.ok(tmpl.executor.matchesGrammar, `${type}: executor is the open grammar`);
-      assert.equal(def.properties.executor.$ref, "#/$defs/executor",
-        `${type}: open-grammar executor must $ref the shared executor grammar`);
+      // engine-driven type: schema must not have a fixed-const executor property
+      assert.ok(
+        !def.properties.executor || !("const" in def.properties.executor),
+        `${type}: engine-driven type must not have a fixed-const executor in schema`,
+      );
     }
 
     // 3. Required set: identical, except a fixed (const, hence defaultable) executor
     //    is omitted from the schema's `required` (a missing executor defaults to the
     //    const), while the open-grammar executor stays required in both.
-    const defaultable = "const" in tmpl.executor;
+    //    For types with no executor rule, executor is simply absent from both.
+    const defaultable = tmpl.executor && "const" in tmpl.executor;
     const expectedRequired = tmpl.required.filter((p) => !(p === "executor" && defaultable));
     assert.deepEqual(def.required.slice().sort(), expectedRequired.sort(),
       `${type}: required sets must match (executor defaultable iff its executor is fixed)`);
@@ -1138,6 +1167,162 @@ test("V-SI.3 invalidate: a failed task AT the generation cap stays failed and is
   assert.equal(state.tasks.A.generation, 3, "generation is not advanced past the cap");
   assert.ok(!ids(run(stateDir, ["ready", "--id", id]).stdout).includes("A.impl"),
     "the capped task is not redispatched");
+});
+
+// --- generalized content identity for every node kind (V16) ----------------
+// spec()/the content hash folds EACH node type's declared identity fields read
+// from its node-types.json template, NOT a fixed implement-only field list. So
+// editing a non-implement node's identity field changes its contentHash (and any
+// dependent's), and a settled non-implement node whose hash drifts is re-run by
+// invalidateStale — exactly as an implement task is.
+
+test("V16 contentHash: editing a non-implement node's identity field changes its contentHash (folded from the type template)", () => {
+  // init a one- or two-node graph and return { id: contentHash } for every task.
+  const hashesFor = (nodes) => {
+    const w = ws();
+    const r = init(w.stateDir, w.dir, { version: 1, nodes });
+    assert.equal(r.status, 0, r.stderr);
+    return contentHashes(w.stateDir, r.stdout.trim());
+  };
+
+  // agent: prompt + output_schema are identity fields
+  const agent = (extra = {}) => ({
+    id: "N", type: "agent", deps: [], executor: "subagent(general-purpose)",
+    prompt: "do the thing", output_schema: { type: "string" }, max_attempts: 1, ...extra,
+  });
+  const baseAgent = hashesFor([agent()]).N;
+  assert.notEqual(hashesFor([agent({ prompt: "do it another way" })]).N, baseAgent, "agent.prompt is an identity field");
+  assert.notEqual(hashesFor([agent({ output_schema: { type: "integer" } })]).N, baseAgent, "agent.output_schema is an identity field");
+
+  // fn: module + export + output_schema + require are identity fields
+  const fn = (extra = {}) => ({
+    id: "N", type: "fn", deps: [], module: "./reduce.mjs", export: "run",
+    output_schema: { type: "object" }, ...extra,
+  });
+  const baseFn = hashesFor([fn()]).N;
+  assert.notEqual(hashesFor([fn({ module: "./other.mjs" })]).N, baseFn, "fn.module is an identity field");
+  assert.notEqual(hashesFor([fn({ export: "main" })]).N, baseFn, "fn.export is an identity field");
+  assert.notEqual(hashesFor([fn({ output_schema: { type: "array" } })]).N, baseFn, "fn.output_schema is an identity field");
+  assert.notEqual(hashesFor([fn({ require: "all-resolved" })]).N, baseFn, "fn.require is an identity field");
+
+  // expand: over + template + gather are identity fields
+  const expand = (extra = {}) => ({
+    id: "N", type: "expand", deps: [], over: "src", template: { type: "string" }, gather: "G", ...extra,
+  });
+  const baseExpand = hashesFor([expand()]).N;
+  assert.notEqual(hashesFor([expand({ over: "other-src" })]).N, baseExpand, "expand.over is an identity field");
+  assert.notEqual(hashesFor([expand({ template: { type: "integer" } })]).N, baseExpand, "expand.template is an identity field");
+  assert.notEqual(hashesFor([expand({ gather: "H" })]).N, baseExpand, "expand.gather is an identity field");
+
+  // switch: cases is an identity field (a boolean selector keeps exhaustiveness as
+  // we change only the case BODIES, not the keys, so the graph stays valid)
+  const sw = (cases) => ([
+    { id: "SEL", type: "agent", deps: [], executor: "subagent(general-purpose)",
+      prompt: "pick", output_schema: { type: "boolean" }, max_attempts: 1 },
+    { id: "N", type: "switch", deps: ["SEL"], over: "SEL", cases },
+  ]);
+  const baseSwitch = hashesFor(sw({ "true": { go: 1 }, "false": { go: 0 } })).N;
+  assert.notEqual(
+    hashesFor(sw({ "true": { go: 2 }, "false": { go: 0 } })).N,
+    baseSwitch,
+    "switch.cases is an identity field",
+  );
+
+  // propagation: a dependent of an edited node also changes (Merkle fold). A plain
+  // implement consumer of the agent picks up the agent's hash change.
+  const consumer = (agentNode) => ([
+    agentNode,
+    { id: "C", type: "implement", name: "C", deps: ["N"], acceptance_criteria: ["x"], design_aspect: "Architecture", max_attempts: 1 },
+  ]);
+  const baseProp = hashesFor(consumer(agent()));
+  const editedProp = hashesFor(consumer(agent({ prompt: "changed" })));
+  assert.notEqual(editedProp.N, baseProp.N, "the edited agent's hash changes");
+  assert.notEqual(editedProp.C, baseProp.C, "the change propagates downstream to the dependent's hash");
+});
+
+test("V16 invalidate: a settled non-implement node whose identity drifted resets to pending and re-runs", () => {
+  const { dir, stateDir } = ws();
+  // an fn node + an independent implement `trigger` we dispatch to ride a commit.
+  const id = init(stateDir, dir, {
+    version: 1,
+    nodes: [
+      { id: "F", type: "fn", deps: [], module: "./reduce.mjs", export: "run", output_schema: { type: "object" } },
+      task("trigger"),
+    ],
+  }).stdout.trim();
+
+  // mark F settled (done) and plant a drift on the field invalidation reads
+  // (doneHash), the same black-box mechanism the V-SI tests use. recompute will
+  // reproduce F's real contentHash, which then diverges from the planted doneHash.
+  let state = readState(stateDir, id);
+  state.tasks.F.status = "done";
+  state.tasks.F.doneHash = "feedface".repeat(8); // 64-hex, != recomputed contentHash
+  writeState(stateDir, id, state);
+
+  const d = run(stateDir, ["dispatch", "--id", id, "--node", "trigger.impl"]); // ride a commit
+  assert.equal(d.status, 0, d.stderr);
+
+  state = readState(stateDir, id);
+  assert.equal(state.tasks.F.status, "pending", "a drifted settled fn resets to pending (re-run), driven off status not type");
+  assert.equal(state.tasks.F.doneHash, undefined, "doneHash cleared on reset");
+});
+
+// --- combinator re-expand teardown (V19) ------------------------------------
+// When invalidateStale re-readies an already-expanded combinator (expand/switch/
+// loop), it FIRST removes that node's previously generated children/branches and
+// their generated descendants, so the re-run reproduces one clean acyclic shape
+// with no orphaned or duplicated generated nodes. The expand/switch runtime is a
+// later task, so the generated children are planted directly into state (the
+// black-box mechanism the other invalidation tests use), tagged generatedBy.
+
+test("V19 invalidate: re-readying an already-expanded combinator tears down its generated children and their descendants", () => {
+  const { dir, stateDir } = ws();
+  // E is an expand node (authored); trigger is an independent implement we dispatch
+  // to ride a commit that runs invalidateStale.
+  const id = init(stateDir, dir, {
+    version: 1,
+    nodes: [
+      { id: "E", type: "expand", deps: [], over: "src", template: { type: "string" }, gather: "G" },
+      task("trigger"),
+    ],
+  }).stdout.trim();
+
+  // Plant E as already-expanded (status done, doneHash recorded at its expansion)
+  // with a drift, plus two generated descendants: a child E__0 (implement, with an
+  // impl subnode to prove SUBNODE teardown) tagged generatedBy E, and a grandchild
+  // E__0__0 (fn) tagged generatedBy E__0 to prove TRANSITIVE task teardown.
+  let state = readState(stateDir, id);
+  state.tasks.E.status = "done";
+  state.tasks.E.doneHash = "0badf00d".repeat(8); // 64-hex, != recomputed contentHash -> stale
+  state.tasks.E__0 = {
+    type: "implement", deps: ["E"], executor: "subagent(general-purpose)",
+    status: "done", attempts: 0, generation: 0, lastReason: null, generatedBy: "E",
+    name: "child 0", acceptance_criteria: ["does element 0"], design_aspect: "Architecture", max_attempts: 1, human_gate: false,
+  };
+  state.subnodes["E__0.impl"] = { task: "E__0", role: "impl", status: "done", executor: "subagent(general-purpose)" };
+  state.tasks.E__0__0 = {
+    type: "fn", deps: ["E__0"], status: "pending", attempts: 0, generation: 0, lastReason: null, generatedBy: "E__0",
+    module: "./m.mjs", export: "run", output_schema: { type: "object" },
+  };
+  writeState(stateDir, id, state);
+
+  const d = run(stateDir, ["dispatch", "--id", id, "--node", "trigger.impl"]); // ride a commit
+  assert.equal(d.status, 0, d.stderr);
+
+  state = readState(stateDir, id);
+  // the whole generated subtree is gone (transitively), with no orphans
+  assert.ok(!("E__0" in state.tasks), "the generated child task is removed");
+  assert.ok(!("E__0__0" in state.tasks), "the generated grandchild is removed (transitive teardown)");
+  assert.ok(!("E__0.impl" in state.subnodes), "the generated child's subnode is removed");
+  // the combinator is reset to re-expand cleanly
+  assert.equal(state.tasks.E.status, "pending", "the re-readied combinator resets to pending");
+  assert.equal(state.tasks.E.doneHash, undefined, "the combinator's expansion hash is cleared on teardown");
+  // no surviving task references a removed child (no dangling deps left behind)
+  for (const [tid, t] of Object.entries(state.tasks)) {
+    for (const dep of t.deps || []) {
+      assert.ok(tid !== dep && dep in state.tasks, `surviving task ${tid} has no dangling dep (${dep})`);
+    }
+  }
 });
 
 // --- task-level graph-mutation commands (V-TC) -----------------------------
@@ -1630,4 +1815,2011 @@ test("init rejects a node missing design_aspect", () => {
   const r = init(stateDir, dir, { version: 1, nodes: [{ id: "A", type: "implement", name: "A", deps: [], acceptance_criteria: ["x"], max_attempts: 1 }] });
   assert.notEqual(r.status, 0, "expected non-zero exit for missing design_aspect");
   assert.match(r.stderr, /design_aspect/);
+});
+
+// ---------------------------------------------------------------------------
+// V1: new node types — agent, fn, expand, switch + output_schema
+// ---------------------------------------------------------------------------
+
+test("V1 agent: a complete agent node validates (executor, prompt, output_schema, max_attempts)", () => {
+  const { dir, stateDir } = ws();
+  const agentNode = {
+    id: "A", type: "agent", deps: [],
+    executor: "subagent(general-purpose)",
+    prompt: "Summarise the research findings.",
+    output_schema: { type: "string" },
+    max_attempts: 2,
+  };
+  const r = init(stateDir, dir, { version: 1, nodes: [agentNode] });
+  assert.equal(r.status, 0, r.stderr);
+  const state = readState(stateDir, r.stdout.trim());
+  assert.equal(state.tasks.A.type, "agent", "agent type persists on the task record");
+  assert.deepEqual(state.tasks.A.output_schema, { type: "string" });
+  assert.equal(state.tasks.A.prompt, "Summarise the research findings.");
+});
+
+test("V1 agent: output_schema with enum validates and persists", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [{
+    id: "A", type: "agent", deps: [],
+    executor: "subagent(general-purpose)",
+    prompt: "Classify the sentiment.",
+    output_schema: { type: "string", enum: ["positive", "negative", "neutral"] },
+    max_attempts: 1,
+  }] });
+  assert.equal(r.status, 0, r.stderr);
+  const state = readState(stateDir, r.stdout.trim());
+  assert.deepEqual(state.tasks.A.output_schema.enum, ["positive", "negative", "neutral"]);
+});
+
+test("V1 agent: boolean output_schema validates", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [{
+    id: "A", type: "agent", deps: [],
+    executor: "subagent(general-purpose)",
+    prompt: "Should we proceed?",
+    output_schema: { type: "boolean" },
+    max_attempts: 1,
+  }] });
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test("V1 fn: a complete fn node validates (module, export, output_schema)", () => {
+  const { dir, stateDir } = ws();
+  const fnNode = {
+    id: "F", type: "fn", deps: [],
+    module: "./reducers/sum.mjs",
+    export: "sum",
+    output_schema: { type: "integer" },
+  };
+  const r = init(stateDir, dir, { version: 1, nodes: [fnNode] });
+  assert.equal(r.status, 0, r.stderr);
+  const state = readState(stateDir, r.stdout.trim());
+  assert.equal(state.tasks.F.type, "fn", "fn type persists");
+  assert.equal(state.tasks.F.module, "./reducers/sum.mjs");
+  assert.equal(state.tasks.F["export"], "sum");
+  assert.deepEqual(state.tasks.F.output_schema, { type: "integer" });
+});
+
+test("V1 fn: optional require='all-resolved' validates", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [{
+    id: "F", type: "fn", deps: [],
+    module: "./gather.mjs",
+    export: "gather",
+    output_schema: { type: "array" },
+    require: "all-resolved",
+  }] });
+  assert.equal(r.status, 0, r.stderr);
+  const state = readState(stateDir, r.stdout.trim());
+  assert.equal(state.tasks.F.require, "all-resolved");
+});
+
+test("V1 expand: a complete expand node validates (over, template, gather) with an upstream agent", () => {
+  const { dir, stateDir } = ws();
+  const agentNode = {
+    id: "SRC", type: "agent", deps: [],
+    executor: "subagent(general-purpose)",
+    prompt: "produce a list of items",
+    output_schema: { type: "array" },
+    max_attempts: 1,
+  };
+  const gatherNode = {
+    id: "G", type: "fn", deps: [],
+    module: "./gather.mjs",
+    export: "gather",
+    output_schema: { type: "array" },
+    require: "all-resolved",
+  };
+  const expandNode = {
+    id: "E", type: "expand", deps: ["SRC"],
+    over: "SRC",
+    template: { type: "agent", prompt: "process item", output_schema: { type: "string" }, max_attempts: 1 },
+    gather: "G",
+  };
+  const r = init(stateDir, dir, { version: 1, nodes: [agentNode, expandNode, gatherNode] });
+  assert.equal(r.status, 0, r.stderr);
+  const state = readState(stateDir, r.stdout.trim());
+  assert.equal(state.tasks.E.type, "expand");
+  assert.equal(state.tasks.E.over, "SRC");
+  assert.equal(state.tasks.E.gather, "G");
+  assert.ok(state.tasks.E.template, "template persists");
+});
+
+test("V1 switch (boolean): switch with boolean selector and exhaustive {true,false} cases validates", () => {
+  const { dir, stateDir } = ws();
+  const selectorNode = {
+    id: "SEL", type: "agent", deps: [],
+    executor: "subagent(general-purpose)",
+    prompt: "Should we retry?",
+    output_schema: { type: "boolean" },
+    max_attempts: 1,
+  };
+  const switchNode = {
+    id: "SW", type: "switch", deps: ["SEL"],
+    over: "SEL",
+    cases: {
+      "true": { type: "agent", prompt: "retry" },
+      "false": { type: "fn", module: "./done.mjs", export: "done" },
+    },
+  };
+  const r = init(stateDir, dir, { version: 1, nodes: [selectorNode, switchNode] });
+  assert.equal(r.status, 0, r.stderr);
+  const state = readState(stateDir, r.stdout.trim());
+  assert.equal(state.tasks.SW.type, "switch");
+  assert.equal(state.tasks.SW.over, "SEL");
+});
+
+test("V1 switch (enum): switch with enum selector and exhaustive cases validates", () => {
+  const { dir, stateDir } = ws();
+  const selectorNode = {
+    id: "CLS", type: "agent", deps: [],
+    executor: "subagent(general-purpose)",
+    prompt: "Classify.",
+    output_schema: { type: "string", enum: ["pass", "fail", "skip"] },
+    max_attempts: 1,
+  };
+  const switchNode = {
+    id: "SW", type: "switch", deps: ["CLS"],
+    over: "CLS",
+    cases: {
+      "pass": { type: "fn", module: "./pass.mjs", export: "handle" },
+      "fail": { type: "fn", module: "./fail.mjs", export: "handle" },
+      "skip": { type: "fn", module: "./skip.mjs", export: "handle" },
+    },
+  };
+  const r = init(stateDir, dir, { version: 1, nodes: [selectorNode, switchNode] });
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test("V1 mixed: agent -> fn -> switch graph validates end to end", () => {
+  const { dir, stateDir } = ws();
+  const agentNode = {
+    id: "A", type: "agent", deps: [],
+    executor: "subagent(general-purpose)",
+    prompt: "Decide pass/fail.",
+    output_schema: { type: "string", enum: ["pass", "fail"] },
+    max_attempts: 2,
+  };
+  const fnNode = {
+    id: "F", type: "fn", deps: ["A"],
+    module: "./transform.mjs",
+    export: "transform",
+    output_schema: { type: "string", enum: ["pass", "fail"] },
+  };
+  const switchNode = {
+    id: "SW", type: "switch", deps: ["F"],
+    over: "F",
+    cases: { "pass": {}, "fail": {} },
+  };
+  const r = init(stateDir, dir, { version: 1, nodes: [agentNode, fnNode, switchNode] });
+  assert.equal(r.status, 0, r.stderr);
+});
+
+test("V1 unknown type is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [{ id: "A", type: "frobnicate", deps: [], executor: "subagent(general-purpose)" }] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /frobnicate/);
+  assert.match(r.stderr, /unknown/i);
+});
+
+// V1 rejection cases for new node types
+const v1RejectCases = {
+  "agent missing prompt": { version: 1, nodes: [{
+    id: "A", type: "agent", deps: [], executor: "subagent(general-purpose)",
+    output_schema: { type: "boolean" }, max_attempts: 1,
+  }] },
+  "agent missing output_schema": { version: 1, nodes: [{
+    id: "A", type: "agent", deps: [], executor: "subagent(general-purpose)",
+    prompt: "do it", max_attempts: 1,
+  }] },
+  "agent missing max_attempts": { version: 1, nodes: [{
+    id: "A", type: "agent", deps: [], executor: "subagent(general-purpose)",
+    prompt: "do it", output_schema: { type: "boolean" },
+  }] },
+  "agent output_schema.type invalid": { version: 1, nodes: [{
+    id: "A", type: "agent", deps: [], executor: "subagent(general-purpose)",
+    prompt: "do it", output_schema: { type: "frobnicate" }, max_attempts: 1,
+  }] },
+  "agent output_schema.enum empty": { version: 1, nodes: [{
+    id: "A", type: "agent", deps: [], executor: "subagent(general-purpose)",
+    prompt: "do it", output_schema: { type: "string", enum: [] }, max_attempts: 1,
+  }] },
+  "agent output_schema unknown property": { version: 1, nodes: [{
+    id: "A", type: "agent", deps: [], executor: "subagent(general-purpose)",
+    prompt: "do it", output_schema: { type: "string", description: "hi" }, max_attempts: 1,
+  }] },
+  "fn missing module": { version: 1, nodes: [{
+    id: "F", type: "fn", deps: [],
+    export: "fn", output_schema: { type: "boolean" },
+  }] },
+  "fn missing export": { version: 1, nodes: [{
+    id: "F", type: "fn", deps: [],
+    module: "./m.mjs", output_schema: { type: "boolean" },
+  }] },
+  "fn missing output_schema": { version: 1, nodes: [{
+    id: "F", type: "fn", deps: [],
+    module: "./m.mjs", export: "fn",
+  }] },
+  "fn invalid require value": { version: 1, nodes: [{
+    id: "F", type: "fn", deps: [],
+    module: "./m.mjs", export: "fn", output_schema: { type: "boolean" },
+    require: "all-settled",
+  }] },
+  "fn with executor field (outside template)": { version: 1, nodes: [{
+    id: "F", type: "fn", deps: [],
+    module: "./m.mjs", export: "fn", output_schema: { type: "boolean" },
+    executor: "subagent(general-purpose)",
+  }] },
+  "expand missing over": { version: 1, nodes: [{
+    id: "E", type: "expand", deps: [],
+    template: {}, gather: "G",
+  }] },
+  "expand missing template": { version: 1, nodes: [{
+    id: "E", type: "expand", deps: [],
+    over: "SRC", gather: "G",
+  }] },
+  "expand missing gather": { version: 1, nodes: [{
+    id: "E", type: "expand", deps: [],
+    over: "SRC", template: {},
+  }] },
+  "switch missing over": { version: 1, nodes: [
+    { id: "SEL", type: "agent", deps: [], executor: "subagent(general-purpose)", prompt: "p", output_schema: { type: "boolean" }, max_attempts: 1 },
+    { id: "SW", type: "switch", deps: ["SEL"], cases: { "true": {}, "false": {} } },
+  ] },
+  "switch missing cases": { version: 1, nodes: [
+    { id: "SEL", type: "agent", deps: [], executor: "subagent(general-purpose)", prompt: "p", output_schema: { type: "boolean" }, max_attempts: 1 },
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL" },
+  ] },
+};
+
+for (const [label, graph] of Object.entries(v1RejectCases)) {
+  test(`V1 reject: ${label}`, () => {
+    const { dir, stateDir } = ws();
+    const r = init(stateDir, dir, graph);
+    assert.notEqual(r.status, 0, `expected non-zero exit for: ${label}`);
+    assert.match(r.stderr, /task: /);
+    assert.equal(
+      readdirSync(stateDir).filter((f) => f.endsWith(".json")).length, 0,
+      "a rejected graph writes no state",
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
+// V2: switch exhaustiveness validation
+// ---------------------------------------------------------------------------
+
+test("V2 switch: boolean selector with missing 'false' case is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    { id: "SEL", type: "agent", deps: [], executor: "subagent(general-purpose)",
+      prompt: "decide", output_schema: { type: "boolean" }, max_attempts: 1 },
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL",
+      cases: { "true": {} } }, // missing 'false'
+  ] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /missing.*false/i, "error names the missing case");
+});
+
+test("V2 switch: boolean selector with missing 'true' case is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    { id: "SEL", type: "agent", deps: [], executor: "subagent(general-purpose)",
+      prompt: "decide", output_schema: { type: "boolean" }, max_attempts: 1 },
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL",
+      cases: { "false": {} } }, // missing 'true'
+  ] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /missing.*true/i);
+});
+
+test("V2 switch: boolean selector with both cases missing is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    { id: "SEL", type: "agent", deps: [], executor: "subagent(general-purpose)",
+      prompt: "decide", output_schema: { type: "boolean" }, max_attempts: 1 },
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL", cases: {} },
+  ] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /exhaustively/i);
+});
+
+test("V2 switch: boolean selector with extra case (beyond true/false) is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    { id: "SEL", type: "agent", deps: [], executor: "subagent(general-purpose)",
+      prompt: "decide", output_schema: { type: "boolean" }, max_attempts: 1 },
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL",
+      cases: { "true": {}, "false": {}, "maybe": {} } }, // 'maybe' not in domain
+  ] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /extra.*maybe/i, "error names the extra unknown case");
+});
+
+test("V2 switch: enum selector with missing enum value is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    { id: "CLS", type: "agent", deps: [], executor: "subagent(general-purpose)",
+      prompt: "classify", output_schema: { type: "string", enum: ["pass", "fail", "skip"] }, max_attempts: 1 },
+    { id: "SW", type: "switch", deps: ["CLS"], over: "CLS",
+      cases: { "pass": {}, "fail": {} } }, // missing 'skip'
+  ] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /missing.*skip/i);
+});
+
+test("V2 switch: enum selector with extra case is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    { id: "CLS", type: "fn", deps: [],
+      module: "./classify.mjs", export: "classify",
+      output_schema: { type: "string", enum: ["a", "b"] } },
+    { id: "SW", type: "switch", deps: ["CLS"], over: "CLS",
+      cases: { "a": {}, "b": {}, "c": {} } }, // 'c' is not in enum
+  ] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /extra.*c/i);
+});
+
+test("V2 switch: non-enumerable selector (string type, no enum) is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    { id: "SEL", type: "agent", deps: [], executor: "subagent(general-purpose)",
+      prompt: "produce a string", output_schema: { type: "string" }, max_attempts: 1 },
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL",
+      cases: { "hello": {}, "world": {} } },
+  ] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /non-enumerable/i, "error flags non-enumerable selector");
+});
+
+test("V2 switch: non-enumerable selector (integer type, no enum) is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    { id: "CNT", type: "fn", deps: [],
+      module: "./count.mjs", export: "count",
+      output_schema: { type: "integer" } },
+    { id: "SW", type: "switch", deps: ["CNT"], over: "CNT",
+      cases: { "0": {}, "1": {} } },
+  ] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /non-enumerable/i);
+});
+
+test("V2 switch: selector node with no output_schema is rejected", () => {
+  const { dir, stateDir } = ws();
+  // implement node (no output_schema) as selector
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    task("IMPL"),
+    { id: "SW", type: "switch", deps: ["IMPL"], over: "IMPL",
+      cases: { "true": {}, "false": {} } },
+  ] });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /no output_schema|non-enumerable/i);
+});
+
+test("V2 switch: over references unknown node is rejected", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    { id: "SW", type: "switch", deps: [],
+      over: "ghost", cases: { "true": {}, "false": {} } },
+  ] });
+  assert.notEqual(r.status, 0);
+  // may be caught by the `over` unknown-node check or missing from deps
+  assert.match(r.stderr, /task: /);
+});
+
+// ---------------------------------------------------------------------------
+// V4: content-addressed value store + by-reference, schema-validated output
+// ---------------------------------------------------------------------------
+// `complete --output` records a node's output BY REFERENCE: the bytes go to a
+// per-run, content-addressed store under the state dir, and only a handle
+// (task.outputRef) enters the orchestrator's view. An agent node carries an
+// output_schema but the generalized scheduler that would dispatch/settle it is a
+// LATER task, so these tests plant a running subnode (the black-box-legal
+// state-planting the mvcc/invalidation tests already use) to drive `complete`.
+
+// Plant a running subnode on `taskId` so `complete` has something to settle.
+function plantRunning(stateDir, id, taskId, subId = `${taskId}.work`) {
+  const state = readState(stateDir, id);
+  state.subnodes[subId] = { task: taskId, role: "impl", status: "running" };
+  writeState(stateDir, id, state);
+  return subId;
+}
+
+function agentNode(id, schema, over = {}) {
+  return {
+    id, type: "agent", deps: [], executor: "subagent(general-purpose)",
+    prompt: "produce a value", output_schema: schema, max_attempts: 1, ...over,
+  };
+}
+
+test("V4 value store: complete --output validates vs output_schema, records BY REFERENCE, and is retrievable", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [agentNode("A", { type: "array" })] }).stdout.trim();
+  const subId = plantRunning(stateDir, id, "A");
+
+  const r = run(stateDir, ["complete", "--id", id, "--node", subId, "--output", "[1,2,3]"]);
+  assert.equal(r.status, 0, r.stderr);
+
+  // The orchestrator's view holds only a handle, never the bytes.
+  const after = readState(stateDir, id);
+  const ref = after.tasks.A.outputRef;
+  assert.match(ref, /^[0-9a-f]{64}$/, "output is recorded by reference (a content-addressed sha256 handle)");
+
+  // The value bytes live in the per-run content-addressed store, keyed by node id -> handle.
+  const valuePath = join(stateDir, "values", id, `${ref}.json`);
+  assert.ok(existsSync(valuePath), "the value bytes live in the store under the state dir");
+  assert.deepEqual(JSON.parse(readFileSync(valuePath, "utf8")), [1, 2, 3], "the stored output round-trips");
+});
+
+test("V4 value store: identical outputs dedupe (content-addressed) to the same handle", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [agentNode("A", { type: "array" }), agentNode("B", { type: "array" })] }).stdout.trim();
+  plantRunning(stateDir, id, "A");
+  plantRunning(stateDir, id, "B");
+  run(stateDir, ["complete", "--id", id, "--node", "A.work", "--output", "[1,2,3]"]);
+  run(stateDir, ["complete", "--id", id, "--node", "B.work", "--output", "[1,2,3]"]);
+  const st = readState(stateDir, id);
+  assert.equal(st.tasks.A.outputRef, st.tasks.B.outputRef, "equal outputs share one content-addressed handle");
+  assert.deepEqual(readdirSync(join(stateDir, "values", id)), [`${st.tasks.A.outputRef}.json`],
+    "only one value file exists for the deduped output");
+});
+
+test("V4 value store: complete --output rejects a value violating output_schema.type (non-zero, nothing stored)", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [agentNode("A", { type: "integer" })] }).stdout.trim();
+  const subId = plantRunning(stateDir, id, "A");
+
+  const r = run(stateDir, ["complete", "--id", id, "--node", subId, "--output", '"not-an-integer"']);
+  assert.notEqual(r.status, 0, "an output violating output_schema must be rejected");
+  assert.match(r.stderr, /output_schema/i);
+
+  const after = readState(stateDir, id);
+  assert.equal(after.tasks.A.outputRef, undefined, "a rejected output is NOT recorded by reference");
+  assert.equal(after.subnodes[subId].status, "running", "a rejected completion makes no state change");
+  const vdir = join(stateDir, "values", id);
+  assert.deepEqual(existsSync(vdir) ? readdirSync(vdir) : [], [], "no value bytes are stored for a rejected output");
+});
+
+test("V4 value store: complete --output rejects a value outside output_schema.enum", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [agentNode("A", { type: "string", enum: ["pass", "fail"] })] }).stdout.trim();
+  const subId = plantRunning(stateDir, id, "A");
+  const r = run(stateDir, ["complete", "--id", id, "--node", subId, "--output", '"maybe"']);
+  assert.notEqual(r.status, 0, "an output outside the enum must be rejected");
+  assert.match(r.stderr, /enum/i);
+  assert.equal(readState(stateDir, id).tasks.A.outputRef, undefined, "nothing recorded on rejection");
+});
+
+// ---------------------------------------------------------------------------
+// V11: resolve-context --inputs returns per-dep {status, output?} envelopes
+// ---------------------------------------------------------------------------
+
+test("V11 envelopes: resolve-context --inputs distinguishes a failed upstream from a done node with a falsy output", () => {
+  const { dir, stateDir } = ws();
+  // G depends on three SUCCEEDED deps whose outputs are falsy ([], false, 0) and one
+  // FAILED dep. The settle that would set these statuses is a later task, so plant
+  // them; write the referenced value files under opaque handles (the read path treats
+  // the handle as an opaque filename, so the test need not replicate the hashing).
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    task("D_EMPTY"), task("D_FALSE"), task("D_ZERO"), task("F_FAIL"),
+    task("G", ["D_EMPTY", "D_FALSE", "D_ZERO", "F_FAIL"]),
+  ] }).stdout.trim();
+
+  const state = readState(stateDir, id);
+  state.tasks.D_EMPTY.status = "done"; state.tasks.D_EMPTY.outputRef = "ref_empty";
+  state.tasks.D_FALSE.status = "done"; state.tasks.D_FALSE.outputRef = "ref_false";
+  state.tasks.D_ZERO.status = "done"; state.tasks.D_ZERO.outputRef = "ref_zero";
+  state.tasks.F_FAIL.status = "failed"; // a failed dep records NO output
+  writeState(stateDir, id, state);
+
+  const vdir = join(stateDir, "values", id);
+  ensureDir(vdir);
+  writeFileSync(join(vdir, "ref_empty.json"), JSON.stringify([]));
+  writeFileSync(join(vdir, "ref_false.json"), JSON.stringify(false));
+  writeFileSync(join(vdir, "ref_zero.json"), JSON.stringify(0));
+
+  const r = run(stateDir, ["resolve-context", "--id", id, "--node", "G", "--inputs"]);
+  assert.equal(r.status, 0, r.stderr);
+  const env = JSON.parse(r.stdout);
+
+  // done deps carry their (falsy) output, with the output key PRESENT.
+  assert.deepEqual(env.D_EMPTY, { status: "done", output: [] });
+  assert.deepEqual(env.D_FALSE, { status: "done", output: false });
+  assert.deepEqual(env.D_ZERO, { status: "done", output: 0 });
+  // the failed dep is {status:"failed"} with NO output key — distinct from a falsy output.
+  assert.deepEqual(env.F_FAIL, { status: "failed" });
+  assert.ok(!("output" in env.F_FAIL), "a failed envelope carries NO output key");
+  assert.ok("output" in env.D_FALSE && "output" in env.D_ZERO && "output" in env.D_EMPTY,
+    "a done envelope carries the output key even when the value is falsy");
+});
+
+test("V4+V11 round-trip: complete --output stores by reference; a downstream resolve-context --inputs reads it back", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    agentNode("UP", { type: "array" }),
+    agentNode("DOWN", { type: "string" }, { deps: ["UP"] }),
+  ] }).stdout.trim();
+
+  // record UP's output through the real complete --output path (content-addressed store write)
+  plantRunning(stateDir, id, "UP");
+  const c = run(stateDir, ["complete", "--id", id, "--node", "UP.work", "--output", '["x","y"]']);
+  assert.equal(c.status, 0, c.stderr);
+
+  // mark UP done (the settle that does this is a later task; plant it)
+  let state = readState(stateDir, id);
+  assert.match(state.tasks.UP.outputRef, /^[0-9a-f]{64}$/, "complete recorded UP's output by reference");
+  state.tasks.UP.status = "done";
+  writeState(stateDir, id, state);
+
+  // DOWN fetches its inputs as envelopes — UP's output round-trips through the store,
+  // with no hardcoded handle (the handle came from the real store write above).
+  const r = run(stateDir, ["resolve-context", "--id", id, "--node", "DOWN", "--inputs"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout), { UP: { status: "done", output: ["x", "y"] } });
+});
+
+test("V11 envelopes: resolve-context (no --inputs) still dumps the resolver context (back-compat)", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [task("A", [], { design_aspect: "Architecture" })] }).stdout.trim();
+  const r = run(stateDir, ["resolve-context", "--id", id, "--node", "A"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /TASK NAME: Task A/, "the default (dump) behavior is unchanged when --inputs is absent");
+});
+
+// ---------------------------------------------------------------------------
+// V3: type-driven scheduling of the flat node kinds (agent/fn/expand/switch)
+// ---------------------------------------------------------------------------
+// readySet now decides readiness from a node's TYPE for the generalized flat kinds,
+// ADDED ALONGSIDE the preserved legacy IMPL/RESOLVE/AUDIT subnode branches (all the
+// tests above still exercise that legacy lifecycle). A flat node has no subnode, so
+// `ready` reports a ready one by its TASK id. The settle path that would set a flat
+// node to "done"/give it an outputRef belongs to later tasks, so these tests plant
+// those statuses by editing the persisted state JSON — the same black-box-legal
+// mechanism the mvcc/invalidation/envelope tests already use.
+
+// Convenience constructors for valid flat nodes.
+function flatAgent(id, schema, deps = []) {
+  return { id, type: "agent", deps, executor: "subagent(general-purpose)",
+    prompt: `produce ${id}`, output_schema: schema, max_attempts: 1 };
+}
+function flatFn(id, deps = [], over = {}) {
+  return { id, type: "fn", deps, module: `./${id}.mjs`, export: "run",
+    output_schema: { type: "array" }, ...over };
+}
+
+test("V3 schedule: flat agent/fn/expand/switch nodes ready by TYPE in dependency order", () => {
+  const { dir, stateDir } = ws();
+  const nodes = [
+    flatAgent("SRC", { type: "array" }),     // source list (no deps -> ready at init)
+    flatAgent("FLAG", { type: "boolean" }),  // switch selector (no deps -> ready at init)
+    flatFn("PROC", ["SRC"]),                 // plain fn (all-done): waits for SRC done
+    flatFn("GATH", [], { require: "all-resolved" }), // gather target (no deps)
+    { id: "EXP", type: "expand", deps: ["SRC"], over: "SRC",
+      template: { type: "agent", prompt: "item", output_schema: { type: "string" }, max_attempts: 1 },
+      gather: "GATH" },
+    { id: "SW", type: "switch", deps: ["FLAG"], over: "FLAG",
+      cases: { "true": {}, "false": {} } },
+  ];
+  const id = init(stateDir, dir, { version: 1, nodes }).stdout.trim();
+
+  // init: the two no-dep agents (SRC, FLAG) and the no-dep all-resolved reducer
+  // (GATH, vacuously resolved) are ready; PROC waits on SRC done; EXP/SW wait on
+  // their upstream's OUTPUT.
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id]).stdout), ["FLAG", "GATH", "SRC"]);
+
+  // SRC done but WITHOUT an outputRef: the plain fn PROC (all-done) readies; the
+  // expand EXP does NOT (it needs the upstream's output to fan out over).
+  let state = readState(stateDir, id);
+  state.tasks.SRC.status = "done"; // no outputRef yet
+  writeState(stateDir, id, state);
+  let ready = ids(run(stateDir, ["ready", "--id", id]).stdout);
+  assert.ok(ready.includes("PROC"), "a plain (all-done) fn readies once its dep is done");
+  assert.ok(!ready.includes("EXP"), "expand does NOT ready on a done upstream that has no outputRef");
+
+  // give SRC an outputRef -> EXP readies (its single upstream's output now exists)
+  state = readState(stateDir, id);
+  state.tasks.SRC.outputRef = "src-ref";
+  writeState(stateDir, id, state);
+  ready = ids(run(stateDir, ["ready", "--id", id]).stdout);
+  assert.ok(ready.includes("EXP"), "expand readies once its upstream is done WITH an outputRef");
+
+  // FLAG done WITH an outputRef -> the switch SW readies on its selector's output
+  state = readState(stateDir, id);
+  state.tasks.FLAG.status = "done"; state.tasks.FLAG.outputRef = "flag-ref";
+  writeState(stateDir, id, state);
+  ready = ids(run(stateDir, ["ready", "--id", id]).stdout);
+  assert.ok(ready.includes("SW"), "switch readies once its selector is done WITH an outputRef");
+});
+
+test("V3 schedule: a reducer fn (require=all-resolved) readies once every dep is resolved (done|failed)", () => {
+  const { dir, stateDir } = ws();
+  const nodes = [
+    flatAgent("A", { type: "string" }),
+    flatAgent("B", { type: "string" }),
+    flatFn("RED", ["A", "B"], { require: "all-resolved" }), // reducer/gather
+    flatFn("PLAIN", ["A", "B"]),                            // all-done (default)
+  ];
+  const id = init(stateDir, dir, { version: 1, nodes }).stdout.trim();
+
+  // init: only the two source agents are ready; neither fn is (deps unresolved).
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id]).stdout), ["A", "B"]);
+
+  // A done, B FAILED.
+  let state = readState(stateDir, id);
+  state.tasks.A.status = "done";
+  state.tasks.B.status = "failed";
+  writeState(stateDir, id, state);
+  const ready = ids(run(stateDir, ["ready", "--id", id]).stdout);
+  // the reducer readies despite B failing; the plain all-done fn does NOT (it would
+  // otherwise run on a missing/failed input).
+  assert.ok(ready.includes("RED"), "an all-resolved reducer readies once deps are done|failed");
+  assert.ok(!ready.includes("PLAIN"), "an all-done plain fn does NOT ready while a dep is failed");
+});
+
+test("V3 schedule: a switch readies only once its selector is done WITH an outputRef", () => {
+  const { dir, stateDir } = ws();
+  const nodes = [
+    flatAgent("SEL", { type: "boolean" }),
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL",
+      cases: { "true": {}, "false": {} } },
+  ];
+  const id = init(stateDir, dir, { version: 1, nodes }).stdout.trim();
+  // selector ready, switch not.
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id]).stdout), ["SEL"]);
+
+  // selector DONE but no outputRef -> switch still not ready (no selector value yet).
+  let state = readState(stateDir, id);
+  state.tasks.SEL.status = "done";
+  writeState(stateDir, id, state);
+  assert.ok(!ids(run(stateDir, ["ready", "--id", id]).stdout).includes("SW"),
+    "switch is not ready until its selector output exists");
+
+  // add the outputRef -> switch readies.
+  state = readState(stateDir, id);
+  state.tasks.SEL.outputRef = "sel-ref";
+  writeState(stateDir, id, state);
+  assert.ok(ids(run(stateDir, ["ready", "--id", id]).stdout).includes("SW"),
+    "switch readies once its selector is done with an outputRef");
+});
+
+test("V3 schedule: legacy implement subnodes and flat-kind nodes schedule side by side", () => {
+  const { dir, stateDir } = ws();
+  // One legacy implement node (explodes to IMPL.impl/IMPL.resolve subnodes) and one
+  // flat agent node, in the same graph: proves the type-driven flat scheduling is
+  // ADDED ALONGSIDE the preserved legacy lifecycle, not replacing it.
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    task("IMPL"),
+    flatAgent("AG", { type: "string" }),
+  ] }).stdout.trim();
+
+  // both ready: the legacy impl subnode (IMPL.impl) AND the flat agent task (AG).
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id]).stdout), ["AG", "IMPL.impl"]);
+  // the flat agent emits its task-record executor on the ready line.
+  assert.ok(lines(run(stateDir, ["ready", "--id", id]).stdout).includes("AG\tsubagent(general-purpose)"),
+    "a ready flat agent carries its executor from the task record");
+
+  // the legacy lifecycle still drives forward through a real commit: completing
+  // IMPL.impl readies IMPL.resolve, with the flat agent still ready beside it.
+  assert.deepEqual(ids(run(stateDir, ["complete", "--id", id, "--node", "IMPL.impl"]).stdout),
+    ["AG", "IMPL.resolve"]);
+});
+
+// ---------------------------------------------------------------------------
+// V5: exec-node runs a deterministic fn over its input envelopes, validates the
+// result vs output_schema, stores it BY REFERENCE, prints ONLY the handle, and
+// writes NO engine state. The settle that would mark the upstream deps "done" is a
+// later task, so we plant their status/outputRef + value files (the same
+// black-box-legal state-planting the V4/V11/V3 tests use). exec-node is invoked as
+// a standalone `node task.mjs exec-node` process here, demonstrating it is safe to
+// run out-of-process.
+// ---------------------------------------------------------------------------
+
+// Write a tiny PURE fn fixture module into the workspace (out of any production
+// path) and return its absolute path. Each export is a pure function of the input
+// envelopes {depId: {status, output?}}.
+function writeFnFixture(dir) {
+  ensureDir(dir);
+  const p = join(dir, "fns.mjs");
+  writeFileSync(p, [
+    "// Test fixtures for exec-node (V5). Pure functions over input envelopes.",
+    "export function sum(inputs) {",
+    "  let total = 0;",
+    "  for (const env of Object.values(inputs)) {",
+    "    if (env && env.status === 'done') total += env.output;",
+    "  }",
+    "  return total;",
+    "}",
+    "export function badType() { return 'not-an-integer'; } // violates an integer schema",
+    "export function entropy() {",
+    "  // A pure fn must not read these; exec-node stubs both to 0 so the result is",
+    "  // deterministic. With the stubs in place this returns 0 on every run.",
+    "  return Date.now() + Math.random();",
+    "}",
+    "",
+  ].join("\n"));
+  return p;
+}
+
+// Plant a dep as done with a stored output value (opaque handle, like the V11 test).
+function plantDoneOutput(stateDir, id, taskId, value, handle = `ref_${taskId}`) {
+  const state = readState(stateDir, id);
+  state.tasks[taskId].status = "done";
+  state.tasks[taskId].outputRef = handle;
+  writeState(stateDir, id, state);
+  const vdir = join(stateDir, "values", id);
+  ensureDir(vdir);
+  writeFileSync(join(vdir, `${handle}.json`), JSON.stringify(value));
+}
+
+test("V5 exec-node: a fn that sums its inputs stores the correct output and prints ONLY the handle", () => {
+  const { dir, stateDir } = ws();
+  const mod = writeFnFixture(dir);
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("A", { type: "integer" }),
+    flatAgent("B", { type: "integer" }),
+    { id: "F", type: "fn", deps: ["A", "B"], module: mod, export: "sum", output_schema: { type: "integer" } },
+  ] }).stdout.trim();
+
+  plantDoneOutput(stateDir, id, "A", 2);
+  plantDoneOutput(stateDir, id, "B", 3);
+
+  const r = run(stateDir, ["exec-node", "--id", id, "--node", "F"]);
+  assert.equal(r.status, 0, r.stderr);
+
+  // prints ONLY the handle: a single 64-hex line on stdout, nothing else.
+  const out = lines(r.stdout);
+  assert.equal(out.length, 1, "exec-node prints exactly one line");
+  const handle = out[0];
+  assert.match(handle, /^[0-9a-f]{64}$/, "the printed line is a content-addressed sha256 handle");
+
+  // the value bytes are in the per-run store under the printed handle, and equal the sum.
+  const valuePath = join(stateDir, "values", id, `${handle}.json`);
+  assert.ok(existsSync(valuePath), "the fn output is written to the value store by reference");
+  assert.equal(JSON.parse(readFileSync(valuePath, "utf8")), 5, "sum(2,3) === 5 round-trips through the store");
+});
+
+test("V5 exec-node: an output violating output_schema is rejected non-zero and stores nothing", () => {
+  const { dir, stateDir } = ws();
+  const mod = writeFnFixture(dir);
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("A", { type: "integer" }),
+    // declares an integer output but the export returns a string -> must be rejected.
+    { id: "F", type: "fn", deps: ["A"], module: mod, export: "badType", output_schema: { type: "integer" } },
+  ] }).stdout.trim();
+  plantDoneOutput(stateDir, id, "A", 1);
+
+  const r = run(stateDir, ["exec-node", "--id", id, "--node", "F"]);
+  assert.notEqual(r.status, 0, "an output violating output_schema must be rejected non-zero");
+  assert.match(r.stderr, /output_schema/i, "the rejection names output_schema");
+  assert.equal(r.stdout.trim(), "", "no handle is printed on rejection");
+
+  // nothing new is stored: only the planted dep value (ref_A) exists in the store.
+  const vdir = join(stateDir, "values", id);
+  assert.deepEqual(readdirSync(vdir).sort(), ["ref_A.json"], "no value bytes are stored for a rejected output");
+});
+
+test("V5 exec-node: writes NO engine state (the orchestrator commits separately)", () => {
+  const { dir, stateDir } = ws();
+  const mod = writeFnFixture(dir);
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("A", { type: "integer" }),
+    flatAgent("B", { type: "integer" }),
+    { id: "F", type: "fn", deps: ["A", "B"], module: mod, export: "sum", output_schema: { type: "integer" } },
+  ] }).stdout.trim();
+  plantDoneOutput(stateDir, id, "A", 4);
+  plantDoneOutput(stateDir, id, "B", 6);
+
+  const statePath = join(stateDir, `${id}.json`);
+  const before = readFileSync(statePath, "utf8");
+  const r = run(stateDir, ["exec-node", "--id", id, "--node", "F"]);
+  assert.equal(r.status, 0, r.stderr);
+  const after = readFileSync(statePath, "utf8");
+  assert.equal(after, before, "exec-node is READ-ONLY on engine state: the state file is byte-unchanged");
+
+  // F is NOT advanced to done and gets NO outputRef from exec-node (commit is separate).
+  const state = readState(stateDir, id);
+  assert.equal(state.tasks.F.status, "pending", "exec-node does not settle the fn node");
+  assert.equal(state.tasks.F.outputRef, undefined, "exec-node does not record the output onto engine state");
+});
+
+test("V5 exec-node: a failed upstream surfaces as a {status:failed} envelope (distinct from a falsy output)", () => {
+  const { dir, stateDir } = ws();
+  const mod = writeFnFixture(dir);
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("OK", { type: "integer" }),
+    flatAgent("BAD", { type: "integer" }),
+    // sum ignores failed envelopes, so a failed BAD contributes 0 (not a crash).
+    { id: "F", type: "fn", deps: ["OK", "BAD"], module: mod, export: "sum", output_schema: { type: "integer" } },
+  ] }).stdout.trim();
+  plantDoneOutput(stateDir, id, "OK", 7);
+  // BAD failed: no outputRef, no value file.
+  const state = readState(stateDir, id);
+  state.tasks.BAD.status = "failed";
+  writeState(stateDir, id, state);
+
+  const r = run(stateDir, ["exec-node", "--id", id, "--node", "F"]);
+  assert.equal(r.status, 0, r.stderr);
+  const handle = lines(r.stdout)[0];
+  assert.equal(JSON.parse(readFileSync(join(stateDir, "values", id, `${handle}.json`), "utf8")), 7,
+    "the fn reads {status:failed} for BAD and sums only the done OK envelope");
+});
+
+test("V5 exec-node: purity stubs Date.now/Math.random so the body is deterministic", () => {
+  const { dir, stateDir } = ws();
+  const mod = writeFnFixture(dir);
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    { id: "F", type: "fn", deps: [], module: mod, export: "entropy", output_schema: { type: "integer" } },
+  ] }).stdout.trim();
+
+  const r = run(stateDir, ["exec-node", "--id", id, "--node", "F"]);
+  assert.equal(r.status, 0, r.stderr);
+  const handle = lines(r.stdout)[0];
+  // Date.now()+Math.random() would be a huge run-varying float without the stubs;
+  // with both stubbed to 0 the result is a deterministic 0 (a valid integer).
+  assert.equal(JSON.parse(readFileSync(join(stateDir, "values", id, `${handle}.json`), "utf8")), 0,
+    "Date.now and Math.random are neutralized to 0 while the fn body runs");
+});
+
+test("V5 exec-node: rejects a non-fn node and an unknown node", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    task("IMPL"),
+    flatAgent("AG", { type: "string" }),
+  ] }).stdout.trim();
+  const onImplement = run(stateDir, ["exec-node", "--id", id, "--node", "IMPL"]);
+  assert.notEqual(onImplement.status, 0, "exec-node refuses a non-fn (implement) node");
+  const onAgent = run(stateDir, ["exec-node", "--id", id, "--node", "AG"]);
+  assert.notEqual(onAgent.status, 0, "exec-node refuses a non-fn (agent) node");
+  const onGhost = run(stateDir, ["exec-node", "--id", id, "--node", "ghost"]);
+  assert.notEqual(onGhost.status, 0, "exec-node refuses an unknown node");
+  assert.match(onGhost.stderr, /unknown node/i);
+});
+
+// ---------------------------------------------------------------------------
+// V17: the runId-scoped single-writer COMMIT LOCK
+// ---------------------------------------------------------------------------
+// Two concurrent `complete` writes to ONE GRAPH_ID must SERIALIZE under the runId
+// commit lock so NEITHER update is lost. Each process loads the state, records its
+// node's output by reference, and persists; WITHOUT the lock the later saveState
+// would clobber the earlier writer's outputRef (the classic lost update). The lock
+// plus commit's under-lock re-read make BOTH land regardless of interleaving. The
+// lock degrades to lock-free without perl (flock), so the guarantee is perl-gated
+// exactly like the other flock tests.
+
+// Run `complete --output` as its OWN process, async, so several overlap their
+// read-modify-write windows. Resolves with {status, stdout, stderr} on exit.
+function completeAsync(stateDir, id, node, outputJson) {
+  const child = spawn("node", [ENGINE, "complete", "--id", id, "--node", node, "--output", outputJson], {
+    env: { ...process.env, AMPLIFY_STATE_DIR: stateDir },
+  });
+  let out = "", err = "";
+  child.stdout.on("data", (d) => { out += d.toString(); });
+  child.stderr.on("data", (d) => { err += d.toString(); });
+  return new Promise((resolve) => {
+    child.on("exit", (code) => resolve({ status: code, stdout: out, stderr: err }));
+  });
+}
+
+test("V17 commit lock: two concurrent complete writes to one GRAPH_ID both land (no lost update)", { skip: !PERL_OK }, async () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    agentNode("A", { type: "array" }),
+    agentNode("B", { type: "array" }),
+  ] }).stdout.trim();
+  // Plant a running subnode on each so `complete --output` settles it AND records
+  // the output by reference (the dispatch/settle wiring for flat nodes is a later
+  // task; this is the black-box-legal state-planting the V4 tests use).
+  plantRunning(stateDir, id, "A");
+  plantRunning(stateDir, id, "B");
+
+  // Fire BOTH completions concurrently against the SAME graph; their read-modify-
+  // write windows overlap, so without serialization one outputRef gets clobbered.
+  const [ra, rb] = await Promise.all([
+    completeAsync(stateDir, id, "A.work", "[1,2,3]"),
+    completeAsync(stateDir, id, "B.work", "[4,5,6]"),
+  ]);
+  assert.equal(ra.status, 0, ra.stderr);
+  assert.equal(rb.status, 0, rb.stderr);
+
+  // BOTH updates landed: each task carries its own content-addressed handle and
+  // each planted subnode settled to done — neither writer's update was lost.
+  const st = readState(stateDir, id);
+  assert.match(st.tasks.A.outputRef ?? "", /^[0-9a-f]{64}$/, "A's output landed (not lost)");
+  assert.match(st.tasks.B.outputRef ?? "", /^[0-9a-f]{64}$/, "B's output landed (not lost)");
+  assert.equal(st.subnodes["A.work"].status, "done", "A.work settled to done");
+  assert.equal(st.subnodes["B.work"].status, "done", "B.work settled to done");
+  // and the value bytes round-trip from the per-run content-addressed store.
+  assert.deepEqual(JSON.parse(readFileSync(join(stateDir, "values", id, `${st.tasks.A.outputRef}.json`), "utf8")), [1, 2, 3]);
+  assert.deepEqual(JSON.parse(readFileSync(join(stateDir, "values", id, `${st.tasks.B.outputRef}.json`), "utf8")), [4, 5, 6]);
+});
+
+test("V17 commit lock: N concurrent complete writes to one GRAPH_ID all land (stress)", { skip: !PERL_OK }, async () => {
+  const { dir, stateDir } = ws();
+  const N = 6;
+  const nodeIds = Array.from({ length: N }, (_, i) => `N${i}`);
+  const id = init(stateDir, dir, {
+    version: 1,
+    nodes: nodeIds.map((nid) => agentNode(nid, { type: "integer" })),
+  }).stdout.trim();
+  for (const nid of nodeIds) plantRunning(stateDir, id, nid);
+
+  // Launch all N completions at once; each records a distinct integer output.
+  const results = await Promise.all(
+    nodeIds.map((nid, i) => completeAsync(stateDir, id, `${nid}.work`, String(i * 10))),
+  );
+  for (const r of results) assert.equal(r.status, 0, r.stderr);
+
+  // Every writer's update survives: all N tasks have an outputRef and every value
+  // round-trips to the integer that writer wrote — a single dropped commit would
+  // leave one of these undefined.
+  const st = readState(stateDir, id);
+  for (let i = 0; i < N; i++) {
+    const ref = st.tasks[nodeIds[i]].outputRef;
+    assert.match(ref ?? "", /^[0-9a-f]{64}$/, `${nodeIds[i]}'s output landed (not lost)`);
+    assert.equal(JSON.parse(readFileSync(join(stateDir, "values", id, `${ref}.json`), "utf8")), i * 10);
+    assert.equal(st.subnodes[`${nodeIds[i]}.work`].status, "done", `${nodeIds[i]}.work settled`);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// V6 / V3: the expand (fan-out) combinator
+// ---------------------------------------------------------------------------
+// When an expand node's upstream output exists, `expand --node E` reads the `over`
+// list and, in ONE commit, creates one child from `template` per element, binds each
+// child to its element BY REFERENCE (a per-element value-store entry), wires each
+// child to `gather`, and tags it generatedBy the expand node. The settle that marks
+// the upstream `over` node "done"/gives it an outputRef is a later task, so these
+// tests plant that status + the list value file (the same black-box-legal mechanism
+// the V3/V4/V5 scheduler/store tests use; the read path treats the handle as an
+// opaque filename, so the test need not replicate the content hashing).
+
+// A standalone acyclicity check over the live task deps (Kahn's algorithm), so the
+// V3 expand test proves the expanded graph has no cycle independent of the engine.
+function hasCycle(tasks) {
+  const ids = Object.keys(tasks);
+  const indeg = new Map(ids.map((i) => [i, (tasks[i].deps || []).filter((d) => tasks[d]).length]));
+  const dependents = new Map(ids.map((i) => [i, []]));
+  for (const i of ids) for (const d of tasks[i].deps || []) if (tasks[d]) dependents.get(d).push(i);
+  const q = ids.filter((i) => indeg.get(i) === 0);
+  let seen = 0;
+  while (q.length) {
+    const i = q.shift();
+    seen++;
+    for (const dep of dependents.get(i)) {
+      indeg.set(dep, indeg.get(dep) - 1);
+      if (indeg.get(dep) === 0) q.push(dep);
+    }
+  }
+  return seen !== ids.length; // a node left unprocessed sits on a cycle
+}
+
+// A graph with: SRC (the `over` list source), an expand node E over an agent
+// template into the gather G (an all-resolved reducer that depends on E). Returns
+// the GRAPH_ID with SRC planted DONE and its list output written to the store.
+function expandGraph(stateDir, dir, list, overRef = "src-ref") {
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("SRC", { type: "array" }),
+    { id: "E", type: "expand", deps: ["SRC"], over: "SRC",
+      template: { type: "agent", executor: "subagent(general-purpose)",
+        prompt: "process item", output_schema: { type: "string" }, max_attempts: 1 },
+      gather: "G" },
+    flatFn("G", ["E"], { require: "all-resolved" }),
+  ] }).stdout.trim();
+  const state = readState(stateDir, id);
+  state.tasks.SRC.status = "done";
+  state.tasks.SRC.outputRef = overRef;
+  writeState(stateDir, id, state);
+  const vdir = join(stateDir, "values", id);
+  ensureDir(vdir);
+  writeFileSync(join(vdir, `${overRef}.json`), JSON.stringify(list));
+  return { id, vdir };
+}
+
+test("V6 expand: a 3-element list creates 3 children wired to gather, each bound to its element BY REFERENCE, in a single commit", () => {
+  const { dir, stateDir } = ws();
+  const list = ["alpha", "beta", "gamma"];
+  const { id, vdir } = expandGraph(stateDir, dir, list);
+
+  const seqBefore = readState(stateDir, id).commitSeq;
+  const r = run(stateDir, ["expand", "--id", id, "--node", "E"]);
+  assert.equal(r.status, 0, r.stderr);
+
+  const state = readState(stateDir, id);
+  // the whole fan-out is ONE commit (commitSeq increments exactly once).
+  assert.equal(state.commitSeq, seqBefore + 1, "the fan-out is a SINGLE commit");
+
+  // one child per element, each built from the template (an agent), and no extra.
+  const childIds = ["E-item-0", "E-item-1", "E-item-2"];
+  for (const cid of childIds) {
+    assert.ok(cid in state.tasks, `child ${cid} was created`);
+    assert.equal(state.tasks[cid].type, "agent", `${cid} is built from the template`);
+  }
+  assert.ok(!("E-item-3" in state.tasks), "exactly N children created, no more");
+
+  // each child is wired to gather (gather DEPENDS ON it).
+  for (const cid of childIds) {
+    assert.ok((state.tasks.G.deps || []).includes(cid), `gather depends on ${cid}`);
+  }
+
+  // each child is bound to its element BY REFERENCE: a per-element store entry whose
+  // bytes equal the element, with only the HANDLE on the child record (no bytes).
+  list.forEach((element, i) => {
+    const cid = `E-item-${i}`;
+    const ref = state.tasks[cid].inputRef;
+    assert.match(ref, /^[0-9a-f]{64}$/, `${cid} carries a content-addressed handle, not bytes`);
+    const valuePath = join(vdir, `${ref}.json`);
+    assert.ok(existsSync(valuePath), `${cid}'s element lives in the value store`);
+    assert.deepEqual(JSON.parse(readFileSync(valuePath, "utf8")), element, `${cid} is bound to element[${i}]`);
+  });
+  // distinct elements -> distinct per-element handles (one store entry each).
+  const refs = childIds.map((c) => state.tasks[c].inputRef);
+  assert.equal(new Set(refs).size, 3, "each element has its own store entry");
+
+  // the expand node itself settled, so `ready` stops re-offering it.
+  assert.equal(state.tasks.E.status, "done", "the expand node settles after fanning out");
+  assert.equal(state.tasks.E.doneHash, state.tasks.E.contentHash, "doneHash records the expansion hash");
+});
+
+test("V6 expand: an empty list creates zero children and gather still proceeds", () => {
+  const { dir, stateDir } = ws();
+  const { id } = expandGraph(stateDir, dir, [], "empty-ref");
+
+  const r = run(stateDir, ["expand", "--id", id, "--node", "E"]);
+  assert.equal(r.status, 0, r.stderr);
+
+  const state = readState(stateDir, id);
+  const children = Object.keys(state.tasks).filter((t) => t.startsWith("E-item-"));
+  assert.deepEqual(children, [], "an empty list creates no children");
+  // gather gained no new deps; with the expand node settled, gather's only dep (E)
+  // is resolved, so the gather readies and proceeds (it is still reachable).
+  assert.deepEqual(state.tasks.G.deps, ["E"], "gather gains no children for an empty list");
+  assert.equal(state.tasks.E.status, "done", "the expand node still settles on an empty list");
+  const ready = ids(run(stateDir, ["ready", "--id", id]).stdout);
+  assert.ok(ready.includes("G"), "gather still proceeds (reachable) after an empty expansion");
+});
+
+test("V3 expand: the expansion adds only fresh forward edges, the graph stays acyclic, and children carry generatedBy = the expand id", () => {
+  const { dir, stateDir } = ws();
+  const { id } = expandGraph(stateDir, dir, ["a", "b"]);
+
+  // The commit re-validates the projected graph (validateGraph -> findCycle); a cycle
+  // would make the whole fan-out exit non-zero, so status 0 is itself the
+  // single-commit acyclicity backstop. We additionally prove acyclicity in-test.
+  const r = run(stateDir, ["expand", "--id", id, "--node", "E"]);
+  assert.equal(r.status, 0, r.stderr);
+
+  const state = readState(stateDir, id);
+  const childIds = ["E-item-0", "E-item-1"];
+  for (const cid of childIds) {
+    assert.equal(state.tasks[cid].generatedBy, "E", `${cid} is generatedBy the expand node`);
+    // forward edges only: gather depends on the child; the child has no back edge to
+    // gather, and no dangling dep.
+    assert.ok((state.tasks.G.deps || []).includes(cid), `gather -> ${cid} is a fresh forward edge`);
+    assert.ok(!(state.tasks[cid].deps || []).includes("G"), `${cid} has no back edge to gather`);
+    for (const dep of state.tasks[cid].deps || []) {
+      assert.ok(dep in state.tasks, `${cid} dep ${dep} exists (no dangling edge)`);
+    }
+  }
+  // the whole expanded graph is acyclic.
+  assert.ok(!hasCycle(state.tasks), "the expanded graph stays acyclic");
+});
+
+// ---------------------------------------------------------------------------
+// V7 / V3: the switch (branch) combinator
+// ---------------------------------------------------------------------------
+// When a switch node's selector output exists, `switch --node SW` reads the `over`
+// selector value, matches it (stringified) to one of the node's `cases`, and in ONE
+// commit instantiates ONLY that case's branch (fresh id `<switch-id>-case-<key>`,
+// tagged generatedBy the switch), wiring every node that depends on the switch to
+// ALSO depend on the branch (the stable exit/merge). The non-matching cases are never
+// created. The settle that marks the selector "done"/gives it an outputRef is a later
+// task, so these tests plant that status + the selector value file (the same
+// black-box-legal mechanism the V3/V4/V5/V6 tests use; the read path treats the
+// handle as an opaque filename, so the test need not replicate the content hashing).
+
+// A reusable agent branch body (a flat agent node body the switch stamps for the
+// matching case). A distinct `prompt` per case lets a test confirm the RIGHT branch
+// fired, not merely that SOME branch did.
+function branchBody(prompt) {
+  return { type: "agent", executor: "subagent(general-purpose)",
+    prompt, output_schema: { type: "string" }, max_attempts: 1 };
+}
+
+// A graph with: SEL (the selector), a switch SW over SEL into the cases, and EXIT (an
+// all-resolved reducer that depends on SW — the stable exit/merge). Returns the
+// GRAPH_ID with SEL planted DONE and its selector value written to the store.
+function switchGraph(stateDir, dir, { schema, cases, selValue, selRef = "sel-ref", exit = true }) {
+  const nodes = [
+    flatAgent("SEL", schema),
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL", cases },
+  ];
+  if (exit) nodes.push(flatFn("EXIT", ["SW"], { require: "all-resolved" }));
+  const id = init(stateDir, dir, { version: 1, nodes }).stdout.trim();
+  const state = readState(stateDir, id);
+  state.tasks.SEL.status = "done";
+  state.tasks.SEL.outputRef = selRef;
+  writeState(stateDir, id, state);
+  const vdir = join(stateDir, "values", id);
+  ensureDir(vdir);
+  writeFileSync(join(vdir, `${selRef}.json`), JSON.stringify(selValue));
+  return { id, vdir };
+}
+
+test("V7 switch (enum): a selector matching one of N cases creates ONLY that branch, wired to the exit, in a single commit", () => {
+  const { dir, stateDir } = ws();
+  const { id, vdir } = switchGraph(stateDir, dir, {
+    schema: { type: "string", enum: ["a", "b", "c"] },
+    cases: { a: branchBody("branch a"), b: branchBody("branch b"), c: branchBody("branch c") },
+    selValue: "b",
+  });
+
+  const seqBefore = readState(stateDir, id).commitSeq;
+  const r = run(stateDir, ["switch", "--id", id, "--node", "SW"]);
+  assert.equal(r.status, 0, r.stderr);
+
+  const state = readState(stateDir, id);
+  // the whole branch is ONE commit (commitSeq increments exactly once).
+  assert.equal(state.commitSeq, seqBefore + 1, "the branch is a SINGLE commit");
+
+  // ONLY the matching case's branch exists; the non-matching cases are never created.
+  assert.ok("SW-case-b" in state.tasks, "the matching case's branch is created");
+  assert.ok(!("SW-case-a" in state.tasks), "a non-matching case is NOT created");
+  assert.ok(!("SW-case-c" in state.tasks), "a non-matching case is NOT created");
+  // it is built from the matching case body (the RIGHT branch, not just any branch).
+  assert.equal(state.tasks["SW-case-b"].type, "agent", "the branch is built from the case body");
+  assert.equal(state.tasks["SW-case-b"].prompt, "branch b", "the RIGHT case body was instantiated");
+
+  // the branch is wired to the stable exit/merge: EXIT (which depends on the switch)
+  // now ALSO depends on the instantiated branch.
+  assert.ok((state.tasks.EXIT.deps || []).includes("SW-case-b"),
+    "the exit/merge depends on the instantiated branch (stable downstream wiring)");
+  assert.ok((state.tasks.EXIT.deps || []).includes("SW"), "the exit still depends on the switch itself");
+
+  // the branch carries generatedBy = the switch id (provenance for re-fire teardown).
+  assert.equal(state.tasks["SW-case-b"].generatedBy, "SW", "the branch carries generatedBy = the switch id");
+  // it is bound to the selector value BY REFERENCE (a handle, not bytes).
+  assert.match(state.tasks["SW-case-b"].inputRef, /^[0-9a-f]{64}$/, "the branch carries a content-addressed handle");
+  assert.deepEqual(JSON.parse(readFileSync(join(vdir, `${state.tasks["SW-case-b"].inputRef}.json`), "utf8")), "b",
+    "the branch is bound to the selector value");
+
+  // the switch itself settled, so `ready` stops re-offering it.
+  assert.equal(state.tasks.SW.status, "done", "the switch settles after selecting");
+  assert.equal(state.tasks.SW.doneHash, state.tasks.SW.contentHash, "doneHash records the selection hash");
+
+  // the branched graph stays acyclic (the commit's findCycle backstop, re-proven in-test).
+  assert.ok(!hasCycle(state.tasks), "the branched graph stays acyclic");
+});
+
+test("V7 switch (boolean true): a true selector instantiates the 'true' branch and not the 'false' one", () => {
+  const { dir, stateDir } = ws();
+  const { id } = switchGraph(stateDir, dir, {
+    schema: { type: "boolean" },
+    cases: { "true": branchBody("YES"), "false": branchBody("NO") },
+    selValue: true,
+  });
+  const r = run(stateDir, ["switch", "--id", id, "--node", "SW"]);
+  assert.equal(r.status, 0, r.stderr);
+
+  const state = readState(stateDir, id);
+  assert.ok("SW-case-true" in state.tasks, "the 'true' branch is instantiated");
+  assert.ok(!("SW-case-false" in state.tasks), "the 'false' branch is NOT instantiated");
+  assert.equal(state.tasks["SW-case-true"].prompt, "YES", "the true-case body was instantiated");
+  assert.ok((state.tasks.EXIT.deps || []).includes("SW-case-true"), "exit wired to the true branch");
+  assert.equal(state.tasks["SW-case-true"].generatedBy, "SW");
+  assert.equal(state.tasks.SW.status, "done");
+  assert.ok(!hasCycle(state.tasks), "the branched graph stays acyclic");
+});
+
+test("V7 switch (boolean false): a false selector instantiates the 'false' branch and not the 'true' one", () => {
+  const { dir, stateDir } = ws();
+  const { id } = switchGraph(stateDir, dir, {
+    schema: { type: "boolean" },
+    cases: { "true": branchBody("YES"), "false": branchBody("NO") },
+    selValue: false,
+  });
+  const r = run(stateDir, ["switch", "--id", id, "--node", "SW"]);
+  assert.equal(r.status, 0, r.stderr);
+
+  const state = readState(stateDir, id);
+  assert.ok("SW-case-false" in state.tasks, "the 'false' branch is instantiated");
+  assert.ok(!("SW-case-true" in state.tasks), "the 'true' branch is NOT instantiated");
+  assert.equal(state.tasks["SW-case-false"].prompt, "NO", "the false-case body was instantiated");
+  assert.ok((state.tasks.EXIT.deps || []).includes("SW-case-false"), "exit wired to the false branch");
+  assert.equal(state.tasks["SW-case-false"].generatedBy, "SW");
+  assert.equal(state.tasks.SW.status, "done");
+  assert.ok(!hasCycle(state.tasks), "the branched graph stays acyclic");
+});
+
+test("V7 switch: with no consumer the branch IS the exit (no extra wiring), and the switch still settles", () => {
+  const { dir, stateDir } = ws();
+  // no EXIT node: nothing depends on the switch, so the instantiated branch is itself
+  // the terminal exit — the wiring loop adds no edge.
+  const { id } = switchGraph(stateDir, dir, {
+    schema: { type: "boolean" },
+    cases: { "true": branchBody("T"), "false": branchBody("F") },
+    selValue: true,
+    exit: false,
+  });
+  const r = run(stateDir, ["switch", "--id", id, "--node", "SW"]);
+  assert.equal(r.status, 0, r.stderr);
+  const state = readState(stateDir, id);
+  assert.ok("SW-case-true" in state.tasks, "the matching branch is the terminal exit");
+  assert.deepEqual(state.tasks["SW-case-true"].deps, [], "a terminal branch has no forward edge added");
+  assert.equal(state.tasks.SW.status, "done", "the switch settles even with no consumer");
+  assert.ok(!hasCycle(state.tasks), "the graph stays acyclic");
+});
+
+test("V7 switch: re-firing on a changed selector tears down the prior branch and re-wires the exit (idempotent, one clean shape)", () => {
+  const { dir, stateDir } = ws();
+  // first selection: "a"
+  const { id, vdir } = switchGraph(stateDir, dir, {
+    schema: { type: "string", enum: ["a", "b", "c"] },
+    cases: { a: branchBody("A"), b: branchBody("B"), c: branchBody("C") },
+    selValue: "a",
+  });
+  assert.equal(run(stateDir, ["switch", "--id", id, "--node", "SW"]).status, 0);
+  let state = readState(stateDir, id);
+  assert.ok("SW-case-a" in state.tasks, "first fire created the 'a' branch");
+  assert.ok((state.tasks.EXIT.deps || []).includes("SW-case-a"), "exit wired to the 'a' branch");
+
+  // the selector value changes to "c" (rewrite the value file the planted ref points to)
+  writeFileSync(join(vdir, "sel-ref.json"), JSON.stringify("c"));
+  assert.equal(run(stateDir, ["switch", "--id", id, "--node", "SW"]).status, 0, "re-firing on a settled switch is allowed");
+
+  state = readState(stateDir, id);
+  // the prior 'a' branch is torn down; only the new 'c' branch survives.
+  assert.ok(!("SW-case-a" in state.tasks), "the prior branch is torn down on re-fire");
+  assert.ok("SW-case-c" in state.tasks, "the new matching branch is created");
+  // the exit is re-wired: it no longer depends on the stale 'a' branch, but on 'c'.
+  assert.ok(!(state.tasks.EXIT.deps || []).includes("SW-case-a"), "the stale branch dep is stripped from the exit");
+  assert.ok((state.tasks.EXIT.deps || []).includes("SW-case-c"), "the exit is re-wired onto the new branch");
+  assert.ok((state.tasks.EXIT.deps || []).includes("SW"), "the exit still depends on the switch");
+  assert.ok(!hasCycle(state.tasks), "the re-fired graph stays acyclic");
+});
+
+test("V7 switch: rejects a non-switch node, an unknown node, and a selector with no output yet", () => {
+  const { dir, stateDir } = ws();
+  // a selector that is NOT yet done-with-output: the switch verb refuses to fire early.
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("SEL", { type: "boolean" }),
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL", cases: { "true": branchBody("T"), "false": branchBody("F") } },
+  ] }).stdout.trim();
+  const early = run(stateDir, ["switch", "--id", id, "--node", "SW"]);
+  assert.notEqual(early.status, 0, "switch refuses to fire before its selector has output");
+  assert.match(early.stderr, /no output yet/i);
+
+  // a non-switch node and an unknown node are both refused.
+  assert.notEqual(run(stateDir, ["switch", "--id", id, "--node", "SEL"]).status, 0, "switch refuses a non-switch node");
+  const ghost = run(stateDir, ["switch", "--id", id, "--node", "ghost"]);
+  assert.notEqual(ghost.status, 0, "switch refuses an unknown node");
+  assert.match(ghost.stderr, /unknown node/i);
+});
+
+// ---------------------------------------------------------------------------
+// V2: exhaustiveness is enforced at validate_graph time (reused from task 1)
+// ---------------------------------------------------------------------------
+// The switch combinator RELIES ON validateGraph rejecting a non-exhaustive switch at
+// init (the registry-and-validation task owns that check; it is not re-implemented in
+// the switch runtime). This asserts the guarantee the combinator depends on: a switch
+// whose cases don't cover the selector's declared domain never reaches a runnable
+// state, so the `switch` verb can assume a matching case always exists.
+
+test("V2 switch: init rejects a non-exhaustive switch (cases don't cover the enum domain); no state, never runnable", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("SEL", { type: "string", enum: ["a", "b", "c"] }),
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL",
+      cases: { a: branchBody("A"), b: branchBody("B") } }, // missing 'c'
+  ] });
+  assert.notEqual(r.status, 0, "a non-exhaustive switch is rejected at init");
+  assert.match(r.stderr, /exhaustively|missing.*c/i, "the rejection names the exhaustiveness failure");
+  assert.equal(
+    readdirSync(stateDir).filter((f) => f.endsWith(".json")).length, 0,
+    "a rejected graph writes no state — the switch verb can never reach a non-exhaustive switch",
+  );
+});
+
+test("V2 switch: init rejects a boolean switch missing the 'false' case", () => {
+  const { dir, stateDir } = ws();
+  const r = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("SEL", { type: "boolean" }),
+    { id: "SW", type: "switch", deps: ["SEL"], over: "SEL", cases: { "true": branchBody("T") } },
+  ] });
+  assert.notEqual(r.status, 0, "a boolean switch missing a case is rejected at init");
+  assert.match(r.stderr, /missing.*false|exhaustively/i);
+});
+
+// ---------------------------------------------------------------------------
+// V8 / V3: the budgeted forward-unroll loop (built ON the switch combinator)
+// ---------------------------------------------------------------------------
+// A loop is realized as a budgeted FORWARD UNROLL on the existing `switch` combinator
+// — NO new primitive, NO back-edge. The loop's tail is a `switch` node whose two cases
+// are the loop's routes: "continue" (the next iteration body) and "stop" (the exit).
+// `loop --node L --state <handle>` reads the carried {budget, accumulator}, routes
+// continue iff budget>0 AND no stop condition holds, and spawns ONE fresh FORWARD node
+// per step: `L-iter-<k>` (depending on the prior iteration) on continue, or `L-exit`
+// on stop. The budget is strictly decremented and the accumulator folded across
+// iterations, threaded BY REFERENCE through the value store. It provably terminates
+// (<= budget steps) and never forms a cycle. The selector value + the seed state are
+// planted (the same black-box-legal mechanism the V6/V7 combinator tests use).
+
+// A loop body / exit case body — a flat fn node body (validateGraph requires
+// module/export/output_schema). The loop overrides its id/deps and binds its state.
+function loopBody() {
+  return { type: "fn", module: "./iter.mjs", export: "step", output_schema: { type: "object" } };
+}
+
+// Build a loop graph: SEL (the continue/stop selector), L (the tail switch over SEL),
+// AFTER (an all-resolved reducer that depends on L — the stable exit/merge consumer),
+// and TRIGGER (an unrelated implement node, so a committing verb can drive
+// invalidateStale for the GEN_CAP test). Plants SEL done with the given selector value
+// and writes the seed {budget, accumulator:0} into the store. Returns the id, the value
+// dir, and the seed handle.
+function loopGraph(stateDir, dir, { budget, selValue = "continue" }) {
+  const nodes = [
+    flatAgent("SEL", { type: "string", enum: ["continue", "stop"] }),
+    { id: "L", type: "switch", deps: ["SEL"], over: "SEL",
+      cases: { continue: loopBody(), stop: loopBody() } },
+    flatFn("AFTER", ["L"], { require: "all-resolved" }),
+    task("TRIGGER"),
+  ];
+  const id = init(stateDir, dir, { version: 1, nodes }).stdout.trim();
+  const state = readState(stateDir, id);
+  state.tasks.SEL.status = "done";
+  state.tasks.SEL.outputRef = "sel-ref";
+  writeState(stateDir, id, state);
+  const vdir = join(stateDir, "values", id);
+  ensureDir(vdir);
+  writeFileSync(join(vdir, "sel-ref.json"), JSON.stringify(selValue));
+  const seedHandle = "seed-state";
+  writeFileSync(join(vdir, `${seedHandle}.json`), JSON.stringify({ budget, accumulator: 0 }));
+  return { id, vdir, seedHandle };
+}
+
+// Fire one loop step; returns the printed next-/final-state handle.
+function fireLoop(stateDir, id, stateHandle) {
+  const r = run(stateDir, ["loop", "--id", id, "--node", "L", "--state", stateHandle]);
+  assert.equal(r.status, 0, r.stderr);
+  return r.stdout.trim();
+}
+
+// Read a state object {budget, accumulator} back from a node's bound inputRef handle.
+function boundState(stateDir, id, vdir, taskId) {
+  const ref = readState(stateDir, id).tasks[taskId].inputRef;
+  return JSON.parse(readFileSync(join(vdir, `${ref}.json`), "utf8"));
+}
+
+test("V8 loop: a budget-3 loop unrolls 3 fresh forward iterations, decrements the budget, threads the accumulator, terminates at the exit, and never forms a cycle", () => {
+  const { dir, stateDir } = ws();
+  const { id, vdir, seedHandle } = loopGraph(stateDir, dir, { budget: 3 });
+
+  // step 0: spawn iter-0 from the seed; the loop is still in progress (not settled).
+  const h1 = fireLoop(stateDir, id, seedHandle);
+  let state = readState(stateDir, id);
+  assert.ok("L-iter-0" in state.tasks, "the first step spawns L-iter-0");
+  assert.deepEqual(state.tasks["L-iter-0"].deps, [], "the first iteration has no prior-iteration edge");
+  assert.equal(state.tasks["L-iter-0"].generatedBy, "L", "the iteration is generatedBy the loop node");
+  assert.equal(state.tasks.L.status, "pending", "the loop node is NOT settled while iterating (forward progress)");
+  assert.ok(!hasCycle(state.tasks), "acyclic after step 0");
+
+  // step 1: spawn iter-1, a FRESH FORWARD node depending on iter-0 (never a back-edge).
+  const h2 = fireLoop(stateDir, id, h1);
+  state = readState(stateDir, id);
+  assert.ok("L-iter-1" in state.tasks, "the second step spawns a fresh L-iter-1");
+  assert.deepEqual(state.tasks["L-iter-1"].deps, ["L-iter-0"], "iter-1 is a FORWARD node after iter-0");
+  assert.ok(!(state.tasks["L-iter-0"].deps || []).includes("L-iter-1"), "no back-edge from iter-0 to iter-1");
+  assert.ok(!hasCycle(state.tasks), "acyclic after step 1");
+
+  // step 2: spawn iter-2.
+  const h3 = fireLoop(stateDir, id, h2);
+  state = readState(stateDir, id);
+  assert.ok("L-iter-2" in state.tasks, "the third step spawns L-iter-2");
+  assert.deepEqual(state.tasks["L-iter-2"].deps, ["L-iter-1"], "iter-2 is a FORWARD node after iter-1");
+  assert.ok(!hasCycle(state.tasks), "acyclic after step 2");
+
+  // step 3: the budget is now 0 -> the guard FORCES stop -> the exit, no 4th iteration.
+  const hf = fireLoop(stateDir, id, h3);
+  state = readState(stateDir, id);
+  assert.ok("L-exit" in state.tasks, "budget exhaustion routes to the exit");
+  assert.ok(!("L-iter-3" in state.tasks), "no fourth iteration is spawned (the budget bottomed out)");
+
+  // exactly 3 fresh iteration nodes, all distinct ids.
+  const iters = Object.keys(state.tasks).filter((t) => t.startsWith("L-iter-")).sort();
+  assert.deepEqual(iters, ["L-iter-0", "L-iter-1", "L-iter-2"], "exactly 3 distinct iteration nodes");
+
+  // the carried budget strictly decrements across iterations: 3, 2, 1.
+  assert.deepEqual(
+    iters.map((t) => boundState(stateDir, id, vdir, t).budget), [3, 2, 1],
+    "the budget strictly decrements each iteration and bottoms out",
+  );
+
+  // the accumulator is threaded/folded across iterations: 0, 3, 5; final = 3+2+1 = 6.
+  assert.deepEqual(
+    iters.map((t) => boundState(stateDir, id, vdir, t).accumulator), [0, 3, 5],
+    "the accumulator carries forward across iterations",
+  );
+  const finalState = boundState(stateDir, id, vdir, "L-exit");
+  assert.equal(finalState.budget, 0, "the exit sees the exhausted budget");
+  assert.equal(finalState.accumulator, 6, "the final accumulator is the fold across iterations (3+2+1)");
+  // the loop prints ONLY the threaded final-state handle (no value crosses the orchestrator).
+  assert.deepEqual(JSON.parse(readFileSync(join(vdir, `${hf}.json`), "utf8")), { budget: 0, accumulator: 6 },
+    "loop prints ONLY the threaded final-state handle");
+
+  // the exit is the stable merge: AFTER (which depends on L) now ALSO depends on L-exit.
+  assert.ok((state.tasks.AFTER.deps || []).includes("L-exit"), "the consumer is wired onto the exit (stable exit/merge)");
+  assert.ok((state.tasks.AFTER.deps || []).includes("L"), "the consumer still lists the loop node");
+
+  // the loop node settled at stop, so a later upstream drift re-unrolls it; acyclic.
+  assert.equal(state.tasks.L.status, "done", "the loop node settles when it stops");
+  assert.equal(state.tasks.L.doneHash, state.tasks.L.contentHash, "doneHash records the settle hash (drift -> re-unroll)");
+  assert.ok(!hasCycle(state.tasks), "the fully unrolled loop is acyclic");
+});
+
+test("V8 loop: a stop CONDITION (selector 'stop') routes to the exit before the budget is exhausted", () => {
+  const { dir, stateDir } = ws();
+  const { id, seedHandle } = loopGraph(stateDir, dir, { budget: 5, selValue: "stop" });
+  fireLoop(stateDir, id, seedHandle);
+  const state = readState(stateDir, id);
+  assert.ok(!("L-iter-0" in state.tasks), "a stop condition spawns NO iteration");
+  assert.ok("L-exit" in state.tasks, "a stop condition routes straight to the exit");
+  assert.equal(state.tasks.L.status, "done", "the loop settles immediately on a stop condition");
+  assert.ok(!hasCycle(state.tasks), "acyclic");
+});
+
+test("V8 loop: rejects a non-switch node, a missing --state, and a negative budget (the termination guard)", () => {
+  const { dir, stateDir } = ws();
+  const { id, seedHandle, vdir } = loopGraph(stateDir, dir, { budget: 2 });
+  assert.notEqual(run(stateDir, ["loop", "--id", id, "--node", "SEL", "--state", seedHandle]).status, 0,
+    "loop refuses a non-switch node");
+  assert.notEqual(run(stateDir, ["loop", "--id", id, "--node", "L"]).status, 0, "loop requires --state");
+  // a negative carried budget violates the termination invariant (the guard).
+  writeFileSync(join(vdir, "bad-state.json"), JSON.stringify({ budget: -1, accumulator: 0 }));
+  const neg = run(stateDir, ["loop", "--id", id, "--node", "L", "--state", "bad-state"]);
+  assert.notEqual(neg.status, 0, "a negative carried budget is rejected (termination guard)");
+  assert.match(neg.stderr, /non-negative integer/i);
+});
+
+// [Task-local] Re-running a settled loop after an upstream change reuses GEN_CAP
+// (task.mjs:73-83): a loop iteration is an ordinary generated node, so invalidateStale's
+// GEN_CAP path bounds its re-runs under input drift exactly as for any failed node.
+
+test("V8 loop/GEN_CAP: a terminally-failed loop iteration AT the cap under input drift stays failed (NOT re-run) — bounded by GEN_CAP", () => {
+  const { dir, stateDir } = ws();
+  const { id, seedHandle } = loopGraph(stateDir, dir, { budget: 3 });
+  // unroll one iteration so there is a real loop-body node generatedBy the loop.
+  fireLoop(stateDir, id, seedHandle);
+  let state = readState(stateDir, id);
+  assert.equal(state.tasks["L-iter-0"].generatedBy, "L", "iter-0 is a loop-generated node");
+
+  // Plant the loop-body node FAILED with a stale provenance hash (an upstream drift) AND
+  // its generation already AT the cap. The next invalidation would be generation
+  // GEN_CAP+1, so it must be REFUSED — the iteration stays failed.
+  state.tasks["L-iter-0"].status = "failed";
+  state.tasks["L-iter-0"].doneHash = "deadbeef".repeat(8); // 64-hex, != the real contentHash (drift)
+  state.tasks["L-iter-0"].generation = 3; // GEN_CAP
+  writeState(stateDir, id, state);
+
+  // a committing verb (dispatch the unrelated TRIGGER) drives invalidateStale over the
+  // drifted loop iteration too.
+  run(stateDir, ["dispatch", "--id", id, "--node", "TRIGGER.impl"]);
+  state = readState(stateDir, id);
+  assert.equal(state.tasks["L-iter-0"].status, "failed", "the capped loop iteration stays failed (NOT re-run)");
+  assert.equal(state.tasks["L-iter-0"].generation, 3, "generation is not advanced past the GEN_CAP ceiling");
+});
+
+test("V8 loop/GEN_CAP: a failed loop iteration BELOW the cap under input drift is re-run (generation bumped)", () => {
+  const { dir, stateDir } = ws();
+  const { id, seedHandle } = loopGraph(stateDir, dir, { budget: 3 });
+  fireLoop(stateDir, id, seedHandle);
+  let state = readState(stateDir, id);
+
+  // failed, drifted, generation below the cap -> the next invalidation resets + re-runs.
+  state.tasks["L-iter-0"].status = "failed";
+  state.tasks["L-iter-0"].doneHash = "deadbeef".repeat(8);
+  state.tasks["L-iter-0"].generation = 0;
+  writeState(stateDir, id, state);
+
+  run(stateDir, ["dispatch", "--id", id, "--node", "TRIGGER.impl"]);
+  state = readState(stateDir, id);
+  assert.equal(state.tasks["L-iter-0"].status, "pending", "a sub-cap failed iteration resets to pending (re-run)");
+  assert.equal(state.tasks["L-iter-0"].generation, 1, "each bounded re-run bumps the generation toward GEN_CAP");
+  assert.equal(state.tasks["L-iter-0"].doneHash, undefined, "the stale provenance hash is cleared on reset");
+});
+
+// ---------------------------------------------------------------------------
+// V9: engine-enforced concurrency window on `ready`
+//
+// With an OPTIONAL --window N, `ready` emits at most max(0, N - in-flight) of the
+// otherwise-ready nodes (stable/sorted order) and keeps the rest ready-deferred.
+// With NO --window the behavior is UNBOUNDED and byte-identical to before — the
+// safety constraint the active self-orchestrating run depends on.
+// ---------------------------------------------------------------------------
+
+// A fan-out of M no-dep flat agent nodes, all ready at init (in-flight 0).
+function fanOut(stateDir, dir, m) {
+  const nodes = [];
+  for (let i = 0; i < m; i++) nodes.push(flatAgent(`n${i}`, { type: "string" }));
+  return init(stateDir, dir, { version: 1, nodes }).stdout.trim();
+}
+
+test("V9 window: M>N ready nodes with --window N (in-flight 0) emits exactly the first N in stable order; the rest deferred", () => {
+  const { dir, stateDir } = ws();
+  const id = fanOut(stateDir, dir, 5); // n0..n4 all ready, nothing in flight
+  // sanity: all 5 ready with no window
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id]).stdout), ["n0", "n1", "n2", "n3", "n4"]);
+  // --window 2, in-flight 0 -> exactly 2, the first two in sorted order (stable)
+  const r = run(stateDir, ["ready", "--id", id, "--window", "2"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(ids(r.stdout), ["n0", "n1"], "emits exactly N nodes, the rest ready-deferred");
+});
+
+test("V9 window: with K in-flight, --window N emits max(0, N-K) ready nodes (never negative)", () => {
+  const { dir, stateDir } = ws();
+  // 5 ready flat agents + 2 legacy implement tasks we dispatch to make in-flight = 2.
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("n0", { type: "string" }), flatAgent("n1", { type: "string" }),
+    flatAgent("n2", { type: "string" }), flatAgent("n3", { type: "string" }),
+    flatAgent("n4", { type: "string" }),
+    task("T0"), task("T1"),
+  ] }).stdout.trim();
+  // dispatch the two impl subnodes -> running == in-flight 2 (and out of the ready set)
+  run(stateDir, ["dispatch", "--id", id, "--node", "T0.impl"]);
+  run(stateDir, ["dispatch", "--id", id, "--node", "T1.impl"]);
+  // window 4, in-flight 2 -> budget 2 -> first two agents (n0, n1)
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id, "--window", "4"]).stdout), ["n0", "n1"],
+    "emits max(0, N - in-flight) = 4 - 2 = 2");
+  // window 2, in-flight 2 -> budget 0 -> nothing emitted (all ready-deferred)
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id, "--window", "2"]).stdout), [],
+    "in-flight at the cap defers everything (max(0, 2-2) = 0)");
+  // window 1, in-flight 2 -> max(0, 1-2) = 0 (clamped, never negative)
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id, "--window", "1"]).stdout), [],
+    "in-flight above the window still emits zero, never negative");
+});
+
+test("V9 window: with NO --window, `ready` returns ALL M ready nodes (unbounded); a window wider than ready is a no-op", () => {
+  const { dir, stateDir } = ws();
+  const id = fanOut(stateDir, dir, 5);
+  const unbounded = run(stateDir, ["ready", "--id", id]);
+  assert.equal(unbounded.status, 0, unbounded.stderr);
+  assert.deepEqual(ids(unbounded.stdout), ["n0", "n1", "n2", "n3", "n4"], "no window -> all M ready nodes");
+  // a window >= (ready + in-flight) never truncates: byte-identical to the default.
+  const wide = run(stateDir, ["ready", "--id", id, "--window", "99"]);
+  assert.equal(wide.stdout, unbounded.stdout, "a window wider than the ready set is byte-identical to the unbounded default");
+});
+
+test("V9 window: default (no --window) output is byte-identical on a MIXED legacy+flat graph (safety regression)", () => {
+  const { dir, stateDir } = ws();
+  // The shape the active self-orchestrating run uses: legacy implement subnodes
+  // alongside flat agent nodes. The no-window `ready` MUST stay the pre-window
+  // engine's exact output: the full sorted readySet with executors, nothing deferred.
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    task("IMPL"),
+    flatAgent("AG", { type: "string" }),
+  ] }).stdout.trim();
+  const out = run(stateDir, ["ready", "--id", id]);
+  assert.equal(out.status, 0, out.stderr);
+  assert.deepEqual(lines(out.stdout).sort(),
+    ["AG\tsubagent(general-purpose)", "IMPL.impl\tsubagent(general-purpose)"],
+    "no window -> the exact pre-window ready lines (ids + executors), nothing truncated");
+});
+
+test("V9 window: window 0 defers everything; a bare/non-integer/negative window is rejected non-zero", () => {
+  const { dir, stateDir } = ws();
+  const id = fanOut(stateDir, dir, 3);
+  assert.deepEqual(ids(run(stateDir, ["ready", "--id", id, "--window", "0"]).stdout), [],
+    "--window 0 emits nothing (budget max(0, 0-0) = 0)");
+  for (const bad of ["-1", "1.5", "abc"]) {
+    const r = run(stateDir, ["ready", "--id", id, "--window", bad]);
+    assert.notEqual(r.status, 0, `--window ${bad} must be rejected`);
+    assert.match(r.stderr, /window/, "the error names --window");
+  }
+  const bare = run(stateDir, ["ready", "--id", id, "--window"]);
+  assert.notEqual(bare.status, 0, "a bare --window with no value is rejected");
+});
+
+// ---------------------------------------------------------------------------
+// V10: the implement-and-audit lifecycle as a 5-node composition (INTEGRATION)
+// ---------------------------------------------------------------------------
+// verifiedTaskNodes(spec) (scripts/lifecycle.mjs) is a PRODUCER helper: it RETURNS
+// the folded-graph nodes — work(agent) -> resolve(agent, emits the panel list) ->
+// audit(expand over the panel) -> fold(fn, folds the auditor verdicts) ->
+// terminal(switch, the loop tail) — wired together; it never runs the engine. These
+// tests INIT a graph built from the helper and DRIVE it through the engine verbs
+// (ready / complete --output / expand / exec-node / loop) to prove the composition
+// reproduces implement-and-audit end to end.
+//
+// Flat agent/fn settling to "done" is a LATER task (execute-plan-update), so — as the
+// V4/V5/V6/V7/V8 combinator tests already do — these tests plant a running impl
+// subnode to drive `complete --output` for the by-reference output channel, then mark
+// the flat node done (black-box-legal state-planting). expand / exec-node / loop are
+// driven through the REAL engine verbs.
+
+// Record an agent node's output through the real `complete --output` by-reference
+// channel (plant a running subnode so complete has something to settle), then mark the
+// flat node done. Returns the recorded outputRef handle.
+function lcCompleteOut(stateDir, id, taskId, outputJson) {
+  let state = readState(stateDir, id);
+  state.subnodes[`${taskId}.run`] = { task: taskId, role: "impl", status: "running" };
+  writeState(stateDir, id, state);
+  const r = run(stateDir, ["complete", "--id", id, "--node", `${taskId}.run`, "--output", outputJson]);
+  assert.equal(r.status, 0, `complete --output ${taskId}: ${r.stderr}`);
+  state = readState(stateDir, id);
+  state.tasks[taskId].status = "done";
+  writeState(stateDir, id, state);
+  return state.tasks[taskId].outputRef;
+}
+
+// Record a node's output that is ALREADY in the store, by HANDLE (pure by-reference),
+// through `complete --output-ref` (validated vs output_schema), then mark it done.
+function lcCompleteRef(stateDir, id, taskId, handle) {
+  let state = readState(stateDir, id);
+  state.subnodes[`${taskId}.run`] = { task: taskId, role: "impl", status: "running" };
+  writeState(stateDir, id, state);
+  const r = run(stateDir, ["complete", "--id", id, "--node", `${taskId}.run`, "--output-ref", handle]);
+  assert.equal(r.status, 0, `complete --output-ref ${taskId}: ${r.stderr}`);
+  state = readState(stateDir, id);
+  state.tasks[taskId].status = "done";
+  writeState(stateDir, id, state);
+}
+
+function readValue(stateDir, id, handle) {
+  return JSON.parse(readFileSync(join(stateDir, "values", id, `${handle}.json`), "utf8"));
+}
+
+// Init a graph whose backbone is the helper's 5-node lifecycle for base id "T", plus
+// any `extraNodes` (e.g. a successor that proves non-halting). Returns the GRAPH_ID.
+function lcInit(stateDir, dir, extraNodes = []) {
+  const nodes = [...verifiedTaskNodes({ id: "T", prompt: "implement T", output_schema: { type: "string" } }), ...extraNodes];
+  return init(stateDir, dir, { version: 1, nodes }).stdout.trim();
+}
+
+// Drive the lifecycle from work through fold via the real engine verbs, with one
+// boolean verdict per auditor in `verdicts` (the resolver emits a panel of that size;
+// each auditor completes with its verdict). A `null` verdict marks that auditor's RUN
+// as FAILED (status failed, no output) instead of completing it, to exercise the
+// failed-envelope path. Returns the fold's routing signal ("continue" | "stop").
+function lcDriveToFold(stateDir, id, verdicts) {
+  assert.ok(ids(run(stateDir, ["ready", "--id", id]).stdout).includes("T-work"), "work readies at init");
+  lcCompleteOut(stateDir, id, "T-work", JSON.stringify("impl-result"));
+  assert.ok(ids(run(stateDir, ["ready", "--id", id]).stdout).includes("T-resolve"), "resolve readies once work is done");
+  lcCompleteOut(stateDir, id, "T-resolve", JSON.stringify(verdicts.map((_, i) => `focus-${i}`)));
+  assert.ok(ids(run(stateDir, ["ready", "--id", id]).stdout).includes("T-audit"), "audit(expand) readies once the panel exists");
+  const ex = run(stateDir, ["expand", "--id", id, "--node", "T-audit"]);
+  assert.equal(ex.status, 0, `expand T-audit: ${ex.stderr}`);
+  verdicts.forEach((v, i) => {
+    const child = `T-audit-item-${i}`;
+    if (v === null) {
+      const s = readState(stateDir, id);
+      s.tasks[child].status = "failed"; // a failed auditor RUN: {status:"failed"}, no output
+      writeState(stateDir, id, s);
+    } else {
+      lcCompleteOut(stateDir, id, child, JSON.stringify(v));
+    }
+  });
+  assert.ok(ids(run(stateDir, ["ready", "--id", id]).stdout).includes("T-fold"),
+    "fold (all-resolved) readies once the expand and every auditor are resolved");
+  const ec = run(stateDir, ["exec-node", "--id", id, "--node", "T-fold"]);
+  assert.equal(ec.status, 0, `exec-node T-fold: ${ec.stderr}`);
+  const foldRef = lines(ec.stdout)[0];
+  const signal = readValue(stateDir, id, foldRef);
+  lcCompleteRef(stateDir, id, "T-fold", foldRef);
+  return signal;
+}
+
+// Seed the loop's carried {budget, accumulator} state into the store and return its
+// (opaque) handle, mirroring the V8 loopGraph seed.
+function lcSeed(stateDir, id, budget) {
+  ensureDir(join(stateDir, "values", id));
+  writeFileSync(join(stateDir, "values", id, "lc-seed.json"), JSON.stringify({ budget, accumulator: 0 }));
+  return "lc-seed";
+}
+
+test("V10 lifecycle: the 5-node helper stamps work->resolve->audit(expand)->fold(fn)->terminal(switch)", () => {
+  const { dir, stateDir } = ws();
+  const nodes = verifiedTaskNodes({ id: "T", prompt: "implement T", output_schema: { type: "string" } });
+  // exactly the 5-node skeleton, in order, of the right kinds, correctly wired.
+  assert.deepEqual(nodes.map((n) => n.id), ["T-work", "T-resolve", "T-audit", "T-fold", "T-terminal"]);
+  assert.deepEqual(nodes.map((n) => n.type), ["agent", "agent", "expand", "fn", "switch"]);
+  const [work, resolve, audit, fold, terminal] = nodes;
+  assert.deepEqual(resolve.deps, ["T-work"], "resolve depends on work");
+  assert.equal(audit.over, "T-resolve", "audit expands over the resolver's panel list");
+  assert.equal(audit.gather, "T-fold", "audit gathers into fold");
+  assert.equal(fold.require, "all-resolved", "fold is an all-resolved reducer (reads failed envelopes)");
+  assert.deepEqual(fold.output_schema.enum, ["continue", "stop"], "fold emits the routing signal");
+  assert.equal(terminal.over, "T-fold", "terminal switches on the fold signal");
+  assert.deepEqual(Object.keys(terminal.cases).sort(), ["continue", "stop"], "terminal's cases cover the fold domain (exhaustive)");
+  // and the produced graph is accepted by the real engine (validateGraph), proving the
+  // wiring + switch exhaustiveness are valid, not just structurally plausible.
+  const id = init(stateDir, dir, { version: 1, nodes }).stdout.trim();
+  assert.match(id, HEX16, "the 5-node composition initializes into a valid graph");
+});
+
+test("V10 lifecycle (happy path): all auditors pass -> fold 'stop' -> the terminal loop exits (task done)", () => {
+  const { dir, stateDir } = ws();
+  const id = lcInit(stateDir, dir);
+  // two auditors, both pass.
+  const signal = lcDriveToFold(stateDir, id, [true, true]);
+  assert.equal(signal, "stop", "every auditor passing folds to 'stop' (exit)");
+
+  // drive the terminal loop: 'stop' routes to the exit; the task reaches "done".
+  const lp = run(stateDir, ["loop", "--id", id, "--node", "T-terminal", "--state", lcSeed(stateDir, id, 3)]);
+  assert.equal(lp.status, 0, lp.stderr);
+  const state = readState(stateDir, id);
+  assert.ok("T-terminal-exit" in state.tasks, "the loop instantiates the exit on 'stop'");
+  assert.ok(!Object.keys(state.tasks).some((t) => t.startsWith("T-terminal-iter-")),
+    "no retry iteration is spawned when every auditor passed");
+  assert.equal(state.tasks["T-terminal"].status, "done", "the terminal settles when the loop stops");
+  assert.equal(state.tasks["T-terminal"].doneHash, state.tasks["T-terminal"].contentHash, "the settled terminal stamps its doneHash");
+  assert.ok(!hasCycle(state.tasks), "the settled lifecycle is acyclic");
+});
+
+test("V10 lifecycle (retry): an auditor fails & budget remains -> the terminal switch spawns a fresh work iteration (loop)", () => {
+  const { dir, stateDir } = ws();
+  const id = lcInit(stateDir, dir);
+  // two auditors; the second fails -> fold 'continue'.
+  const signal = lcDriveToFold(stateDir, id, [true, false]);
+  assert.equal(signal, "continue", "any auditor failing folds to 'continue' (retry)");
+
+  // budget remains (3): the loop spawns the next work iteration as a fresh FORWARD node.
+  const lp = run(stateDir, ["loop", "--id", id, "--node", "T-terminal", "--state", lcSeed(stateDir, id, 3)]);
+  assert.equal(lp.status, 0, lp.stderr);
+  assert.match(lines(lp.stdout)[0] || "", /^[0-9a-f]{64}$/, "the loop prints ONLY the threaded next-state handle");
+  const state = readState(stateDir, id);
+  assert.ok("T-terminal-iter-0" in state.tasks, "the loop spawns a fresh work iteration on 'continue' + budget>0");
+  assert.equal(state.tasks["T-terminal-iter-0"].generatedBy, "T-terminal", "the iteration is generatedBy the terminal node");
+  assert.equal(state.tasks["T-terminal"].status, "pending", "the terminal is NOT settled while iterating (forward progress)");
+  assert.ok(!("T-terminal-exit" in state.tasks), "no exit yet — the lifecycle is looping, not terminating");
+  assert.ok(!hasCycle(state.tasks), "the forward unroll never forms a cycle");
+});
+
+test("V10 lifecycle (budget exhaustion): an auditor fails & budget=0 -> terminal-failed routes to the exit, NON-HALTING", () => {
+  const { dir, stateDir } = ws();
+  // a successor of the terminal proves a terminal failure does not halt the graph.
+  const succ = { id: "AFTER", type: "fn", deps: ["T-terminal"], module: LIFECYCLE, export: "gatherSuccesses",
+    output_schema: { type: "array" }, require: "all-resolved" };
+  const id = lcInit(stateDir, dir, [succ]);
+  // an auditor's RUN fails (status:"failed") -> fold 'continue', but budget is exhausted.
+  const signal = lcDriveToFold(stateDir, id, [true, null]);
+  assert.equal(signal, "continue", "a failed auditor run folds to 'continue'");
+
+  // budget 0: the loop's budget>0 guard FORCES 'stop', so it routes to the exit anyway —
+  // a TERMINAL FAILURE that is non-halting (the exit is reached, successors proceed).
+  const lp = run(stateDir, ["loop", "--id", id, "--node", "T-terminal", "--state", lcSeed(stateDir, id, 0)]);
+  assert.equal(lp.status, 0, lp.stderr);
+  let state = readState(stateDir, id);
+  assert.ok("T-terminal-exit" in state.tasks, "budget exhaustion routes to the exit (terminal-failed), not an endless loop");
+  assert.ok(!Object.keys(state.tasks).some((t) => t.startsWith("T-terminal-iter-")), "no iteration is spawned when the budget is exhausted");
+  assert.equal(state.tasks["T-terminal"].status, "done", "the terminal settles at the exhausted exit");
+  assert.ok((state.tasks.AFTER.deps || []).includes("T-terminal-exit"), "the successor is wired onto the exit (stable merge)");
+
+  // NON-HALTING: even when the terminal-failed exit itself FAILS, the all-resolved
+  // successor still readies — a logged failure never sinks the run.
+  state = readState(stateDir, id);
+  state.tasks["T-terminal-exit"].status = "failed";
+  writeState(stateDir, id, state);
+  assert.ok(ids(run(stateDir, ["ready", "--id", id]).stdout).includes("AFTER"),
+    "the successor proceeds despite the terminal failure (non-halting)");
+  assert.ok(!hasCycle(readState(stateDir, id).tasks), "the terminated lifecycle is acyclic");
+});
+
+// ---------------------------------------------------------------------------
+// V12: reduce/gather failure handling (INTEGRATION)
+// ---------------------------------------------------------------------------
+// gatherSuccesses (scripts/lifecycle.mjs) is the reduce/gather fn: a reducer (fn,
+// require="all-resolved") reads per-child {status, output?} envelopes, GATHERS the
+// done ones, DROPS the failed ones, and UNIONS a threaded accumulator of prior
+// successes (an array output is unioned element-wise) so a retry never drops earlier
+// successes. These tests drive a real fan-out (expand), exec-node the reducer, and
+// drive the retry as a budgeted forward unroll via the loop.
+
+// A reducer fn node bound to gatherSuccesses (require="all-resolved").
+function gatherNode(id, deps) {
+  return { id, type: "fn", deps, module: LIFECYCLE, export: "gatherSuccesses",
+    output_schema: { type: "array" }, require: "all-resolved" };
+}
+
+// Mark a planted task as a FAILED upstream (status:"failed", no output) — the
+// counterpart of plantDoneOutput, for the failed-envelope path.
+function plantFailed(stateDir, id, taskId) {
+  const state = readState(stateDir, id);
+  state.tasks[taskId].status = "failed";
+  writeState(stateDir, id, state);
+}
+
+test("V12 gather: a fan-out where some children fail -> the reducer gathers the successes, dropping the failed", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("SRC", { type: "array" }),
+    { id: "E", type: "expand", deps: ["SRC"], over: "SRC",
+      template: flatAgent("x", { type: "string" }), gather: "R" },
+    gatherNode("R", ["E"]),
+  ] }).stdout.trim();
+
+  // fan out over a 3-element list (the settle marking SRC done is a later task; plant it).
+  plantDoneOutput(stateDir, id, "SRC", ["a", "b", "c"], "src-ref");
+  const ex = run(stateDir, ["expand", "--id", id, "--node", "E"]);
+  assert.equal(ex.status, 0, ex.stderr);
+
+  // two children succeed, the middle one FAILS.
+  plantDoneOutput(stateDir, id, "E-item-0", "a");
+  plantFailed(stateDir, id, "E-item-1");
+  plantDoneOutput(stateDir, id, "E-item-2", "c");
+
+  // the reducer readies (all-resolved: done|failed) and gathers ONLY the successes.
+  assert.ok(ids(run(stateDir, ["ready", "--id", id]).stdout).includes("R"),
+    "the all-resolved reducer readies despite a failed child");
+  const ec = run(stateDir, ["exec-node", "--id", id, "--node", "R"]);
+  assert.equal(ec.status, 0, ec.stderr);
+  const gathered = readValue(stateDir, id, lines(ec.stdout)[0]);
+  assert.deepEqual(gathered.slice().sort(), ["a", "c"],
+    "the reducer gathers the done children and drops the failed one (no missing-input crash)");
+});
+
+test("V12 retry: the failed subset is re-run via the loop, and the final reducer unions prior successes (accumulator)", () => {
+  const { dir, stateDir } = ws();
+  // Round-1 fan-out + reducer R1; a loop tail (RSEL/LT) for the budgeted retry; and a
+  // final union reducer R2 over [R1 (the threaded accumulator), RETRY (the re-run
+  // failed subset's success)].
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("SRC", { type: "array" }),
+    { id: "E", type: "expand", deps: ["SRC"], over: "SRC",
+      template: flatAgent("x", { type: "string" }), gather: "R1" },
+    gatherNode("R1", ["E"]),
+    flatAgent("RSEL", { type: "string", enum: ["continue", "stop"] }), // the loop selector
+    { id: "LT", type: "switch", deps: ["RSEL"], over: "RSEL",
+      cases: { continue: flatAgent("rb", { type: "string" }), stop: flatAgent("eb", { type: "string" }) } },
+    flatAgent("RETRY", { type: "string" }), // carries the re-run failed subset's success
+    gatherNode("R2", ["R1", "RETRY"]),
+  ] }).stdout.trim();
+
+  // Round 1: fan out, the middle child fails; R1 gathers ["a","c"].
+  plantDoneOutput(stateDir, id, "SRC", ["a", "b", "c"], "src-ref");
+  assert.equal(run(stateDir, ["expand", "--id", id, "--node", "E"]).status, 0);
+  plantDoneOutput(stateDir, id, "E-item-0", "a");
+  plantFailed(stateDir, id, "E-item-1");
+  plantDoneOutput(stateDir, id, "E-item-2", "c");
+  const ec1 = run(stateDir, ["exec-node", "--id", id, "--node", "R1"]);
+  assert.equal(ec1.status, 0, ec1.stderr);
+  const r1Ref = lines(ec1.stdout)[0];
+  assert.deepEqual(readValue(stateDir, id, r1Ref).slice().sort(), ["a", "c"], "round-1 reducer gathers the successes");
+  // record R1's accumulator so the final reducer can thread it (the value is already in
+  // the store from exec-node; plant the done status + handle).
+  let state = readState(stateDir, id);
+  state.tasks.R1.status = "done"; state.tasks.R1.outputRef = r1Ref;
+  writeState(stateDir, id, state);
+
+  // RETRY via the loop: the selector says 'continue' (a failed subset remains) and the
+  // budget is non-zero, so the loop spawns the retry as a fresh FORWARD iteration.
+  plantDoneOutput(stateDir, id, "RSEL", "continue", "rsel-ref");
+  ensureDir(join(stateDir, "values", id));
+  writeFileSync(join(stateDir, "values", id, "retry-seed.json"), JSON.stringify({ budget: 2, accumulator: 0 }));
+  const lp = run(stateDir, ["loop", "--id", id, "--node", "LT", "--state", "retry-seed"]);
+  assert.equal(lp.status, 0, lp.stderr);
+  state = readState(stateDir, id);
+  assert.ok("LT-iter-0" in state.tasks, "the loop re-runs the failed subset as a fresh forward iteration");
+  assert.equal(state.tasks["LT-iter-0"].generatedBy, "LT", "the retry iteration is generatedBy the loop");
+  assert.ok(!hasCycle(state.tasks), "the retry forward-unroll stays acyclic");
+
+  // The re-run succeeds ("b"); the final reducer R2 unions the prior accumulator (R1)
+  // with the retried success — earlier successes (a, c) are NOT dropped.
+  plantDoneOutput(stateDir, id, "RETRY", "b");
+  const ec2 = run(stateDir, ["exec-node", "--id", id, "--node", "R2"]);
+  assert.equal(ec2.status, 0, ec2.stderr);
+  assert.deepEqual(readValue(stateDir, id, lines(ec2.stdout)[0]).slice().sort(), ["a", "b", "c"],
+    "the final result unions the retried success with the prior accumulator (earlier successes preserved)");
+});
+
+test("V12 no-missing-input: a plain fn (require=all-done) is NOT readied while a dep is failed; a reducer (all-resolved) is", () => {
+  const { dir, stateDir } = ws();
+  const id = init(stateDir, dir, { version: 1, nodes: [
+    flatAgent("A", { type: "string" }),
+    flatAgent("B", { type: "string" }),
+    { id: "PLAIN", type: "fn", deps: ["A", "B"], module: LIFECYCLE, export: "gatherSuccesses", output_schema: { type: "array" } }, // all-done (default)
+    gatherNode("RED", ["A", "B"]), // all-resolved
+  ] }).stdout.trim();
+
+  // A done, B FAILED.
+  let state = readState(stateDir, id);
+  state.tasks.A.status = "done";
+  state.tasks.B.status = "failed";
+  writeState(stateDir, id, state);
+
+  const ready = ids(run(stateDir, ["ready", "--id", id]).stdout);
+  assert.ok(!ready.includes("PLAIN"),
+    "a plain all-done fn is NOT readied while a dep is failed, so it never runs on a missing input");
+  assert.ok(ready.includes("RED"), "an all-resolved reducer IS readied (it reads the failed envelope and gathers)");
+
+  // and the reason the scheduler withholds PLAIN: its B input would be a {status:"failed"}
+  // envelope — a missing input the plain contract must not run on.
+  const env = JSON.parse(run(stateDir, ["resolve-context", "--id", id, "--node", "PLAIN", "--inputs"]).stdout);
+  assert.deepEqual(env.B, { status: "failed" }, "PLAIN's failed dep surfaces as a {status:failed} envelope (a missing input)");
+  assert.ok(!("output" in env.B), "the failed envelope carries no output");
+});
+
+// ---------------------------------------------------------------------------
+// V13 / V18: divide-and-conquer Mode B — a SHIPPED skill graph + fn modules
+// ---------------------------------------------------------------------------
+// A Mode B skill ships a JSON folded-graph plus its `fn` module files in its own
+// folder; the engine loads it (a node's RELATIVE `module` resolves against the SKILL
+// DIR, where the modules ship — not the cwd that ran init), validates it, and runs
+// the wide fan-out, gathering the successes even when some children fail. These tests
+// run the REAL shipped example end to end, deterministically (fn `seed`/`gather` are
+// executed; the per-item `agent` children are planted, not dispatched), to anchor the
+// e2e task (V13: loads + runs + gathers; V18: still gathers under forced failure).
+const DC_EXAMPLE_GRAPH = fileURLToPath(
+  new URL("../skills/divide-and-conquer/examples/wide-research/graph.json", import.meta.url));
+const DC_EXAMPLE_DIR = dirname(DC_EXAMPLE_GRAPH);
+
+test("V13 Mode B: the shipped wide-research example validates, loads, and resolves fn modules relative to the skill dir", () => {
+  const { stateDir } = ws();
+  // init the REAL on-disk example graph (not a tmp copy). State + values are written
+  // under the test's AMPLIFY_STATE_DIR; the skill folder itself is never written to.
+  const r = run(stateDir, ["init", "--graph", DC_EXAMPLE_GRAPH]);
+  assert.equal(r.status, 0, `the shipped example graph must validate + load: ${r.stderr}`);
+  const id = r.stdout.trim();
+  assert.match(id, HEX16, "init prints a GRAPH_ID for the example");
+
+  const state = readState(stateDir, id);
+  // init records the graph's OWN dir as the fn-module resolution base, so a relative
+  // `module` resolves against the SKILL DIR rather than the cwd that ran init.
+  assert.equal(state.graphDir, DC_EXAMPLE_DIR,
+    "init records the graph's own directory as the fn-module resolution base");
+  // the shipped relative module paths are stored VERBATIM (identity unchanged).
+  assert.equal(state.tasks.seed.module, "./fns/seed.mjs", "the source fn ships its module relative to the skill dir");
+  assert.equal(state.tasks.gather.module, "./fns/gather.mjs", "the gather reducer ships its module relative to the skill dir");
+  assert.equal(state.tasks.gather.require, "all-resolved", "the gather reducer is all-resolved (reads failed envelopes)");
+  assert.equal(state.tasks.research.type, "expand", "the fan-out is an expand over the seed list");
+  assert.equal(state.tasks.research.gather, "gather", "the expand gathers into the reducer");
+});
+
+test("V18 Mode B: the wide-research fan-out gathers the successes end to end even when some children fail", () => {
+  const { stateDir } = ws();
+  const id = run(stateDir, ["init", "--graph", DC_EXAMPLE_GRAPH]).stdout.trim();
+
+  // 1) the SEED fn (relative module ./fns/seed.mjs) loads from the skill dir and runs.
+  //    A successful exec-node PROVES skill-dir resolution: the module is NOT under the
+  //    test's cwd or stateDir, so it could only have resolved against state.graphDir.
+  const es = run(stateDir, ["exec-node", "--id", id, "--node", "seed"]);
+  assert.equal(es.status, 0, `seed fn must resolve + run from the skill dir: ${es.stderr}`);
+  const seedRef = lines(es.stdout)[0];
+  const topics = readValue(stateDir, id, seedRef);
+  assert.ok(Array.isArray(topics) && topics.length >= 3, "the seed fn emits the fan-out list");
+
+  // mark seed done with its list output so the expand can fan out (black-box plant,
+  // as in the V5/V12 tests — the orchestrator's `complete` is a later concern here).
+  let state = readState(stateDir, id);
+  state.tasks.seed.status = "done";
+  state.tasks.seed.outputRef = seedRef;
+  writeState(stateDir, id, state);
+
+  // 2) EXPAND research: one child per topic, each wired into gather.
+  assert.ok(ids(run(stateDir, ["ready", "--id", id]).stdout).includes("research"),
+    "the expand readies once the seed list exists");
+  const ex = run(stateDir, ["expand", "--id", id, "--node", "research"]);
+  assert.equal(ex.status, 0, ex.stderr);
+  state = readState(stateDir, id);
+  const childIds = topics.map((_, i) => `research-item-${i}`);
+  for (const c of childIds) assert.ok(c in state.tasks, `expand created child ${c}`);
+
+  // 3) most children succeed; force the FIRST to FAIL (the V18 forced-failure case).
+  plantFailed(stateDir, id, childIds[0]);
+  for (let i = 1; i < childIds.length; i++) {
+    plantDoneOutput(stateDir, id, childIds[i], `findings:${topics[i]}`);
+  }
+
+  // 4) the GATHER reducer (relative module ./fns/gather.mjs -> gatherSuccesses) readies
+  //    (all-resolved) and gathers ONLY the successes, dropping the failed child — no
+  //    missing-input crash, and one failure does not sink the run.
+  assert.ok(ids(run(stateDir, ["ready", "--id", id]).stdout).includes("gather"),
+    "the all-resolved gather reducer readies despite a failed child");
+  const eg = run(stateDir, ["exec-node", "--id", id, "--node", "gather"]);
+  assert.equal(eg.status, 0, `gather fn must resolve + run from the skill dir: ${eg.stderr}`);
+  const gathered = readValue(stateDir, id, lines(eg.stdout)[0]);
+  const expected = topics.slice(1).map((t) => `findings:${t}`).sort();
+  assert.deepEqual(gathered.slice().sort(), expected,
+    "the run gathers every successful child's findings and drops the failed one");
 });

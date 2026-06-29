@@ -17,12 +17,20 @@
 //
 // Verbs:
 //   init     --graph <file> [--salt <text>]            -> prints GRAPH_ID
-//   ready    --id <GRAPH_ID>                            -> prints ready subnodes
+//   ready    --id <GRAPH_ID> [--window <N>]             -> prints ready subnodes.
+//                                                          OPTIONAL --window N bounds concurrency:
+//                                                          emits at most max(0, N - in-flight) of the
+//                                                          otherwise-ready nodes (stable/sorted order),
+//                                                          deferring the rest. With NO --window the
+//                                                          behavior is UNBOUNDED and unchanged.
 //   dispatch --id <GRAPH_ID> --node <subnode-id>        -> marks a pending subnode running
 //   active   [--id <GRAPH_ID>] [--cwd <dir>] [--session <id>] [--json]
 //                                                       -> lists still-active graphs (global);
 //                                                          --id/--cwd/--session narrow the scan
 //   complete --id <GRAPH_ID> --node <subnode-id>        -> prints newly-ready subnodes
+//            [--output <json> | --output-file <path> | --output-ref <handle>]
+//                                                       -> also records the node's output BY
+//                                                          REFERENCE (validated vs output_schema)
 //   resolve  --id <GRAPH_ID> --node <T>.resolve --panel <json>
 //                                                       -> registers auditors, prints ready
 //   fail     --id <GRAPH_ID> --node <T>.audit.<i> [--reason <text>]
@@ -34,10 +42,51 @@
 //   resource-of --executor <subagent(...)>               -> prints the exclusive resource class, if any
 //   variables --id <GRAPH_ID>                        -> prints each injected variable as "<name>\t<value>"
 //   resolve-context --id <GRAPH_ID> --node <task-id> -> dumps the audit-resolver's context for one task
+//   resolve-context --id <GRAPH_ID> --node <node-id> --inputs
+//                                                    -> one {status, output?} envelope per upstream dep
+//                                                       (status done|failed), read from the value store
+//   exec-node --id <GRAPH_ID> --node <fn-node-id>    -> run a deterministic fn node over its input
+//                                                       envelopes, validate vs output_schema, write the
+//                                                       value to the store, print ONLY the handle
+//                                                       (READ-ONLY on engine state)
+//   expand   --id <GRAPH_ID> --node <expand-node-id> -> fan-out: read the `over` upstream's list output,
+//                                                       create one child from `template` per element in a
+//                                                       SINGLE commit, bind each child to its element BY
+//                                                       REFERENCE (a per-element store handle), wire each
+//                                                       child to `gather`, tag it generatedBy the node;
+//                                                       an empty list creates no children
+//   switch   --id <GRAPH_ID> --node <switch-node-id> -> branch: read the `over` selector's output,
+//                                                       match it (stringified: boolean -> "true"/"false",
+//                                                       enum -> the value) to one of the node's `cases`,
+//                                                       and instantiate ONLY that case's branch in a
+//                                                       SINGLE commit (fresh id `<switch-id>-case-<key>`,
+//                                                       no dots, tagged generatedBy the switch). Every
+//                                                       node that depends on the switch is wired to also
+//                                                       depend on the instantiated branch, so downstream
+//                                                       wiring is stable regardless of which case fired.
+//                                                       Exhaustiveness is enforced at validate_graph time,
+//                                                       so a matching case always exists.
+//   loop     --id <GRAPH_ID> --node <loop-switch-id> --state <handle>
+//                                                    -> budgeted FORWARD UNROLL built ON switch (no new
+//                                                       primitive, no back-edge): the loop's tail is a
+//                                                       `switch` with a "continue" case (next iteration
+//                                                       body) and a "stop" case (exit). One step reads the
+//                                                       carried {budget, accumulator} from --state, routes
+//                                                       continue iff budget>0 and no stop condition holds,
+//                                                       and spawns ONE fresh forward node: a `<id>-iter-<k>`
+//                                                       depending on the prior iteration (budget strictly
+//                                                       decremented, accumulator folded, threaded BY
+//                                                       REFERENCE), or the `<id>-exit`. Prints ONLY the
+//                                                       threaded next-/final-state handle. Provably
+//                                                       terminates (<= budget iterations) and stays acyclic;
+//                                                       a re-run tears down + re-unrolls under GEN_CAP.
 //   report   --id <GRAPH_ID>                            -> final task table
 //   status   --id <GRAPH_ID>                            -> full subnode state table
 //
-// Task-level graph-mutation commands (CAPABILITY ONLY — no automatic caller):
+// Graph-mutation primitives — INTERNAL USE ONLY. These verbs are called by the
+// expand/switch/loop combinators (and by the active execute-plan engine) but are NOT
+// part of the public graph-growth API. Public graph growth flows exclusively through
+// `expand` and `switch`. Do not invoke these raw verbs from orchestration prompts.
 //   spawn-task --id <GRAPH_ID> --task-id <id> --spec <json>  -> insert a task + its impl/resolve subnodes
 //   remove-task --id <GRAPH_ID> --task-id <id> [--force]     -> remove a task + its subnodes (RELEASE after commit; --force to remove with running subnodes)
 //   add-dep    --id <GRAPH_ID> --from <a> --to <b>           -> add edge a depends-on b
@@ -50,8 +99,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync, readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, isAbsolute, resolve as resolvePath, dirname } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const IMPL = "impl";
 const RESOLVE = "resolve";
@@ -68,6 +117,11 @@ const TYPE_IMPLEMENT = "implement";
 const TYPE_RESOLVE = "resolve";
 const TYPE_AUDIT = "audit";
 const TYPE_REDUCE = "reduce";
+// Generalized workflow types (scheduling / runtime added in later tasks).
+const TYPE_AGENT = "agent";
+const TYPE_FN = "fn";
+const TYPE_EXPAND = "expand";
+const TYPE_SWITCH = "switch";
 const DEFAULT_LOCK_TTL_MS = 30 * 60 * 1000; // 30 minutes (backstop only)
 
 // Bound on how many times structural invalidation may resurrect a FAILED task
@@ -198,24 +252,87 @@ function computeGraphId(graph, salt) {
 }
 
 // ---------------------------------------------------------------------------
+// content-addressed value store (VALUES BY REFERENCE)
+// ---------------------------------------------------------------------------
+
+// A node's typed OUTPUT is recorded BY REFERENCE: the bytes live on disk under the
+// engine's state dir (per-run, so a run's values are isolated and trivially
+// cleaned up), in a file NAMED by the sha256 of the value's canonical JSON — so
+// equal outputs dedupe and the handle is a pure function of the bytes. The
+// orchestrator's view keeps only node-id -> handle (the task record's `outputRef`,
+// projected away by projectFoldedGraph so it never enters the content-hash
+// identity); the bytes stay on disk until an executor fetches them via
+// resolve-context. This store is DELIBERATELY separate from spec()/contentHash:
+// an output is a runtime RESULT, not part of a node's identity.
+function valuesDir(runId) { return join(stateDir(), "values", runId); }
+
+// Write a value to the store, returning its content-addressed handle. The write
+// is atomic (temp + rename); a racing identical write is harmless because the
+// target name is the content hash, so both writers produce byte-identical files.
+function storeValue(runId, value) {
+  const handle = createHash("sha256").update(canonicalize(value)).digest("hex");
+  const dir = valuesDir(runId);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${handle}.json`);
+  if (!existsSync(path)) {
+    const tmp = `${path}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(value));
+    renameSync(tmp, path);
+  }
+  return handle;
+}
+
+// Read a value back from the store by its handle. Dies if the handle is unknown
+// (a dangling reference is a hard error, never a silent empty output).
+function loadValue(runId, handle) {
+  const path = join(valuesDir(runId), `${handle}.json`);
+  if (!existsSync(path)) die(`value handle "${handle}" not found in the store for run ${runId}`);
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+// ---------------------------------------------------------------------------
 // per-task Merkle content hash
 // ---------------------------------------------------------------------------
 
-// spec(t) = the STABLE identity inputs of a task: the fields that, when changed,
-// SHOULD change the task's identity (and therefore force a re-run). It reads the
-// RESOLVED implementer executor (subnodes[<id>.impl].executor, post-default), so
-// an omitted impl and an explicit subagent(general-purpose) produce one identity.
-// acceptance_criteria order is content-significant; canonicalize preserves array
-// order (it sorts object keys only), which is what we want here.
+// Resolve the executor folded into a node's identity. For an `implement` node it is
+// the RESOLVED implementer executor (subnodes[<id>.impl].executor, post-default), so
+// an omitted impl and an explicit subagent(general-purpose) produce one identity;
+// for any other subagent-dispatching kind (agent/audit/reduce) it is the executor on
+// the task record (post-default). Engine-driven kinds (fn/expand/switch) have no
+// executor in their template, so spec() never asks for one.
+function specExecutor(task, subnodes, taskId, type) {
+  if (type === TYPE_IMPLEMENT) {
+    return subnodes[implId(taskId)]?.executor ?? task.executor ?? DEFAULT_IMPL_EXECUTOR;
+  }
+  return task.executor ?? defaultExecutorForType(type);
+}
+
+// spec(t) = the STABLE identity inputs of a node: the fields that, when changed,
+// SHOULD change the node's identity (and therefore force a re-run). It reads the
+// declared identity fields from the node's TYPE TEMPLATE (node-types.json), NOT a
+// fixed implement-only list, so EVERY kind folds its own fields: agent prompt +
+// output_schema; fn module + export + output_schema + require; expand over +
+// template + gather; switch over + cases; implement name + acceptance_criteria +
+// design_aspect + max_attempts + human_gate; etc. The structural id/type/deps are
+// handled OUTSIDE spec — deps via the Merkle child-hash fold, the id as the map key
+// — so they are skipped here. The RESOLVED executor is folded for a dispatching kind
+// (see specExecutor). human_gate folds as a strict boolean; every other declared
+// property is folded only when present (matching explode/projectFoldedGraph), so an
+// implement node yields exactly its historical {name, acceptance_criteria,
+// design_aspect, max_attempts, human_gate, executor} identity. canonicalize
+// preserves array order (acceptance_criteria, expand `over`, switch case bodies),
+// which is content-significant; it sorts object keys only.
 function spec(task, subnodes, taskId) {
-  return {
-    name: task.name,
-    acceptance_criteria: task.acceptance_criteria,
-    design_aspect: task.design_aspect,
-    max_attempts: task.max_attempts,
-    human_gate: task.human_gate === true,
-    executor: subnodes[implId(taskId)]?.executor ?? DEFAULT_IMPL_EXECUTOR,
-  };
+  const type = task.type || TYPE_IMPLEMENT;
+  const template = NODE_TYPES[type] || NODE_TYPES[TYPE_IMPLEMENT];
+  const out = {};
+  for (const k of [...template.required, ...(template.optional || [])]) {
+    if (k === "id" || k === "type" || k === "deps") continue; // structural, folded elsewhere
+    if (k === "executor") { out.executor = specExecutor(task, subnodes, taskId, type); continue; }
+    if (k === "human_gate") { out.human_gate = task.human_gate === true; continue; }
+    if (k in task) out[k] = task[k];
+  }
+  return out;
 }
 
 // contentHash(t) = sha256( canonicalize(spec(t)) + "\n" + sorted(child hashes) ).
@@ -266,13 +383,62 @@ function recomputeContentHashes(working) {
 // structural invalidation (commit-time, after content hashes are recomputed)
 // ---------------------------------------------------------------------------
 
-// Reset a task's subnodes to the fresh pre-impl shape: impl/resolve back to
-// pending and every .audit.<i> dropped. Deleting an audit subnode is NOT a
-// running -> pending transition (it is a deletion), so it is allowed even mid-
-// flight; the in-flight auditor's late return is tolerated as a no-op discard by
-// the completion verbs (see settleSubnodeOrDiscard). Used by both the done-task
-// reset and the atomic-round invalidation so they reset identically.
+// The set of tasks TRANSITIVELY generated by generatorId. A combinator (expand /
+// switch / loop), when it expands, marks each child task it spawns with
+// generatedBy=<generatorId>; a generated child may itself generate (a loop unroll or
+// a nested expand), so the closure is taken transitively. The generator itself is
+// NOT included. This is the flat-node analogue of "the audit round a task owns".
+function generatedDescendants(tasks, generatorId) {
+  const removed = new Set();
+  const stack = [generatorId];
+  while (stack.length) {
+    const parent = stack.pop();
+    for (const [id, t] of Object.entries(tasks)) {
+      if (t && t.generatedBy === parent && !removed.has(id)) {
+        removed.add(id);
+        stack.push(id);
+      }
+    }
+  }
+  return removed;
+}
+
+// Tear down everything a combinator generated: remove its transitively-generated
+// child tasks and each child's subnodes, then strip any now-dangling deps surviving
+// tasks held on a removed child (a `gather` wired to the children), so the projected
+// graph stays referentially valid — the combinator re-creates fresh children and
+// re-wires `gather` when it re-expands. (V19) This is the flat-model generalization
+// of dropping a task's .audit.<i> round; the expand/switch runtime (a later task)
+// reuses it so a re-run reproduces ONE clean acyclic shape with no orphaned or
+// duplicated generated nodes. Returns the set of removed task ids.
+function tearDownGenerated(working, generatorId) {
+  const removed = generatedDescendants(working.tasks, generatorId);
+  if (removed.size === 0) return removed;
+  for (const childId of removed) {
+    delete working.tasks[childId];
+    for (const sid of Object.keys(working.subnodes)) {
+      if (working.subnodes[sid].task === childId) delete working.subnodes[sid];
+    }
+  }
+  for (const t of Object.values(working.tasks)) {
+    if (Array.isArray(t.deps) && t.deps.some((d) => removed.has(d))) {
+      t.deps = t.deps.filter((d) => !removed.has(d));
+    }
+  }
+  return removed;
+}
+
+// Reset a node's generated work to the fresh pre-run shape so a re-run reproduces a
+// clean shape. (1) FLAT generalization (V19): drop any child tasks/branches this
+// node generated as a combinator (expand/switch/loop), transitively. (2) IMPLEMENT
+// lifecycle: reset impl/resolve back to pending and drop every .audit.<i>. Deleting
+// an audit subnode (or a generated child) is NOT a running -> pending transition (it
+// is a deletion), so it is allowed even mid-flight; the in-flight subagent's late
+// return is tolerated as a no-op discard by the completion verbs (see
+// settleSubnodeOrDiscard). Used by both the done-node reset and the atomic-round
+// invalidation so they reset identically, for every node kind.
 function resetTaskSubnodes(working, taskId) {
+  tearDownGenerated(working, taskId);
   for (const [id] of taskAuditEntries(working, taskId)) delete working.subnodes[id];
   const impl = working.subnodes[implId(taskId)];
   const resolve = working.subnodes[resolveId(taskId)];
@@ -291,12 +457,20 @@ function taskHasRunningSubnode(working, taskId) {
 }
 
 // Structural invalidation, run INSIDE commit AFTER recomputeContentHashes. It
-// resets work that the latest commit rendered stale, comparing each task's stored
-// provenance hash (doneHash for a completed task; the impl subnode's dispatchHash
-// for an in-progress audit round) against the freshly recomputed contentHash.
+// resets work that the latest commit rendered stale, comparing each NODE's stored
+// provenance hash (doneHash for a settled node — done, failed, or an already-
+// expanded combinator; the impl subnode's dispatchHash for an in-progress audit
+// round) against the freshly recomputed contentHash. The drift test is driven off
+// node STATUS, not node TYPE: a `done` implement task, a settled `fn`/`agent`, and
+// an expanded `expand`/`switch`/`loop` all re-run through the same generic branch,
+// and resetTaskSubnodes tears down whatever each one generated (audit round AND/OR
+// generated children). The one remaining type-specific reader is the `auditing`
+// branch's impl-dispatchHash, the implement-and-audit lifecycle bridge that the
+// scheduler generalization (a later task, which removes the IMPL/RESOLVE/AUDIT
+// roles) will retire; its teardown already routes through the generic helper.
 //
-// It must NOT violate commit's running -> pending invariant: a `done` task with a
-// running subnode is left alone (none normally remains once done, but we guard);
+// It must NOT violate commit's running -> pending invariant: a settled node with a
+// running subnode is left alone (none normally remains once settled, but we guard);
 // an `auditing` round only DELETES its audit subnodes (allowed even when running)
 // and resets the already-`done` impl/resolve subnodes, so no running subnode is
 // ever moved to pending here.
@@ -320,23 +494,17 @@ function invalidateStale(working) {
       }
       continue;
     }
-    // (V-SI.1 / V-SI.3) DONE or FAILED with a drifted result: doneHash records the
-    // contentHash at which the task last settled. If it no longer matches, the
-    // task's inputs (its own spec or any upstream's) changed, so the stored result
-    // is stale. Reuse is automatic for an unchanged task (doneHash === contentHash
-    // leaves it untouched). A running subnode means real in-flight work — skip the
-    // reset and let the mvcc discard re-ready it at completion.
+    // (V-SI.1 / V-SI.3 / V16 / V19) SETTLED with a drifted result: doneHash records
+    // the contentHash at which the node last settled (done/failed) OR last expanded
+    // (a combinator). If it no longer matches, the node's inputs (its own spec or any
+    // upstream's) changed, so the stored result/expansion is stale. Reuse is
+    // automatic for an unchanged node (doneHash === contentHash leaves it untouched).
+    // A running subnode means real in-flight work — skip the reset and let the mvcc
+    // discard re-ready it at completion.
     const drifted = task.doneHash !== undefined && task.doneHash !== task.contentHash;
     if (!drifted) continue;
     if (taskHasRunningSubnode(working, id)) continue;
-    if (task.status === "done") {
-      // (V-SI.1) reset and redispatch; attempts cleared (a fresh, unrelated run).
-      resetTaskSubnodes(working, id);
-      task.status = "pending";
-      task.attempts = 0;
-      task.lastReason = null;
-      delete task.doneHash;
-    } else if (task.status === "failed") {
+    if (task.status === "failed") {
       // (V-SI.3) bounded re-run: each resurrection bumps generation; past GEN_CAP
       // the terminally-failed task stays failed and is NOT re-run, so an upstream
       // that keeps churning cannot loop it forever.
@@ -346,6 +514,17 @@ function invalidateStale(working) {
       task.status = "pending";
       task.attempts = 0;
       task.generation = gen;
+      task.lastReason = null;
+      delete task.doneHash;
+    } else {
+      // (V-SI.1 / V16 / V19) Any other settled node — a `done` task of any kind OR an
+      // already-expanded combinator (its doneHash holds the expansion hash) — resets
+      // and re-readies; attempts cleared (a fresh, unrelated run). resetTaskSubnodes
+      // tears down BOTH the implement audit round and any generated children/branches,
+      // so the re-run reproduces one clean acyclic shape.
+      resetTaskSubnodes(working, id);
+      task.status = "pending";
+      task.attempts = 0;
       task.lastReason = null;
       delete task.doneHash;
     }
@@ -382,6 +561,57 @@ function resolveNodeExecutor(node) {
   return defaultExecutorForType(node.type);
 }
 
+// Validate an output_schema value (hand-rolled; no external json-schema library).
+// output_schema := { type: "boolean"|"integer"|"string"|"array"|"object", enum?: [...] }
+function validateOutputSchema(schema, where, errors) {
+  const VALID_TYPES = ["boolean", "integer", "string", "array", "object"];
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    errors.push(`${where} must be an object`);
+    return;
+  }
+  const allowed = new Set(["type", "enum"]);
+  for (const k of Object.keys(schema)) {
+    if (!allowed.has(k)) errors.push(`${where} has unknown property "${k}"`);
+  }
+  if (!VALID_TYPES.includes(schema.type)) {
+    errors.push(`${where}.type must be one of: ${VALID_TYPES.join(", ")}`);
+  }
+  if ("enum" in schema) {
+    if (!Array.isArray(schema.enum) || schema.enum.length === 0) {
+      errors.push(`${where}.enum must be a non-empty array when present`);
+    }
+  }
+}
+
+// Validate a runtime VALUE against a node's output_schema (the value-side companion
+// to validateOutputSchema, which checks the SCHEMA itself). Uses the same minimal
+// type system — boolean | integer | string | array | object, with an optional enum
+// — so a node's recorded output is rejected when it violates the declared shape.
+// Pushes any violations into `errors` (left empty when the value conforms).
+const VALUE_TYPE_CHECKS = {
+  boolean: (v) => typeof v === "boolean",
+  integer: (v) => Number.isInteger(v),
+  string: (v) => typeof v === "string",
+  array: (v) => Array.isArray(v),
+  object: (v) => v !== null && typeof v === "object" && !Array.isArray(v),
+};
+function validateValueAgainstSchema(value, schema, where, errors) {
+  const check = VALUE_TYPE_CHECKS[schema && schema.type];
+  if (!check) {
+    errors.push(`${where}: output_schema.type "${schema && schema.type}" is not a known type`);
+    return;
+  }
+  if (!check(value)) {
+    errors.push(`${where}: output ${JSON.stringify(value)} does not match output_schema.type "${schema.type}"`);
+    return;
+  }
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    if (!schema.enum.some((e) => e === value)) {
+      errors.push(`${where}: output ${JSON.stringify(value)} is not one of the enum values ${JSON.stringify(schema.enum)}`);
+    }
+  }
+}
+
 // Per-type checks beyond "required present / no out-of-template property" that the
 // generic loop applies for every type. Keyed by type name; each gets (node, where,
 // errors) and pushes any violations.
@@ -413,14 +643,64 @@ const TYPE_PROPERTY_CHECKS = {
       errors.push(`${where}.counter must be an integer`);
     }
   },
+  [TYPE_AGENT](node, where, errors) {
+    if (typeof node.prompt !== "string" || !node.prompt) {
+      errors.push(`${where}.prompt must be a non-empty string`);
+    }
+    if (!("output_schema" in node)) {
+      errors.push(`${where}.output_schema is required`);
+    } else {
+      validateOutputSchema(node.output_schema, `${where}.output_schema`, errors);
+    }
+    if (!Number.isInteger(node.max_attempts) || node.max_attempts < 1) {
+      errors.push(`${where}.max_attempts must be an integer >= 1`);
+    }
+  },
+  [TYPE_FN](node, where, errors) {
+    if (typeof node.module !== "string" || !node.module) {
+      errors.push(`${where}.module must be a non-empty string`);
+    }
+    if (typeof node["export"] !== "string" || !node["export"]) {
+      errors.push(`${where}.export must be a non-empty string`);
+    }
+    if (!("output_schema" in node)) {
+      errors.push(`${where}.output_schema is required`);
+    } else {
+      validateOutputSchema(node.output_schema, `${where}.output_schema`, errors);
+    }
+    if ("require" in node && !["all-done", "all-resolved"].includes(node.require)) {
+      errors.push(`${where}.require must be "all-done" or "all-resolved"`);
+    }
+  },
+  [TYPE_EXPAND](node, where, errors) {
+    if (typeof node.over !== "string" || !node.over) {
+      errors.push(`${where}.over must be a non-empty string`);
+    }
+    if (!node.template || typeof node.template !== "object" || Array.isArray(node.template)) {
+      errors.push(`${where}.template must be an object`);
+    }
+    if (typeof node.gather !== "string" || !node.gather) {
+      errors.push(`${where}.gather must be a non-empty string`);
+    }
+  },
+  [TYPE_SWITCH](node, where, errors) {
+    if (typeof node.over !== "string" || !node.over) {
+      errors.push(`${where}.over must be a non-empty string`);
+    }
+    if (!node.cases || typeof node.cases !== "object" || Array.isArray(node.cases)) {
+      errors.push(`${where}.cases must be an object`);
+    }
+  },
 };
 
 // Validate one node's `executor` against its type's rule. A `const` rule fixes the
 // executor (the omitted-default resolved above must equal it; an external-impl
-// driver is rejected for `implement`); a `matchesGrammar` rule (audit) accepts any
-// authored sub-agent matching EXECUTOR_RE.
+// driver is rejected for `implement`); a `matchesGrammar` rule (audit/agent) accepts
+// any authored sub-agent matching EXECUTOR_RE. Types with no executor rule (fn,
+// expand, switch) are engine-driven and have no executor to validate; return early.
 function validateNodeExecutor(node, where, errors) {
-  const rule = NODE_TYPES[node.type].executor;
+  const rule = NODE_TYPES[node.type]?.executor;
+  if (!rule) return; // no executor rule for this type (fn/expand/switch)
   const resolved = resolveNodeExecutor(node);
   if (typeof resolved !== "string" || !EXECUTOR_RE.test(resolved)) {
     errors.push(`${where}.executor must match ${EXECUTOR_RE}`);
@@ -432,8 +712,8 @@ function validateNodeExecutor(node, where, errors) {
     }
     return;
   }
-  // No fixed executor (audit). The external-agent drivers are audit-only, so they
-  // are valid here; they remain barred from `implement` by the const rule above.
+  // No fixed executor (audit, agent). The external-agent drivers are audit-only, so
+  // they are valid here; they remain barred from `implement` by the const rule above.
 }
 
 function validateGraph(graph) {
@@ -492,6 +772,10 @@ function validateGraph(graph) {
       if (!(k in node)) errors.push(`${where} (type "${node.type}") is missing required property "${k}"`);
     }
     for (const k of Object.keys(node)) {
+      // Skip properties with undefined values: projectFoldedGraph always emits an
+      // `executor` key (possibly undefined) even for executor-less types (fn/expand/
+      // switch); an undefined value is semantically absent and must not be flagged.
+      if (node[k] === undefined) continue;
       if (!allowed.has(k)) errors.push(`${where} has property "${k}" outside its "${node.type}" template`);
     }
     if (typeof node.name !== "string" || !node.name) {
@@ -505,6 +789,47 @@ function validateGraph(graph) {
     if (!Array.isArray(node.deps)) continue;
     for (const dep of node.deps) {
       if (!ids.has(dep)) errors.push(`task "${node.id}" depends on unknown task "${dep}"`);
+    }
+  }
+  // V2: switch exhaustiveness — static set comparison, no program analysis.
+  // For each switch node: look up the selector's output_schema; if it's boolean or
+  // enum, the cases keys must exactly cover that domain with no missing and no extra.
+  // A non-enumerable selector (no enum and not boolean) is rejected at init time.
+  {
+    const nodesById = new Map(graph.nodes.filter((n) => n.id).map((n) => [n.id, n]));
+    for (const [i, node] of graph.nodes.entries()) {
+      if (node.type !== TYPE_SWITCH) continue;
+      if (typeof node.over !== "string" || !node.over) continue; // already caught above
+      if (!node.cases || typeof node.cases !== "object" || Array.isArray(node.cases)) continue; // already caught
+      const where = `nodes[${i}]`;
+      const selectorNode = nodesById.get(node.over);
+      if (!selectorNode) {
+        errors.push(`${where} (switch "${node.id}"): over references unknown node "${node.over}"`);
+        continue;
+      }
+      const schema = selectorNode.output_schema;
+      if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+        errors.push(`${where} (switch "${node.id}"): selector node "${node.over}" has no output_schema; switch requires an enumerable selector (boolean or enum)`);
+        continue;
+      }
+      let domain;
+      if (schema.type === "boolean") {
+        domain = new Set(["false", "true"]);
+      } else if (schema.enum && Array.isArray(schema.enum) && schema.enum.length > 0) {
+        domain = new Set(schema.enum.map(String));
+      } else {
+        errors.push(`${where} (switch "${node.id}"): selector node "${node.over}" output_schema is non-enumerable (type "${schema.type}" with no enum); switch requires a boolean or enum selector`);
+        continue;
+      }
+      const caseKeys = new Set(Object.keys(node.cases));
+      const missing = [...domain].filter((v) => !caseKeys.has(v));
+      const extra = [...caseKeys].filter((v) => !domain.has(v));
+      if (missing.length > 0 || extra.length > 0) {
+        const parts = [];
+        if (missing.length > 0) parts.push(`missing: ${[...missing].sort().join(", ")}`);
+        if (extra.length > 0) parts.push(`extra: ${[...extra].sort().join(", ")}`);
+        errors.push(`${where} (switch "${node.id}"): cases must exhaustively cover domain {${[...domain].sort().join(", ")}}; ${parts.join("; ")}`);
+      }
     }
   }
   if (errors.length === 0) {
@@ -628,6 +953,140 @@ function projectFoldedGraph(state) {
   return { version: 1, nodes, variables: state.variables || {}, plan_file: state.plan_file };
 }
 
+// ---------------------------------------------------------------------------
+// runId-scoped single-writer COMMIT LOCK (V17)
+//
+// Every state mutation flows through commit() (the single validated writer of
+// state.tasks / state.subnodes). fn COMPUTE runs in parallel (background
+// `exec-node`, which never commits), but the COMMIT itself must be serialized
+// per run so two concurrent same-GRAPH_ID writers (e.g. several `complete`
+// results landing at once) can never LOSE an update. We reuse the existing
+// flock(2) holder pattern — a short-lived `perl` child holding a kernel flock —
+// but keyed on the RUNID (a per-run lock file), not on an exclusive resource
+// class.
+//
+// Uncontended (single writer — the normal self-orchestrating run) the lock is
+// acquired immediately, so behavior is observably UNCHANGED. Under contention,
+// writers QUEUE on a BLOCKING flock and run their read-modify-write strictly one
+// at a time; commit re-reads the latest committed state under the lock (see
+// commit) so the second writer FOLDS IN the first writer's update rather than
+// overwriting it. The lock is released when the holder child is killed (normal
+// path), via a process-`exit` backstop (covers die()/process.exit, which does
+// NOT run finally blocks), and finally by the holder self-exiting when orphaned
+// (getppid()==1) — so a crashed writer can never deadlock the next one.
+//
+// SAFE DEGRADATION: if the holder cannot be acquired (no perl / spawn failure /
+// timeout), the lock is skipped and commit proceeds LOCK-FREE — which is exactly
+// the engine's prior behavior and therefore correct for the single writer the
+// active run is. The lock never HANGS a commit; the worst case degrades to
+// today's semantics.
+// ---------------------------------------------------------------------------
+
+function commitLockPath(runId) {
+  return join(locksDir(), `commit-${runId}.lock`);
+}
+
+// A minimal synchronous sleep (no event-loop pumping, no dependency): block this
+// thread for `ms` via Atomics.wait on a throwaway SharedArrayBuffer. Used only by
+// the commit-lock acquire poll, which must stay synchronous (commit is sync).
+function sleepSyncMs(ms) {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    const end = Date.now() + ms;
+    while (Date.now() < end) { /* spin fallback if SharedArrayBuffer is unavailable */ }
+  }
+}
+
+// The commit-lock holder (perl): a BLOCKING flock (LOCK_EX, no LOCK_NB) so
+// concurrent committers QUEUE rather than fail-fast, then records the caller's
+// unique TOKEN into the lock file (the acquisition signal the parent polls for)
+// and blocks holding the fd until killed or orphaned. Distinct from HOLDER_PL,
+// whose non-blocking acquire + TTL reclaim suits long-held resource locks held
+// across a subagent's lifetime; a commit critical section is brief, so it simply
+// waits its turn.
+const COMMIT_HOLDER_PL = [
+  "use strict; use warnings;",
+  "use Fcntl qw(:DEFAULT :flock);",
+  "use IO::Handle;",
+  "my ($lf,$token)=@ARGV;",
+  "sysopen(my $fh,$lf,O_RDWR|O_CREAT,0644) or die qq(open: $!);",
+  "$fh->autoflush(1); $| = 1;",
+  "flock($fh,LOCK_EX) or die qq(flock: $!);",   // BLOCKING: wait until we own it
+  "truncate($fh,0); seek($fh,0,0);",
+  "print $fh qq(token $token\\npid $$\\n);",     // acquisition signal for the parent
+  "print qq(HELD\\n);",
+  "$SIG{TERM}=sub{exit 0}; $SIG{INT}=sub{exit 0};",
+  "while(1){ select(undef,undef,undef,0.05); exit 0 if getppid()==1 }",
+].join("\n");
+
+function commitLockTimeoutMs() {
+  const raw = Number(process.env.AMPLIFY_COMMIT_LOCK_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 60 * 1000;
+}
+
+// Spawn a holder and BLOCK (synchronously) until it OWNS the flock; return the
+// child. Acquisition is detected by polling the lock file for OUR unique token
+// (written by the holder only AFTER its blocking flock returns), which sidesteps
+// any pid reuse. Returns null on safe degradation (no perl / spawn failure /
+// holder died without acquiring / timeout) so the caller can proceed lock-free.
+function acquireCommitLock(runId) {
+  mkdirSync(locksDir(), { recursive: true });
+  const lf = commitLockPath(runId);
+  const token = `${process.pid}.${Date.now()}.${Math.floor(Math.random() * 1e9)}`;
+  let child;
+  try {
+    child = spawn(PERL, ["-e", COMMIT_HOLDER_PL, lf, token], { stdio: ["ignore", "ignore", "inherit"] });
+  } catch {
+    return null; // cannot spawn -> degrade to lock-free (single writer == today's behavior)
+  }
+  // Swallow the async spawn-error event so a failed spawn never throws as an
+  // unhandled 'error'; we detect the failure synchronously via !child.pid below.
+  child.on("error", () => {});
+  if (!child.pid) return null; // spawn failed synchronously (e.g. perl missing) -> degrade
+  const deadline = Date.now() + commitLockTimeoutMs();
+  for (;;) {
+    const meta = readLockMeta(lf);
+    if (meta && meta.token === token) return child; // we own the lock
+    if (!pidAlive(child.pid)) return null;          // holder died without acquiring -> degrade
+    if (Date.now() > deadline) {                     // never HANG a commit -> degrade
+      try { child.kill("SIGKILL"); } catch {}
+      return null;
+    }
+    sleepSyncMs(5);
+  }
+}
+
+// Per-process re-entrancy guard: a single process never nests commit() today, but
+// if a future caller did, re-acquiring the SAME runId lock from within would block
+// on our OWN flock forever. So a nested withCommitLock for the runId we already
+// hold simply runs the body — guaranteeing a single process's own commit can NEVER
+// self-deadlock.
+let _commitLockRunId = null;
+let _commitLockDepth = 0;
+
+function withCommitLock(runId, fn) {
+  if (_commitLockDepth > 0 && _commitLockRunId === runId) {
+    return fn(); // re-entrant: this process already holds this run's commit lock
+  }
+  const child = acquireCommitLock(runId);
+  if (!child) return fn(); // degraded (lock unavailable) -> proceed lock-free (== prior behavior)
+  _commitLockRunId = runId;
+  _commitLockDepth = 1;
+  const kill = () => { try { child.kill("SIGTERM"); } catch {} };
+  // die()/process.exit() skips finally blocks but DOES run process 'exit'
+  // listeners — so register one to release the holder on an error-exit path.
+  process.on("exit", kill);
+  try {
+    return fn();
+  } finally {
+    _commitLockDepth = 0;
+    _commitLockRunId = null;
+    kill();
+    process.removeListener("exit", kill);
+  }
+}
+
 // commit is the ONLY path that writes state.tasks / state.subnodes. It runs the
 // change against a working copy, projects the result to a folded graph, and
 // validates it with validateGraph BEFORE touching the live state — so a change
@@ -646,45 +1105,63 @@ function projectFoldedGraph(state) {
 // work. Note: settleRound only reopens subnodes that are NOT running (a settle
 // runs after a round has settled), so existing behavior passes this guard.
 function commit(state, change, { allowDiscard = false } = {}) {
-  const working = {
-    tasks: structuredClone(state.tasks),
-    subnodes: structuredClone(state.subnodes),
-    variables: state.variables,
-    plan_file: state.plan_file,
-  };
-  // Snapshot which subnodes were running before the change, to enforce the
-  // running -> pending invariant after it.
-  const wasRunning = new Set(
-    Object.entries(state.subnodes).filter(([, s]) => s.status === "running").map(([id]) => id),
-  );
-  change(working);
-  const errors = validateGraph(projectFoldedGraph(working));
-  if (errors.length) {
-    die(`commit rejected (would produce an invalid graph):\n  - ${errors.join("\n  - ")}`);
-  }
-  if (!allowDiscard) {
-    for (const id of wasRunning) {
-      const after = working.subnodes[id];
-      if (after && after.status === "pending") {
-        die(`invariant violated: commit moved running subnode "${id}" to pending`);
+  // Serialize the WHOLE read-modify-write under the runId commit lock (V17). fn
+  // compute stays parallel (exec-node never commits); only this critical section
+  // is single-writer. Uncontended the lock is a no-op (immediate acquire); under
+  // contention writers run one at a time and none loses an update.
+  withCommitLock(state.runId, () => {
+    // SINGLE-WRITER RE-READ (V17): now that we hold the lock, adopt the latest
+    // committed state from disk before computing the change, so a concurrent
+    // writer's already-persisted update is FOLDED IN rather than overwritten by
+    // our (possibly stale) in-memory copy — this is what makes two concurrent
+    // same-GRAPH_ID committers lose no update. Uncontended (single writer) this
+    // reads back exactly what `state` already held, so behavior is byte-identical.
+    // The init path (no state file yet) skips the refresh and uses the in-memory
+    // seed. Object.assign mutates `state` in place so the caller's post-commit
+    // emitReady(state) reflects the freshly committed result.
+    if (existsSync(statePath(state.runId))) {
+      Object.assign(state, loadState(state.runId));
+    }
+    const working = {
+      tasks: structuredClone(state.tasks),
+      subnodes: structuredClone(state.subnodes),
+      variables: state.variables,
+      plan_file: state.plan_file,
+    };
+    // Snapshot which subnodes were running before the change, to enforce the
+    // running -> pending invariant after it.
+    const wasRunning = new Set(
+      Object.entries(state.subnodes).filter(([, s]) => s.status === "running").map(([id]) => id),
+    );
+    change(working);
+    const errors = validateGraph(projectFoldedGraph(working));
+    if (errors.length) {
+      die(`commit rejected (would produce an invalid graph):\n  - ${errors.join("\n  - ")}`);
+    }
+    if (!allowDiscard) {
+      for (const id of wasRunning) {
+        const after = working.subnodes[id];
+        if (after && after.status === "pending") {
+          die(`invariant violated: commit moved running subnode "${id}" to pending`);
+        }
       }
     }
-  }
-  // Recompute every task's Merkle contentHash now that the graph is known acyclic,
-  // so each commit leaves all contentHash values fresh (deps before dependents).
-  recomputeContentHashes(working);
-  // With fresh hashes, structurally invalidate any work the commit made stale: a
-  // done task whose inputs drifted is reset and redispatched (unchanged tasks are
-  // reused); an auditing round built against a now-superseded implementation is
-  // dropped atomically; a failed task is re-run only within a generation bound.
-  // invalidateStale never moves a running subnode to pending (it gates on no
-  // running subnode, or only DELETES running auditors), so commit's running ->
-  // pending invariant holds even though it runs after the assertion above.
-  invalidateStale(working);
-  state.tasks = working.tasks;
-  state.subnodes = working.subnodes;
-  state.commitSeq = (state.commitSeq || 0) + 1;
-  saveState(state);
+    // Recompute every task's Merkle contentHash now that the graph is known acyclic,
+    // so each commit leaves all contentHash values fresh (deps before dependents).
+    recomputeContentHashes(working);
+    // With fresh hashes, structurally invalidate any work the commit made stale: a
+    // done task whose inputs drifted is reset and redispatched (unchanged tasks are
+    // reused); an auditing round built against a now-superseded implementation is
+    // dropped atomically; a failed task is re-run only within a generation bound.
+    // invalidateStale never moves a running subnode to pending (it gates on no
+    // running subnode, or only DELETES running auditors), so commit's running ->
+    // pending invariant holds even though it runs after the assertion above.
+    invalidateStale(working);
+    state.tasks = working.tasks;
+    state.subnodes = working.subnodes;
+    state.commitSeq = (state.commitSeq || 0) + 1;
+    saveState(state);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -698,8 +1175,51 @@ function taskResolved(state, taskId) {
   return t && (t.status === "done" || t.status === "failed");
 }
 
+// A dependency task has SUCCEEDED when it reached "done" — a stricter bar than
+// taskResolved, used by the plain (all-done) flat kinds so they never run on a
+// failed/missing input.
+function taskDone(state, taskId) {
+  return state.tasks[taskId]?.status === "done";
+}
+
+// Type-driven readiness for the GENERALIZED flat node kinds (agent/fn/expand/
+// switch) — the V3 analogue of the legacy IMPL/RESOLVE/AUDIT subnode branches, but
+// keyed on a node's TYPE rather than a fixed subnode role. A flat node carries NO
+// subnode (the TASK itself is the schedulable unit), so readySet reports a ready one
+// by its task id. Rules (Design §SCHEDULING):
+//   agent, fn (require defaults to "all-done") : ready once EVERY dep is DONE, so a
+//        plain node never runs on a failed/missing input.
+//   fn (require="all-resolved", a reducer/gather) : ready once every dep is RESOLVED
+//        (done|failed), so it can read the per-dep failure envelopes and gather.
+//   expand, switch : ready once their single upstream (the `over` node) is DONE WITH
+//        an output (outputRef present) — the expansion list / branch selector is read
+//        from that output, so a done-but-output-less upstream is not yet ready.
+// Returns false for the legacy implement/resolve/audit/reduce task types (scheduled
+// via their subnodes above, or dormant), so a node is never double-scheduled.
+function flatNodeReady(state, task) {
+  const deps = task.deps || [];
+  switch (task.type) {
+    case TYPE_AGENT:
+      return deps.every((d) => taskDone(state, d));
+    case TYPE_FN:
+      return task.require === "all-resolved"
+        ? deps.every((d) => taskResolved(state, d))
+        : deps.every((d) => taskDone(state, d));
+    case TYPE_EXPAND:
+    case TYPE_SWITCH: {
+      const up = state.tasks[task.over];
+      return !!up && up.status === "done" && up.outputRef !== undefined;
+    }
+    default:
+      return false; // implement/resolve/audit/reduce are scheduled elsewhere
+  }
+}
+
 function readySet(state) {
   const ready = [];
+  // LEGACY implement-and-audit lifecycle — subnode/role driven. UNCHANGED: the
+  // active execute-plan run schedules its remaining implement tasks through these
+  // exact branches, so they keep working verbatim.
   for (const [id, sub] of Object.entries(state.subnodes)) {
     if (sub.status !== "pending") continue;
     if (sub.role === IMPL) {
@@ -712,17 +1232,65 @@ function readySet(state) {
       ready.push(id);
     }
   }
+  // GENERALIZED flat node kinds (agent/fn/expand/switch) — type driven, ADDED
+  // ALONGSIDE the legacy branches above. A flat node has no subnode, so a ready one
+  // is reported by its TASK id; flatNodeReady returns false for the legacy task
+  // types, so the two schedulers never overlap.
+  for (const [id, task] of Object.entries(state.tasks)) {
+    if (task.status !== "pending") continue;
+    if (flatNodeReady(state, task)) ready.push(id);
+  }
   return ready.sort();
 }
 
-function readyDispatchability(state) {
+// The executor a ready node is dispatched with. A legacy subnode carries its own
+// executor; a generalized flat node carries it on its task record (agent) or has
+// none (the engine-driven fn/expand/switch). Falls back to "" so emitting a ready
+// line for an engine-driven node never crashes on an absent executor.
+function readyExecutor(state, id) {
+  return state.subnodes[id]?.executor ?? state.tasks[id]?.executor ?? "";
+}
+
+// In-flight (running/dispatched) work units, used ONLY to bound the OPTIONAL
+// concurrency window. Counts running legacy subnodes (the impl/resolve/audit work
+// units the active run dispatches) plus any generalized flat-node task carrying a
+// running/dispatched status. No flat-node task is marked running today, so this
+// equals the running-subnode count — the same measure `active` reports as
+// `running` — and the default no-window path never consults it, so it changes
+// nothing there.
+function inFlightCount(state) {
+  let n = 0;
+  for (const s of Object.values(state.subnodes)) {
+    if (s.status === "running") n++;
+  }
+  for (const t of Object.values(state.tasks)) {
+    if (t.status === "running" || t.status === "dispatched") n++;
+  }
+  return n;
+}
+
+// How many otherwise-ready nodes may be EMITTED this cycle under an OPTIONAL
+// concurrency window. With NO window (undefined/null) the budget is Infinity, so
+// the whole readySet is emitted UNCHANGED — the unbounded default the active
+// self-orchestrating run depends on. With a window N the budget is
+// max(0, N - in-flight), so `ready` emits at most that many and defers the rest.
+function windowBudget(state, window) {
+  if (window === undefined || window === null) return Infinity;
+  return Math.max(0, window - inFlightCount(state));
+}
+
+// `window` is OPTIONAL. When omitted (the active run's call site), the result is
+// byte-identical to before: only the four original fields. When a window is
+// supplied, three ADDITIVE fields report the THIRD ready-deferred reason — work
+// held back because in-flight is at the concurrency cap — alongside the existing
+// dispatchable / resource-blocked classification, without altering it.
+function readyDispatchability(state, window) {
   const readyIds = readySet(state);
   let dispatchableReady = 0;
   let resourceBlockedReady = 0;
   const blockedResources = new Set();
   for (const id of readyIds) {
-    const sub = state.subnodes[id];
-    const resource = resourceOf(sub.executor);
+    const resource = resourceOf(readyExecutor(state, id));
     if (!resource) {
       dispatchableReady++;
       continue;
@@ -735,17 +1303,33 @@ function readyDispatchability(state) {
       blockedResources.add(resource);
     }
   }
-  return {
+  const result = {
     ready: readyIds.length,
     dispatchableReady,
     resourceBlockedReady,
     blockedResources: [...blockedResources].sort(),
   };
+  if (window !== undefined && window !== null) {
+    const inFlight = inFlightCount(state);
+    const budget = Math.max(0, window - inFlight);
+    result.window = window;
+    result.inFlight = inFlight;
+    result.windowDeferred = Math.max(0, readyIds.length - budget);
+  }
+  return result;
 }
 
-function emitReady(state) {
+// `window` is OPTIONAL. With no window the loop emits every ready node exactly as
+// before (budget = Infinity, the break never fires). With a window N it emits at
+// most max(0, N - in-flight) nodes in the same stable (sorted) readySet order and
+// defers the rest (ready-deferred).
+function emitReady(state, window) {
+  const budget = windowBudget(state, window);
+  let emitted = 0;
   for (const id of readySet(state)) {
-    process.stdout.write(`${id}\t${state.subnodes[id].executor}\n`);
+    if (emitted >= budget) break;
+    process.stdout.write(`${id}\t${readyExecutor(state, id)}\n`);
+    emitted++;
   }
 }
 
@@ -779,6 +1363,13 @@ function settleSubnodeOrDiscard(state, nodeId) {
 // apply it). When no dispatchHash is stamped (legacy/unstamped), treat as fresh.
 function discardIfStale(working, nodeId) {
   const sub = working.subnodes[nodeId];
+  // Under the runId commit lock, a concurrent writer may have DELETED this subnode
+  // (e.g. a combinator teardown) between the caller's pre-lock read and commit's
+  // re-read. A missing subnode has nothing to settle, so treat it as a discard
+  // (the caller no-ops) rather than dereferencing undefined. This triggers ONLY
+  // under contention; the uncontended single-writer path always finds the subnode,
+  // so its behavior is unchanged.
+  if (!sub) return true;
   const current = working.tasks[sub.task]?.contentHash;
   if (sub.dispatchHash === undefined || sub.dispatchHash === current) return false;
   sub.status = "pending";
@@ -856,7 +1447,15 @@ function cmdInit(opts) {
     process.stdout.write(`${runId}\n`);
     return;
   }
-  const state = { runId, commitSeq: 0, salt: salt || null, cwd: process.cwd(), plan_file: graph.plan_file, variables: graph.variables || {}, tasks: {}, subnodes: {} };
+  // Mode B (divide-and-conquer): a skill ships its graph.json ALONGSIDE its `fn`
+  // module files. Record the graph file's own directory so a node's RELATIVE `module`
+  // resolves against the SKILL/GRAPH dir (where the modules ship) rather than the cwd
+  // that happened to run `init`. The stored `module` string is left verbatim (its
+  // identity hash is unchanged); only the resolution BASE is recorded here and applied
+  // in exec-node. An ABSOLUTE `module` is used verbatim there (lifecycle.mjs ships
+  // absolute module handles), so this never disturbs the existing absolute-path path.
+  const graphDir = dirname(resolvePath(opts.graph));
+  const state = { runId, commitSeq: 0, salt: salt || null, cwd: process.cwd(), graphDir, plan_file: graph.plan_file, variables: graph.variables || {}, tasks: {}, subnodes: {} };
   commit(state, (working) => explode(working, graph)); // single validated writer; persists on success
   const taskCount = Object.keys(state.tasks).length;
   const subCount = Object.keys(state.subnodes).length;
@@ -864,9 +1463,22 @@ function cmdInit(opts) {
   process.stdout.write(`${runId}\n`);
 }
 
+// Parse the OPTIONAL --window flag. Absent -> undefined (UNBOUNDED, default,
+// byte-identical behavior). Present -> a non-negative integer; anything else
+// (a bare flag, a non-integer, a negative) is rejected before any state read.
+function parseWindowOpt(opts) {
+  if (!("window" in opts)) return undefined;
+  const raw = opts.window;
+  if (raw === true) die("--window requires a non-negative integer value");
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) die(`--window must be a non-negative integer, got "${raw}"`);
+  return n;
+}
+
 function cmdReady(opts) {
+  const w = parseWindowOpt(opts);   // validate --window BEFORE any state read
   const state = loadState(opts.id);
-  emitReady(state);
+  emitReady(state, w);
 }
 
 // dispatch: the only pending -> running transition. Marks a ready subnode as
@@ -888,6 +1500,39 @@ function cmdDispatch(opts) {
   });
 }
 
+// Resolve the OUTPUT a completion records, from the mutually-exclusive
+//   --output <json>       : the value inline as JSON
+//   --output-file <path>  : the value as a JSON file
+//   --output-ref <handle> : the value is ALREADY in the store (pure by-reference;
+//                           the caller passes only a handle, never the bytes)
+// Returns { has:false } when no output flag was passed (a completion that records
+// no value, e.g. the legacy impl-lifecycle subnodes). For --output-ref the value
+// is loaded back from the store so it can still be validated against the schema.
+function readCompletionOutput(opts, runId) {
+  const forms = ["output", "output-file", "output-ref"].filter((k) => k in opts);
+  if (forms.length === 0) return { has: false };
+  if (forms.length > 1) {
+    die(`pass only one of --output / --output-file / --output-ref (got ${forms.join(", ")})`);
+  }
+  if ("output-ref" in opts) {
+    const handle = opts["output-ref"];
+    if (typeof handle !== "string" || !handle) die("--output-ref requires a handle");
+    return { has: true, value: loadValue(runId, handle), ref: handle };
+  }
+  let raw;
+  if ("output-file" in opts) {
+    const path = opts["output-file"];
+    if (typeof path !== "string" || !path) die("--output-file requires a path");
+    try { raw = readFileSync(path, "utf8"); } catch (err) { die(`cannot read --output-file ${path}: ${err.message}`); }
+  } else {
+    raw = opts.output;
+    if (typeof raw !== "string") die("--output requires a JSON value");
+  }
+  let value;
+  try { value = JSON.parse(raw); } catch (err) { die(`--output is not valid JSON: ${err.message}`); }
+  return { has: true, value };
+}
+
 function cmdComplete(opts) {
   const state = loadState(opts.id);
   const sub = settleSubnodeOrDiscard(state, opts.node);
@@ -895,8 +1540,26 @@ function cmdComplete(opts) {
   if (sub.role === RESOLVE) {
     die(`use the resolve verb (with --panel) for a .resolve subnode, got "${opts.node}"`);
   }
+  // BY-REFERENCE OUTPUT CHANNEL (V4): when the caller passes an output, validate it
+  // against the node's output_schema and record it BY REFERENCE (a content-addressed
+  // handle), never the bytes — the orchestrator's view holds only node-id -> handle.
+  // A value that violates the schema is rejected here (non-zero, before any state
+  // change), so the store never holds an output that contradicts its declared shape.
+  const out = readCompletionOutput(opts, state.runId);
+  let outputRef;
+  if (out.has) {
+    const schema = state.tasks[sub.task]?.output_schema;
+    if (!schema) die(`task "${sub.task}" has no output_schema; --output cannot be recorded`);
+    const errs = [];
+    validateValueAgainstSchema(out.value, schema, `output for node "${sub.task}"`, errs);
+    if (errs.length) die(`--output rejected (violates output_schema):\n  - ${errs.join("\n  - ")}`);
+    // --output-ref is already stored (caller passed only the handle); --output /
+    // --output-file store the parsed value, deduping on its content hash.
+    outputRef = out.ref !== undefined ? out.ref : storeValue(state.runId, out.value);
+  }
   commit(state, (working) => {
     if (discardIfStale(working, opts.node)) return; // graph moved; re-ready, do not apply
+    if (outputRef !== undefined) working.tasks[sub.task].outputRef = outputRef;
     if (sub.role === IMPL) {
       working.subnodes[opts.node].status = "done";
       working.tasks[sub.task].status = "impl-done";
@@ -959,17 +1622,18 @@ function cmdFail(opts) {
 }
 
 // ---------------------------------------------------------------------------
-// task-level graph-mutation commands (CAPABILITY ONLY)
+// graph-mutation primitives — INTERNAL USE ONLY
 //
-// SpawnTask / RemoveTask / AddDep / RemoveDep each build a change(working)
-// callback and route it through commit, so they inherit the whole-graph
-// validation (validateGraph(projectFoldedGraph(...)) — unique ids, dangling-dep
-// and cycle checks, executor grammar, required fields) and the content-hash
-// invalidation that every other mutating verb already gets. They DO NOT
-// re-implement validation: an incomplete/invalid spec, a duplicate id, a dep on a
-// non-existent task, or a cycle-creating edge is rejected by commit atomically
-// (no partial write, non-zero exit via die). There is NO automatic trigger that
-// calls these — they are a manually-invokable capability only.
+// spawn-task / remove-task / add-dep / remove-dep are the low-level building
+// blocks that expand, switch, and loop use internally to grow/prune the graph.
+// Public graph growth happens ONLY through expand (fan-out) and switch (branch);
+// orchestration prompts and plan files must NOT call these raw verbs directly.
+//
+// All four route through commit, so they inherit validateGraph + content-hash
+// invalidation identically to every other mutating verb. An incomplete/invalid
+// spec, a duplicate id, a dangling dep, or a cycle-creating edge is rejected
+// atomically (no partial write, non-zero exit via die) — the raw verbs rely
+// entirely on that shared path and do NOT re-implement validation themselves.
 // ---------------------------------------------------------------------------
 
 // Insert a brand-new task and its impl/resolve subnodes. The full spec (a folded-
@@ -1200,6 +1864,29 @@ function cmdVariables(opts) {
   }
 }
 
+// The per-dep INPUT ENVELOPES for a node, read from the value store: one
+// {status, output?} entry per upstream dep, keyed by dep id. A dep that reached
+// "done" carries its recorded output BY REFERENCE resolved to the value (present
+// even when falsy: [] / false / 0); a dep that did NOT succeed carries status
+// "failed" with NO `output` key, so a reader can DISTINGUISH a failure from a
+// valid empty/falsy output. This is the single source of truth for the envelope
+// shape, shared by `resolve-context --inputs` (an executor fetching its own
+// inputs) and `exec-node` (a deterministic fn running over the same inputs).
+function inputEnvelopes(state, task) {
+  const envelopes = {};
+  for (const dep of task.deps || []) {
+    const d = state.tasks[dep];
+    if (d && d.status === "done") {
+      const env = { status: "done" };
+      if (d.outputRef !== undefined) env.output = loadValue(state.runId, d.outputRef);
+      envelopes[dep] = env;
+    } else {
+      envelopes[dep] = { status: "failed" };
+    }
+  }
+  return envelopes;
+}
+
 // Dump the audit-resolver's context for one task: its goal (name), design aspect,
 // plan file, acceptance criteria, and the run's variables — so execute-plan need
 // not inline them into the resolver's spawn prompt.
@@ -1209,6 +1896,18 @@ function cmdResolveContext(opts) {
   const state = loadState(opts.id);
   const t = state.tasks[opts.node];
   if (!t) die(`unknown task "${opts.node}"`);
+  // INPUT ENVELOPES (V11): with --inputs, return one {status, output?} ENVELOPE per
+  // upstream dep, read from the value store, keyed by dep id. A dep that reached
+  // "done" carries its recorded output BY REFERENCE resolved to the value — present
+  // even when falsy ([] / false / 0); a dep that did NOT succeed carries status
+  // "failed" with NO `output` key, so a dependent can DISTINGUISH a failure from a
+  // valid empty/falsy output. This is EXECUTOR-side: the dependent node fetches its
+  // own inputs here, so values enter the executor's context, never the orchestrator's
+  // (which passes only node ids in and reads only handles/status out).
+  if (opts.inputs) {
+    process.stdout.write(JSON.stringify(inputEnvelopes(state, t)) + "\n");
+    return;
+  }
   const out = [
     `TASK NAME: ${t.name}`,
     `DESIGN ASPECT: ${t.design_aspect ?? ""}`,
@@ -1220,6 +1919,484 @@ function cmdResolveContext(opts) {
       `${name}\t${Array.isArray(value) ? value.join(", ") : value}`),
   ];
   process.stdout.write(out.join("\n") + "\n");
+}
+
+// ---------------------------------------------------------------------------
+// deterministic fn execution (exec-node)
+// ---------------------------------------------------------------------------
+
+// Run a deterministic `fn` node and record its typed output BY REFERENCE.
+//
+// exec-node --id <GRAPH_ID> --node <fn-node-id>
+//   1. reads the fn node's record (module, export, output_schema, deps);
+//   2. builds the per-dep INPUT ENVELOPES from the value store (the SAME
+//      {status, output?} shape as resolve-context --inputs, via inputEnvelopes);
+//   3. dynamically imports `module` (a relative path resolves against the graph/skill
+//      dir recorded at init — state.graphDir — so a Mode B skill's modules resolve next
+//      to its graph.json; an absolute path is used verbatim) and calls its `export`
+//      with those envelopes as a PURE function over the inputs;
+//   4. validates the returned value against output_schema (validateValueAgainstSchema)
+//      — a violation is rejected non-zero and NOTHING is stored;
+//   5. writes the value to the content-addressed store (storeValue) and prints ONLY
+//      the handle to stdout.
+//
+// It is READ-ONLY on engine state: it calls loadState but NEVER commit/saveState, so
+// it does not advance the lifecycle. The orchestrator commits the result separately
+// (`complete --output-ref <handle>`), which is why printing only the handle is the
+// whole contract: no value or gather aggregate ever crosses back through stdout.
+// This makes exec-node safe to invoke both inline by the orchestrator and as a
+// standalone `node task.mjs exec-node` background process.
+//
+// PURITY CONTRACT: the module export MUST be a pure function of its input envelopes —
+// same inputs => same output, no I/O, no hidden state, no wall-clock/entropy reads.
+// The engine cannot fully verify purity, but it cheaply NEUTRALIZES the two most
+// common nondeterminism sources by stubbing Date.now and Math.random to constants
+// while the body runs (restored in a finally), so an accidental read yields a
+// deterministic value rather than a run-varying one. A function may be sync or async
+// (its result is awaited).
+async function cmdExecNode(opts) {
+  if (!opts.id || opts.id === true) die("exec-node requires --id <GRAPH_ID>");
+  if (!opts.node || opts.node === true) die("exec-node requires --node <fn-node-id>");
+  const state = loadState(opts.id);
+  const task = state.tasks[opts.node];
+  if (!task) die(`unknown node "${opts.node}"`);
+  if (task.type !== TYPE_FN) {
+    die(`exec-node runs a "fn" node; node "${opts.node}" is type "${task.type ?? TYPE_IMPLEMENT}"`);
+  }
+  if (typeof task.module !== "string" || !task.module) die(`fn node "${opts.node}" has no module`);
+  if (typeof task["export"] !== "string" || !task["export"]) die(`fn node "${opts.node}" has no export`);
+  if (!task.output_schema) die(`fn node "${opts.node}" has no output_schema`);
+
+  // Build the input envelopes (reuses the resolve-context --inputs machinery: the
+  // value store + loadValue), then import the module and resolve its export.
+  const inputs = inputEnvelopes(state, task);
+  // Resolve a RELATIVE `module` against the graph/skill dir recorded at init (Mode B
+  // ships its fn modules alongside graph.json); fall back to the run's cwd for legacy /
+  // planted states with no graphDir. An ABSOLUTE module is used verbatim.
+  const base = state.graphDir || state.cwd || process.cwd();
+  const modulePath = isAbsolute(task.module) ? task.module : resolvePath(base, task.module);
+  let mod;
+  try {
+    mod = await import(pathToFileURL(modulePath).href);
+  } catch (err) {
+    die(`exec-node cannot import module "${task.module}" (resolved ${modulePath}): ${err.message}`);
+  }
+  const fn = mod[task["export"]];
+  if (typeof fn !== "function") {
+    die(`exec-node: module "${task.module}" has no exported function "${task["export"]}"`);
+  }
+
+  // Run the body deterministically: neutralize the two common nondeterminism
+  // sources while it runs, then restore them no matter how the body returns.
+  const realNow = Date.now;
+  const realRandom = Math.random;
+  let value;
+  try {
+    Date.now = () => 0;
+    Math.random = () => 0;
+    value = await fn(inputs);
+  } catch (err) {
+    Date.now = realNow;
+    Math.random = realRandom;
+    die(`exec-node: fn "${opts.node}" (${task.module}#${task["export"]}) threw: ${err.message}`);
+  } finally {
+    Date.now = realNow;
+    Math.random = realRandom;
+  }
+
+  // Validate against output_schema BEFORE writing, so the store never holds a value
+  // that contradicts the node's declared shape (V5: a violation is rejected non-zero).
+  const errs = [];
+  validateValueAgainstSchema(value, task.output_schema, `exec-node output for node "${opts.node}"`, errs);
+  if (errs.length) die(`exec-node output rejected (violates output_schema):\n  - ${errs.join("\n  - ")}`);
+
+  // Record the value BY REFERENCE and print ONLY the handle. No engine-state write.
+  const handle = storeValue(state.runId, value);
+  process.stdout.write(`${handle}\n`);
+}
+
+// ---------------------------------------------------------------------------
+// expand (fan-out) combinator
+// ---------------------------------------------------------------------------
+
+// Fan out an `expand` node over its upstream's list output, in ONE commit (V6/V3).
+//
+// expand --id <GRAPH_ID> --node <expand-node-id>
+//   1. reads the expand node (over, template, gather, deps);
+//   2. reads the `over` upstream node's output (a LIST) BY REFERENCE from the value
+//      store — the upstream must be DONE with an outputRef (exactly what flatNodeReady
+//      requires before offering the expand node as ready);
+//   3. for each element i, materializes element[i] as its OWN content-addressed store
+//      entry (storeValue) — the BY-REFERENCE per-element binding — so dispatch carries
+//      handles only, never the bytes;
+//   4. inside a SINGLE commit: creates one child task from `template` (fresh id
+//      `<expand-id>-item-<i>`, reusing explode so an implement child also gets its
+//      impl/resolve subnodes), records the element handle on the child (inputRef),
+//      tags the child generatedBy the expand node (so a later re-expand can tear it
+//      down via tearDownGenerated), wires `gather` to DEPEND ON each child (a fresh
+//      FORWARD edge), and settles the expand node (status done + doneHash = its
+//      expansion hash, matching every other settled combinator).
+//
+// An empty list creates zero children; the expand node still settles, so `gather`
+// (which now gains no new deps) proceeds. The whole fan-out is one commit, so the
+// graph is never half-wired; commit re-validates the projected graph (validateGraph
+// -> findCycle), so the only edges the expansion adds — fresh forward edges to
+// `gather` — keep the graph ACYCLIC, or the entire commit is rejected atomically.
+function cmdExpand(opts) {
+  if (!opts.id || opts.id === true) die("expand requires --id <GRAPH_ID>");
+  if (!opts.node || opts.node === true) die("expand requires --node <expand-node-id>");
+  const state = loadState(opts.id);
+  const node = state.tasks[opts.node];
+  if (!node) die(`unknown node "${opts.node}"`);
+  if (node.type !== TYPE_EXPAND) {
+    die(`expand runs an "expand" node; node "${opts.node}" is type "${node.type ?? TYPE_IMPLEMENT}"`);
+  }
+  // The upstream `over` node must be DONE with an output (the list to fan out over) —
+  // the same readiness flatNodeReady enforces before offering this node as ready.
+  const overId = node.over;
+  const up = state.tasks[overId];
+  if (!up || up.status !== "done" || up.outputRef === undefined) {
+    die(`expand "${opts.node}": upstream "${overId}" has no output yet (must be done with an outputRef)`);
+  }
+  const list = loadValue(state.runId, up.outputRef);
+  if (!Array.isArray(list)) {
+    die(`expand "${opts.node}": upstream "${overId}" output is not a list (got ${list === null ? "null" : typeof list})`);
+  }
+  if (!node.gather || !state.tasks[node.gather]) {
+    die(`expand "${opts.node}": gather node "${node.gather}" does not exist`);
+  }
+  // Validate the template as a node BODY up front (it is stored as an opaque identity
+  // field, so its type was never checked as a buildable node) for a clean error before
+  // any commit; the projected child is still fully re-validated by commit below.
+  const template = node.template;
+  if (!template || typeof template !== "object" || Array.isArray(template)) {
+    die(`expand "${opts.node}": template must be an object describing a child node`);
+  }
+  const childType = template.type || TYPE_IMPLEMENT;
+  if (!NODE_TYPES[childType]) {
+    die(`expand "${opts.node}": template.type "${childType}" is unknown (one of: ${Object.keys(NODE_TYPES).join(", ")})`);
+  }
+
+  // Materialize each element as its OWN content-addressed store entry BEFORE the
+  // commit. storeValue is a pure, idempotent write to the value store (it never
+  // touches engine state), so the commit body only ever wires HANDLES, never bytes —
+  // the by-reference, handles-only dispatch contract.
+  const children = list.map((element, i) => ({
+    childId: `${opts.node}-item-${i}`,
+    handle: storeValue(state.runId, element),
+  }));
+
+  commit(state, (working) => {
+    const expand = working.tasks[opts.node];
+    // Re-expand safe / idempotent: drop anything a prior expansion of this node
+    // generated (transitively) before creating the fresh round (the V19 teardown
+    // helper). On the normal first expansion this is a no-op.
+    tearDownGenerated(working, opts.node);
+    for (const { childId, handle } of children) {
+      if (working.tasks[childId]) {
+        die(`expand "${opts.node}": generated child id "${childId}" already exists`);
+      }
+      // Build the child from the template with a fresh id. The child's only input is
+      // its element (carried BY REFERENCE on inputRef), so it has no data dependency
+      // on the expand subtree; explode turns it into a task record (+ impl/resolve
+      // subnodes for an implement child). template.deps, if any, are preserved.
+      const childNode = {
+        ...template,
+        id: childId,
+        deps: Array.isArray(template.deps) ? [...template.deps] : [],
+      };
+      explode(working, { nodes: [childNode] });
+      const child = working.tasks[childId];
+      child.generatedBy = opts.node; // provenance for the V19 re-expand teardown
+      child.inputRef = handle;       // the element, BY REFERENCE (a handle, not bytes)
+      // Wire gather to DEPEND ON this child: a fresh FORWARD edge (gather -> child).
+      const gather = working.tasks[expand.gather];
+      gather.deps = gather.deps || [];
+      if (!gather.deps.includes(childId)) gather.deps.push(childId);
+    }
+    // Settle the expand node: mark it done and stamp the contentHash it expanded at,
+    // so readySet stops re-offering it and invalidateStale can later detect a drift
+    // and tear down + re-expand it, exactly as for any settled combinator. The
+    // expand node's own spec/deps are untouched here, so the end-of-commit recompute
+    // reproduces this same contentHash (matching settleRound's done path).
+    expand.status = "done";
+    expand.doneHash = expand.contentHash;
+  });
+  emitReady(state);
+}
+
+// ---------------------------------------------------------------------------
+// shared case-instantiation helpers (switch + loop)
+// ---------------------------------------------------------------------------
+
+// Build ONE case body as a fresh task on the working copy: copy the case template,
+// stamp a fresh id and its deps, reuse `explode` (so an implement body still gets its
+// impl/resolve subnodes), tag it generatedBy its parent combinator (provenance for the
+// V19 teardown), and bind it to a value BY REFERENCE (a store handle, never bytes).
+// This is the single instantiation primitive the `switch` combinator and the budgeted
+// `loop` unroll share, so both grow the graph identically (only the id/deps/bound
+// handle differ). Returns the created task record.
+function instantiateCaseBranch(working, { parentId, body, branchId, boundHandle, deps }) {
+  if (working.tasks[branchId]) {
+    die(`combinator "${parentId}": generated branch id "${branchId}" already exists`);
+  }
+  const branchNode = {
+    ...body,
+    id: branchId,
+    deps: Array.isArray(deps) ? [...deps] : (Array.isArray(body.deps) ? [...body.deps] : []),
+  };
+  explode(working, { nodes: [branchNode] });
+  const branch = working.tasks[branchId];
+  branch.generatedBy = parentId; // provenance for the V19 re-fire/re-run teardown
+  if (boundHandle !== undefined) branch.inputRef = boundHandle; // bound BY REFERENCE
+  return branch;
+}
+
+// Wire every node that DEPENDS ON `fromId` to ALSO depend on `branchId` (a fresh
+// FORWARD edge), so downstream wiring is stable regardless of which case fired — a
+// consumer always lists the combinator id and the engine routes it onto the actual
+// branch. With no such consumer the branch is itself the terminal exit (no edge added).
+function wireConsumersToBranch(working, fromId, branchId) {
+  for (const [tid, t] of Object.entries(working.tasks)) {
+    if (tid === branchId) continue;
+    if (Array.isArray(t.deps) && t.deps.includes(fromId) && !t.deps.includes(branchId)) {
+      t.deps.push(branchId);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// switch (branch) combinator
+// ---------------------------------------------------------------------------
+
+// Branch a `switch` node onto the single matching case, in ONE commit (V7/V3).
+//
+// switch --id <GRAPH_ID> --node <switch-node-id>
+//   1. reads the switch node (over, cases, deps);
+//   2. reads the `over` SELECTOR node's output (an enumerable VALUE) BY REFERENCE
+//      from the value store — the selector must be DONE with an outputRef (exactly
+//      what flatNodeReady requires before offering the switch node as ready);
+//   3. matches the selector value to a case KEY by its STRINGIFIED form (boolean ->
+//      "true"/"false"; enum -> the value as a string), the same domain validateGraph
+//      built from the selector's output_schema. Exhaustiveness is enforced statically
+//      at init (the registry-and-validation task) AND the recorded value was validated
+//      against that output_schema, so a matching key always exists; a miss is still a
+//      hard error (never a silent no-op);
+//   4. inside a SINGLE commit: instantiates ONLY the matching case's branch (a fresh
+//      id `<switch-id>-case-<key>`, dots in the key sanitized away, reusing explode so
+//      an implement branch also gets its impl/resolve subnodes), binds it to the
+//      selector value BY REFERENCE (inputRef), tags it generatedBy the switch (so a
+//      later re-fire can tear it down via tearDownGenerated), wires the switch's stable
+//      exit/merge — every node that DEPENDS ON the switch is wired to ALSO depend on
+//      the instantiated branch (a fresh FORWARD edge), so downstream wiring is stable
+//      regardless of which case fired; with no such consumer the branch is itself the
+//      terminal exit — and settles the switch (status done + doneHash = its selection
+//      hash, matching every other settled combinator).
+//
+// The non-matching cases are NEVER created. The whole branch is one commit, so the
+// graph is never half-wired; commit re-validates the projected graph (validateGraph
+// -> findCycle), so the only edges added — fresh forward edges to the branch — keep
+// the graph ACYCLIC, or the entire commit is rejected atomically. Re-firing is
+// idempotent: tearDownGenerated drops any prior branch (and its generated
+// descendants) first, so a re-run reproduces ONE clean acyclic shape.
+function cmdSwitch(opts) {
+  if (!opts.id || opts.id === true) die("switch requires --id <GRAPH_ID>");
+  if (!opts.node || opts.node === true) die("switch requires --node <switch-node-id>");
+  const state = loadState(opts.id);
+  const node = state.tasks[opts.node];
+  if (!node) die(`unknown node "${opts.node}"`);
+  if (node.type !== TYPE_SWITCH) {
+    die(`switch runs a "switch" node; node "${opts.node}" is type "${node.type ?? TYPE_IMPLEMENT}"`);
+  }
+  // The selector `over` node must be DONE with an output (the value to branch on) —
+  // the same readiness flatNodeReady enforces before offering this node as ready.
+  const overId = node.over;
+  const up = state.tasks[overId];
+  if (!up || up.status !== "done" || up.outputRef === undefined) {
+    die(`switch "${opts.node}": selector "${overId}" has no output yet (must be done with an outputRef)`);
+  }
+  const selector = loadValue(state.runId, up.outputRef);
+  const cases = node.cases;
+  if (!cases || typeof cases !== "object" || Array.isArray(cases)) {
+    die(`switch "${opts.node}": cases must be an object`);
+  }
+  // The case KEY is the STRINGIFIED selector value: boolean -> "true"/"false";
+  // enum (string/integer) -> the value as a string. This matches the domain
+  // validateGraph built from the selector's output_schema (boolean -> {"true",
+  // "false"}; enum -> enum.map(String)), so exhaustiveness guarantees a match.
+  const key = String(selector);
+  if (!Object.prototype.hasOwnProperty.call(cases, key)) {
+    die(`switch "${opts.node}": selector value ${JSON.stringify(selector)} (key "${key}") has no matching case (have: ${Object.keys(cases).join(", ")})`);
+  }
+  // Validate the matching case body as a node BODY up front (it is stored as an opaque
+  // identity field, so its type was never checked as a buildable node) for a clean
+  // error before any commit; the projected branch is still fully re-validated by commit.
+  const body = cases[key];
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    die(`switch "${opts.node}": case "${key}" must be an object describing a branch node`);
+  }
+  const branchType = body.type || TYPE_IMPLEMENT;
+  if (!NODE_TYPES[branchType]) {
+    die(`switch "${opts.node}": case "${key}".type "${branchType}" is unknown (one of: ${Object.keys(NODE_TYPES).join(", ")})`);
+  }
+  // The branch id: a fresh, DOT-FREE id derived from the switch id and the case key.
+  // Sanitize any character outside the id grammar (e.g. a dotted enum value) to "_"
+  // so the generated id always matches ID_RE; only one branch is created per fire, so
+  // sanitization can never collide two live branches.
+  const safeKey = key.replace(/[^A-Za-z0-9_-]/g, "_");
+  const branchId = `${opts.node}-case-${safeKey}`;
+  // Materialize the selector value as its OWN content-addressed store entry BEFORE the
+  // commit. storeValue is a pure, idempotent write to the value store (it never touches
+  // engine state), so the commit body only ever wires a HANDLE, never bytes — the
+  // by-reference binding, mirroring expand's per-element materialization.
+  const handle = storeValue(state.runId, selector);
+
+  commit(state, (working) => {
+    const sw = working.tasks[opts.node];
+    // Re-fire safe / idempotent: drop anything a prior selection of this switch
+    // generated (transitively) before creating the fresh branch (the V19 teardown
+    // helper). On the normal first selection this is a no-op. tearDownGenerated also
+    // strips a now-dangling dep a consumer held on a removed prior branch, so the
+    // re-wire below re-points each consumer at the NEW branch cleanly.
+    tearDownGenerated(working, opts.node);
+    // Build the branch from the matching case body with a fresh id, bound to the
+    // selector value BY REFERENCE (the non-matching cases are never instantiated), then
+    // wire the stable exit/merge — both via the shared case-instantiation helpers the
+    // budgeted `loop` unroll also uses.
+    instantiateCaseBranch(working, { parentId: opts.node, body, branchId, boundHandle: handle });
+    wireConsumersToBranch(working, opts.node, branchId);
+    // Settle the switch node: mark it done and stamp the contentHash it selected at, so
+    // readySet stops re-offering it and invalidateStale can later detect a drift and
+    // tear down + re-fire it, exactly as for any settled combinator. The switch node's
+    // own spec/deps are untouched here, so the end-of-commit recompute reproduces this
+    // same contentHash (matching settleRound's done path and cmdExpand).
+    sw.status = "done";
+    sw.doneHash = sw.contentHash;
+  });
+  emitReady(state);
+}
+
+// ---------------------------------------------------------------------------
+// loop (budgeted forward unroll, built ON the switch combinator)
+// ---------------------------------------------------------------------------
+
+// Realize a LOOP as a budgeted FORWARD UNROLL on the existing `switch` combinator —
+// NO new primitive and NO back-edge (a DAG cannot hold a cycle). The loop's tail is a
+// `switch` node whose two cases are the loop's routes: `continue` (the next iteration
+// body) and `stop` (the exit). One loop STEP spawns a single FRESH FORWARD node:
+//
+//   loop --id <GRAPH_ID> --node <loop-switch-id> --state <handle>
+//     1. require the node to be a `switch` declaring a "continue" and a "stop" case,
+//        and its `over` selector DONE with output (the same readiness `switch`
+//        enforces) — the selector carries an optional STOP CONDITION;
+//     2. load the carried loop STATE {budget, accumulator} from --state (the seed for
+//        iteration 0, or the prior step's threaded next-state). GUARD (the termination
+//        invariant): `budget` MUST be a NON-NEGATIVE INTEGER;
+//     3. ROUTE: continue iff the stop condition does NOT hold AND budget > 0; else stop.
+//        The budget>0 guard FORCES "stop" once the budget bottoms out, so the unroll
+//        PROVABLY TERMINATES regardless of the selector — at most `budget` iterations;
+//     4. in ONE commit, reusing the shared case-instantiation helper (the switch's tail
+//        machinery):
+//        - continue: instantiate cases.continue as a FRESH forward iteration node
+//          `<loop-id>-iter-<k>` (k = the next iteration index), depending on the PRIOR
+//          iteration (a fresh FORWARD edge, NEVER a back-edge to a prior iteration),
+//          bound BY REFERENCE to the state it processes (--state), tagged generatedBy
+//          the loop node. The next state is THREADED forward — budget STRICTLY
+//          decremented (budget-1) and the accumulator FOLDED (accumulator+budget) — and
+//          its handle is printed so the next step carries it. Prior iterations are NOT
+//          torn down (each persists; the unroll is the chain of fresh nodes);
+//        - stop: instantiate cases.stop as `<loop-id>-exit` bound to the FINAL state,
+//          wiring every consumer of the loop node onto the exit (the stable exit/merge),
+//          and SETTLE the loop node (done + doneHash) so invalidateStale can later
+//          detect an upstream drift and tear down + bounded re-run — REUSING GEN_CAP and
+//          tearDownGenerated exactly as for any settled combinator (the iteration nodes
+//          carry generatedBy=<loop-id>, so a re-run drops them and re-unrolls, with a
+//          terminally-failed iteration bounded by the GEN_CAP ceiling like any node).
+//
+// Like exec-node, it prints ONLY a handle (the threaded next-state for a continue, the
+// final state for a stop), so no value ever crosses back through the orchestrator.
+function cmdLoop(opts) {
+  if (!opts.id || opts.id === true) die("loop requires --id <GRAPH_ID>");
+  if (!opts.node || opts.node === true) die("loop requires --node <loop-switch-id>");
+  if (!opts.state || opts.state === true) die("loop requires --state <handle> (the carried {budget, accumulator})");
+  const state = loadState(opts.id);
+  const node = state.tasks[opts.node];
+  if (!node) die(`unknown node "${opts.node}"`);
+  if (node.type !== TYPE_SWITCH) {
+    die(`loop runs on a "switch" node (the loop's tail); node "${opts.node}" is type "${node.type ?? TYPE_IMPLEMENT}"`);
+  }
+  const cases = node.cases;
+  if (!cases || typeof cases !== "object" || Array.isArray(cases)) {
+    die(`loop "${opts.node}": cases must be an object`);
+  }
+  if (!cases.continue || !cases.stop) {
+    die(`loop "${opts.node}": a loop switch must declare a "continue" case (the next iteration body) and a "stop" case (the exit)`);
+  }
+  // The selector `over` must be DONE with output (the same readiness `switch` enforces),
+  // so the loop can read its STOP CONDITION alongside the budget guard.
+  const overId = node.over;
+  const up = state.tasks[overId];
+  if (!up || up.status !== "done" || up.outputRef === undefined) {
+    die(`loop "${opts.node}": selector "${overId}" has no output yet (must be done with an outputRef)`);
+  }
+  const selector = String(loadValue(state.runId, up.outputRef));
+
+  // Carried loop STATE {budget, accumulator}. GUARD (termination invariant): the budget
+  // MUST be a NON-NEGATIVE INTEGER; the accumulator defaults to 0 and is folded forward.
+  const carried = loadValue(state.runId, opts.state);
+  if (!carried || typeof carried !== "object" || Array.isArray(carried)) {
+    die(`loop "${opts.node}": --state must reference an object {budget, accumulator}`);
+  }
+  const budget = carried.budget;
+  if (!Number.isInteger(budget) || budget < 0) {
+    die(`loop "${opts.node}": carried budget must be a non-negative integer (got ${JSON.stringify(budget)})`);
+  }
+  const accumulator = Number.isInteger(carried.accumulator) ? carried.accumulator : 0;
+
+  // ROUTE: continue iff the stop condition does NOT hold AND the budget is not yet
+  // exhausted. The budget>0 guard FORCES "stop" once the budget bottoms out — the
+  // unroll terminates after at most `budget` iterations, NEVER forming a cycle.
+  const doContinue = selector !== "stop" && budget > 0;
+
+  // The next iteration index + the prior iteration node (the fresh FORWARD edge target).
+  const iterPrefix = `${opts.node}-iter-`;
+  const k = Object.keys(state.tasks).filter((tid) => tid.startsWith(iterPrefix)).length;
+  const prevIterId = k > 0 ? `${iterPrefix}${k - 1}` : null;
+  const deps = prevIterId ? [prevIterId] : [];
+
+  let resultHandle;
+  if (doContinue) {
+    // Thread the loop state forward: budget STRICTLY decremented, accumulator FOLDED.
+    const nextState = { budget: budget - 1, accumulator: accumulator + budget };
+    resultHandle = storeValue(state.runId, nextState);
+    const branchId = `${iterPrefix}${k}`;
+    commit(state, (working) => {
+      // Forward progress: do NOT tear down prior iterations (each persists; the unroll
+      // IS the chain of fresh nodes). The iteration is bound BY REFERENCE to the state
+      // it processes; its only edge is a fresh FORWARD one to the prior iteration.
+      instantiateCaseBranch(working, {
+        parentId: opts.node, body: cases.continue, branchId, boundHandle: opts.state, deps,
+      });
+    });
+  } else {
+    // STOP: instantiate the exit bound to the FINAL state, wire every consumer of the
+    // loop node onto it (the stable exit/merge), and settle the loop node so a later
+    // upstream drift tears it down + re-unrolls under the GEN_CAP bound.
+    resultHandle = storeValue(state.runId, { budget, accumulator });
+    const exitId = `${opts.node}-exit`;
+    commit(state, (working) => {
+      if (!working.tasks[exitId]) {
+        instantiateCaseBranch(working, {
+          parentId: opts.node, body: cases.stop, branchId: exitId, boundHandle: opts.state, deps,
+        });
+        wireConsumersToBranch(working, opts.node, exitId);
+      }
+      const sw = working.tasks[opts.node];
+      sw.status = "done";
+      sw.doneHash = sw.contentHash;
+    });
+  }
+  process.stdout.write(`${resultHandle}\n`);
 }
 
 // Block until any of the given resources frees, polling `holds` on an escalating
@@ -1269,7 +2446,9 @@ function cmdReport(opts) {
     const t = state.tasks[taskId];
     return {
       task: taskId,
-      name: t.name,
+      // Engine-driven kinds (fn/expand/switch) carry no `name` in their template;
+      // fall back to the id so the table stays consistent across all node kinds.
+      name: t.name ?? taskId,
       verdict: taskVerdict(state, taskId),
       attempts: t.attempts || 0,
       reason: t.lastReason || "",
@@ -1374,11 +2553,21 @@ function main() {
     case "resource-of": return cmdResourceOf(opts);
     case "variables": return cmdVariables(opts);
     case "resolve-context": return cmdResolveContext(opts);
+    case "exec-node": return cmdExecNode(opts);
+    case "expand": return cmdExpand(opts);
+    case "switch": return cmdSwitch(opts);
+    case "loop": return cmdLoop(opts);
     case "report": return cmdReport(opts);
     case "status": return cmdStatus(opts);
     default:
-      die(`unknown verb "${verb || ""}". Use: init | ready | dispatch | active | complete | resolve | fail | spawn-task | remove-task | add-dep | remove-dep | hold | release | holds | wait-for-free | resource-of | variables | resolve-context | report | status`);
+      die(`unknown verb "${verb || ""}". Use: init | ready | dispatch | active | complete | resolve | fail | hold | release | holds | wait-for-free | resource-of | variables | resolve-context | exec-node | expand | switch | loop | report | status`);
   }
 }
 
-main();
+// exec-node is async (it awaits a dynamic import + the fn body); every other verb is
+// synchronous and returns undefined. Surface a late rejection as a non-zero exit so
+// an unexpected async failure can never pass silently.
+const result = main();
+if (result && typeof result.then === "function") {
+  result.catch((err) => die(`exec-node failed: ${err && err.message ? err.message : err}`));
+}

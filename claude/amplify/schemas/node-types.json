@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/WeZZard/skills/blob/main/claude/amplify/schemas/node-types.json",
   "title": "Amplify Node-Type Templates",
-  "description": "The system-owned registry of graph node types. Every node in a folded task graph (schemas/task-graph.schema.json) carries a required, explicit `type` that names one of these templates; scripts/task.mjs reads THIS file at load time and validates each node against its type's template. A template names: the properties that are required on a node of that type, an optional set of additional allowed properties, and a per-type executor rule. `executor` and `deps` are required on every type. Property semantics (id/deps/executor grammar, max_attempts integer, etc.) are the same as task-graph.schema.json -- this file only declares which properties belong to which type, plus the executor constraint. The execute-plan dump authors `implement` nodes; `resolve`/`audit`/`reduce` nodes are created at runtime by the lifecycle (audit-resolver registers auditors; the reducer reduces a round). The `reduce` executor names subagent(amplify:audit-reducer), which is NOT yet an authored agent file -- this registry only names it.",
+  "description": "The system-owned registry of graph node types. Every node in a folded task graph (schemas/task-graph.schema.json) carries a required, explicit `type` that names one of these templates; scripts/task.mjs reads THIS file at load time and validates each node against its type's template. A template names: the properties that are required on a node of that type, an optional set of additional allowed properties, and an optional per-type executor rule. `deps` and `type` are required on every type. `executor` is required only on types that dispatch a subagent (implement, resolve, audit, reduce, agent); deterministic types (fn, expand, switch) have no executor rule and the engine drives them directly. Property semantics (id/deps/executor grammar, max_attempts integer, etc.) are the same as task-graph.schema.json -- this file only declares which properties belong to which type, plus the optional executor constraint.",
   "types": {
     "implement": {
       "description": "An implement-and-audit task authored by the execute-plan dump. Its implementer always runs subagent(general-purpose); specialized GUI/behavioral work is an audit node (authored executor), never an implementer.",
@@ -27,6 +27,27 @@
       "required": ["id", "type", "deps", "executor", "counter"],
       "optional": [],
       "executor": { "const": "subagent(amplify:audit-reducer)" }
+    },
+    "agent": {
+      "description": "A non-deterministic node dispatched to a subagent. The subagent reads its inputs by reference from the value store (via resolve-context), runs the prompt, and writes a typed output back to the store. The orchestrator passes only handles in and reads only a handle/status out — the output bytes never enter its context. output_schema declares the type of the output value; it must be one of the minimal enumerable types (boolean, integer, string, array, object, optionally with enum).",
+      "required": ["id", "type", "deps", "executor", "prompt", "output_schema", "max_attempts"],
+      "optional": [],
+      "executor": { "matchesGrammar": true }
+    },
+    "fn": {
+      "description": "A deterministic node that runs a pure module export. The engine reads the node's input envelopes from the value store, calls the export with them, and writes the typed output to the store. A lone ready fn may run inline in commit; several ready fns run as parallel background exec-node tasks — both paths write only a handle, never the bytes, to the orchestrator. `require` controls scheduling: 'all-done' (default) waits for every dep to be done; 'all-resolved' (reducer/gather) runs when every dep is resolved (done or failed).",
+      "required": ["id", "type", "deps", "module", "export", "output_schema"],
+      "optional": ["require"]
+    },
+    "expand": {
+      "description": "Fan-out combinator: when its upstream node's output exists, the engine reads the `over` node's output (an array), creates one child from `template` per element in a single commit, and wires each child to `gather`. Each element is bound by reference (a per-element store entry), so the orchestrator dispatches children with handles only. An empty list creates no children.",
+      "required": ["id", "type", "deps", "over", "template", "gather"],
+      "optional": []
+    },
+    "switch": {
+      "description": "Branch combinator: when its selector node's output exists, the engine instantiates only the matching case in a single commit. `over` is the id of the selector node; `cases` is an object whose keys are the case values (strings: 'true'/'false' for boolean; enum values for an enum selector). validateGraph statically enforces exhaustiveness: the case set must exactly equal the selector's declared domain (boolean -> {true,false}; enum -> every enum value). A non-enumerable selector (type is not boolean and no enum) is rejected at init time.",
+      "required": ["id", "type", "deps", "over", "cases"],
+      "optional": []
     }
   }
 }
