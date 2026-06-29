@@ -93,9 +93,11 @@ Restart opencode for both changes to take effect.
 node opencode/vision/scripts/vision-models.mjs
 ```
 
-The script should return `models[]` entries for configured providers. If
-it returns an empty list, add `enabled_providers` or `provider` entries to
-the relevant OpenCode config and restart opencode.
+The script should return `models[]` entries for providers configured through
+OpenCode config, saved OpenCode auth, or matching provider environment
+variables. If it returns an empty list, connect a provider in OpenCode, export
+the provider's API-key environment variable, or add `enabled_providers` /
+`provider` entries to the relevant OpenCode config and restart opencode.
 
 To inspect one registered subagent, use any returned `subagentType`:
 
@@ -183,14 +185,19 @@ The `files` field in `package.json` controls what ships: `dist/`,
 The plugin ships `scripts/vision-models.mjs`. Run it with no arguments to
 list image-capable models from OpenCode's cached model catalog after
 applying configured providers from user-level and project-level OpenCode
-config. Use `--media video` for video-capable models, or `--media
-image,video` when one model must support both media types:
+config, saved OpenCode auth, and provider environment variables. Use `--media
+video` for video-capable models, or `--media image,video` when one model must
+support both media types:
 
 - Cached models: `OPENCODE_MODELS_PATH`, or
   `~/.cache/opencode/models.json` by default.
 - Config files: `OPENCODE_CONFIG_DIR`, global `~/.config/opencode`,
   `OPENCODE_CONFIG`, `OPENCODE_CONFIG_CONTENT`, and project
   `opencode.json(c)` / `.opencode/opencode.json(c)` files.
+- Saved auth: `OPENCODE_AUTH_CONTENT`, `OPENCODE_DATA_DIR`, or
+  `~/.local/share/opencode/auth.json` by default.
+- Provider env vars: provider-specific names advertised by the cached
+  `models.json`, such as `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
 - Provider filters: `enabled_providers`, `disabled_providers`,
   `provider`, provider `whitelist`, provider `blacklist`, and custom
   `provider.<id>.models`.
@@ -224,6 +231,8 @@ image,video` when one model must support both media types:
   "providerSelection": {
     "source": "enabled_providers",
     "explicitProviders": ["openai"],
+    "envProviders": [],
+    "authProviders": [],
     "enabledProviders": ["openai"],
     "disabledProviders": []
   },

@@ -27,10 +27,11 @@ Options:
   --worktree <path>     Stop project config discovery at this directory.
   --config-dir <path>   OpenCode config directory. Defaults to OPENCODE_CONFIG_DIR or XDG config.
   --models-file <path>  OpenCode cached models file. Defaults to OPENCODE_MODELS_PATH or XDG cache.
+  --data-dir <path>     OpenCode data directory for auth.json. Defaults to OPENCODE_DATA_DIR or XDG data.
 
 Outputs JSON describing configured models from OpenCode's cached catalog after
-applying OpenCode user-level and project-level provider configuration. Returned
-models must support every requested media type.`
+applying OpenCode provider config, saved auth, and matching provider environment
+variables. Returned models must support every requested media type.`
 }
 
 function parseArgs(argv) {
@@ -38,6 +39,7 @@ function parseArgs(argv) {
     cwd: undefined,
     worktree: undefined,
     configDir: undefined,
+    dataDir: undefined,
     modelsFile: undefined,
     media: [],
     selections: [],
@@ -88,6 +90,11 @@ function parseArgs(argv) {
     }
     if (arg === "--models-file") {
       args.modelsFile = inlineValue ?? readRequiredValue(argv, i, arg)
+      if (inlineValue === undefined) i += 1
+      continue
+    }
+    if (arg === "--data-dir") {
+      args.dataDir = inlineValue ?? readRequiredValue(argv, i, arg)
       if (inlineValue === undefined) i += 1
       continue
     }
@@ -146,6 +153,14 @@ function opencodeConfigDir(args) {
 
 function opencodeCacheDir() {
   return resolve(join(xdgPath("XDG_CACHE_HOME", ".cache"), "opencode"))
+}
+
+function opencodeDataDir(args) {
+  return resolve(
+    args.dataDir ??
+      env.OPENCODE_DATA_DIR ??
+      join(xdgPath("XDG_DATA_HOME", ".local/share"), "opencode"),
+  )
 }
 
 function opencodeModelsFile(args) {
@@ -421,6 +436,19 @@ function readModelsCatalog(filepath) {
   return JSON.parse(readFileSync(filepath, "utf8"))
 }
 
+function readAuthData(dataDir) {
+  try {
+    if (env.OPENCODE_AUTH_CONTENT) {
+      return JSON.parse(env.OPENCODE_AUTH_CONTENT)
+    }
+    const file = join(dataDir, "auth.json")
+    if (!existsSync(file)) return {}
+    return JSON.parse(readFileSync(file, "utf8"))
+  } catch {
+    return {}
+  }
+}
+
 function stringArray(value) {
   return Array.isArray(value)
     ? value.filter((item) => typeof item === "string")
@@ -434,11 +462,17 @@ function providerConfigEntries(config) {
   }).filter(([, value]) => isRecord(value))
 }
 
-function configuredProviderIDs(config) {
+function configuredProviderIDs(config, catalog, authData) {
   const disabled = new Set(stringArray(config.disabled_providers))
   const enabled = stringArray(config.enabled_providers)
   const providerEntries = providerConfigEntries(config)
   const providerIDs = providerEntries.map(([id]) => id)
+  const envProviderIDs = Object.entries(catalog)
+    .filter(([, provider]) => stringArray(provider?.env).some((key) => Boolean(env[key])))
+    .map(([id]) => id)
+  const authProviderIDs = Object.entries(isRecord(authData) ? authData : {})
+    .filter(([, value]) => isRecord(value) && typeof value.type === "string")
+    .map(([id]) => id.replace(/\/+$/, ""))
   let source = "none"
   let ids
 
@@ -446,14 +480,30 @@ function configuredProviderIDs(config) {
     ids = enabled
     source = "enabled_providers"
   } else if (providerIDs.length > 0) {
-    ids = providerIDs
+    ids = unique([...providerIDs, ...envProviderIDs, ...authProviderIDs])
     source = "provider_config"
+  } else if (envProviderIDs.length > 0 || authProviderIDs.length > 0) {
+    ids = unique([...envProviderIDs, ...authProviderIDs])
+    source = [
+      envProviderIDs.length > 0 ? "env" : undefined,
+      authProviderIDs.length > 0 ? "auth" : undefined,
+    ]
+      .filter(Boolean)
+      .join("+")
   } else {
     ids = []
   }
 
   ids = unique(ids).filter((id) => !disabled.has(id))
-  return { ids, source, disabled: Array.from(disabled), enabled, providerIDs }
+  return {
+    ids,
+    source,
+    disabled: Array.from(disabled),
+    enabled,
+    providerIDs,
+    envProviderIDs,
+    authProviderIDs,
+  }
 }
 
 function mergeModel(existing, override) {
@@ -671,6 +721,8 @@ function payload(input) {
     providerSelection: {
       source: input.providerSelection.source,
       explicitProviders: input.providerSelection.providerIDs,
+      envProviders: input.providerSelection.envProviderIDs,
+      authProviders: input.providerSelection.authProviderIDs,
       enabledProviders: input.providerSelection.enabled,
       disabledProviders: input.providerSelection.disabled,
     },
@@ -678,6 +730,7 @@ function payload(input) {
     sources: {
       modelsFile: input.modelsFile,
       configDir: input.configDir,
+      dataDir: input.dataDir,
       cwd: input.cwd,
       worktree: input.worktree ?? null,
       configFiles: input.loadedFiles,
@@ -694,11 +747,13 @@ try {
   }
 
   const configDir = opencodeConfigDir(args)
+  const dataDir = opencodeDataDir(args)
   const modelsFile = opencodeModelsFile(args)
   const files = choiceFiles(configDir)
   const catalog = readModelsCatalog(modelsFile)
+  const authData = readAuthData(dataDir)
   const loaded = loadOpenCodeConfig(args, configDir)
-  const providerSelection = configuredProviderIDs(loaded.config)
+  const providerSelection = configuredProviderIDs(loaded.config, catalog, authData)
   const allDiscovered = discoverVisionModels(catalog, loaded.config, providerSelection, ["image"])
   const allEntries = [
     ...allDiscovered.models,
@@ -711,7 +766,7 @@ try {
 
   if (providerSelection.source === "none") {
     warnings.push(
-      "No explicit provider config or enabled_providers found in OpenCode config files; no configured providers can be intersected with the cached model catalog.",
+      "No OpenCode provider configuration, provider credentials, or matching provider environment variables found; no configured providers can be intersected with the cached model catalog.",
     )
   }
   if (discovered.missingProviders.length > 0) {
@@ -731,6 +786,7 @@ try {
     allModels,
     providerSelection,
     configDir,
+    dataDir,
     modelsFile,
     choiceFiles: files,
     cwd: loaded.cwd,

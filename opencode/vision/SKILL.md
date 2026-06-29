@@ -167,7 +167,7 @@ Before asking the user, check whether a model choice is already available:
 - For tasks that include both image and video media, run the model script with `--media image,video`. Reuse a persisted choice only if the script result shows that same model in `models[]`; otherwise ask the user to choose from the returned mixed-capable models.
 - If the system prompt contains a `[vision:model-script]` line, extract the script command from it and run that command with the inferred `--media` value. It returns currently available models that support all requested media types, matching `vision-*` subagent names, the recommended model, and persisted choices discovered at runtime.
 - If there is no `[vision:model-script]` line but you are working in this repository, run `node opencode/vision/scripts/vision-models.mjs --media <media-list>` from the repository root.
-- If the script returns `models: []`, do not invent or hardcode a fallback model. Report that no configured OpenCode provider currently exposes an image/video-capable model, include the script warnings, and ask the user to configure a provider or `enabled_providers`.
+- If the script returns `models: []`, do not invent or hardcode a fallback model. Report that no configured OpenCode provider currently exposes an image/video-capable model, include the script warnings, and ask the user to connect a provider in OpenCode, set the provider's API-key environment variable, or configure `enabled_providers` / `provider`.
 - For image-only or video-only tasks, if the script returns a persisted choice for the requested media type, use it directly.
 - If no persisted choice exists, ask the user to choose from the `models[]` returned by the script. Do not use a hardcoded model list.
 
@@ -234,6 +234,8 @@ After the user answers:
   "providerSelection": {
     "source": "enabled_providers",
     "explicitProviders": ["openai"],
+    "envProviders": [],
+    "authProviders": [],
     "enabledProviders": ["openai"],
     "disabledProviders": []
   },

@@ -17,6 +17,7 @@ function catalog() {
     alpha: {
       id: "alpha",
       name: "Alpha",
+      env: ["ALPHA_API_KEY"],
       models: {
         "image-only": {
           id: "image-only",
@@ -68,6 +69,7 @@ function catalog() {
     beta: {
       id: "beta",
       name: "Beta",
+      env: ["BETA_API_KEY"],
       models: {
         "beta-image": {
           id: "beta-image",
@@ -80,14 +82,17 @@ function catalog() {
   }
 }
 
-async function fixture({ configText, configObject, modelCatalog = catalog() } = {}) {
+async function fixture({ configText, configObject, modelCatalog = catalog(), authObject = {} } = {}) {
   const root = await mkdtemp(join(tmpdir(), "vision-models-test-"))
   const configDir = join(root, "config")
+  const dataDir = join(root, "data")
   const projectDir = join(root, "project")
   const modelsFile = join(root, "models.json")
   await mkdir(configDir)
+  await mkdir(dataDir)
   await mkdir(projectDir)
   await writeFile(modelsFile, JSON.stringify(modelCatalog, null, 2))
+  await writeFile(join(dataDir, "auth.json"), JSON.stringify(authObject, null, 2))
   if (configText !== undefined) {
     await writeFile(join(configDir, "opencode.jsonc"), configText)
   } else {
@@ -99,6 +104,7 @@ async function fixture({ configText, configObject, modelCatalog = catalog() } = 
   return {
     root,
     configDir,
+    dataDir,
     projectDir,
     modelsFile,
     imageChoice: join(configDir, "vision-model-image.txt"),
@@ -107,21 +113,26 @@ async function fixture({ configText, configObject, modelCatalog = catalog() } = 
   }
 }
 
-async function runVision(fx, args = []) {
+async function runVision(fx, args = [], extraEnv = {}) {
   const env = { ...process.env }
   for (const key of [
     "OPENCODE_CONFIG",
+    "OPENCODE_AUTH_CONTENT",
     "OPENCODE_CONFIG_CONTENT",
     "OPENCODE_CONFIG_DIR",
+    "OPENCODE_DATA_DIR",
     "OPENCODE_MODELS_PATH",
     "VISION_MODEL_FILE",
   ]) {
     delete env[key]
   }
+  Object.assign(env, extraEnv)
   const allArgs = [
     scriptPath,
     "--config-dir",
     fx.configDir,
+    "--data-dir",
+    fx.dataDir,
     "--cwd",
     fx.projectDir,
     "--models-file",
@@ -235,6 +246,54 @@ test("JSONC config with comments and trailing commas parses", async () => {
   })
 })
 
+test("saved OpenCode auth providers are treated as configured providers", async () => {
+  await withFixture({
+    configObject: {},
+    authObject: {
+      alpha: { type: "api", key: "redacted" },
+    },
+  }, async (fx) => {
+    const result = await runVision(fx, ["--media", "video"])
+    assert.equal(result.code, 0)
+    assert.deepEqual(new Set(modelIDs(result)), new Set([
+      "alpha/video-only",
+      "alpha/image-video",
+    ]))
+    assert.deepEqual(result.json.configuredProviders, ["alpha"])
+    assert.deepEqual(result.json.providerSelection.authProviders, ["alpha"])
+    assert.equal(result.json.providerSelection.source, "auth")
+  })
+})
+
+test("provider env vars are treated as configured providers", async () => {
+  await withFixture({
+    configObject: {},
+  }, async (fx) => {
+    const result = await runVision(fx, ["--media", "image"], { BETA_API_KEY: "redacted" })
+    assert.equal(result.code, 0)
+    assert.deepEqual(modelIDs(result), ["beta/beta-image"])
+    assert.deepEqual(result.json.configuredProviders, ["beta"])
+    assert.deepEqual(result.json.providerSelection.envProviders, ["beta"])
+    assert.equal(result.json.providerSelection.source, "env")
+  })
+})
+
+test("disabled_providers excludes auth-backed and env-backed providers", async () => {
+  await withFixture({
+    configObject: {
+      disabled_providers: ["alpha", "beta"],
+    },
+    authObject: {
+      alpha: { type: "api", key: "redacted" },
+    },
+  }, async (fx) => {
+    const result = await runVision(fx, ["--media", "image"], { BETA_API_KEY: "redacted" })
+    assert.equal(result.code, 0)
+    assert.deepEqual(result.json.models, [])
+    assert.deepEqual(result.json.configuredProviders, [])
+  })
+})
+
 test("custom provider model keeps config key as user-facing model id", async () => {
   await withFixture({
     modelCatalog: { custom: { id: "custom", name: "Custom", models: {} } },
@@ -312,7 +371,7 @@ test("missing configured provider and no configured providers return warnings", 
     const result = await runVision(fx, ["--media", "image"])
     assert.equal(result.code, 0)
     assert.deepEqual(result.json.models, [])
-    assert.match(result.json.warnings.join("\n"), /No explicit provider config/)
+    assert.match(result.json.warnings.join("\n"), /No OpenCode provider configuration/)
   })
 })
 

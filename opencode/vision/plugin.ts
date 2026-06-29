@@ -46,6 +46,7 @@ type RawModel = {
 }
 
 type RawProvider = {
+  env?: string[]
   models?: Record<string, RawModel>
 }
 
@@ -108,6 +109,13 @@ function opencodeCacheDir(): string {
   return resolve(join(xdgPath("XDG_CACHE_HOME", ".cache"), "opencode"))
 }
 
+function opencodeDataDir(): string {
+  return resolve(
+    process.env.OPENCODE_DATA_DIR ??
+      join(xdgPath("XDG_DATA_HOME", ".local/share"), "opencode")
+  )
+}
+
 function opencodeModelsFile(): string {
   if (process.env.OPENCODE_MODELS_PATH) return resolve(process.env.OPENCODE_MODELS_PATH)
   const source = process.env.OPENCODE_MODELS_URL ?? "https://models.dev"
@@ -150,6 +158,19 @@ function readModelsCatalog(): ModelsCatalog {
   }
 }
 
+function readAuthData(): Record<string, unknown> {
+  try {
+    if (process.env.OPENCODE_AUTH_CONTENT) {
+      return JSON.parse(process.env.OPENCODE_AUTH_CONTENT) as Record<string, unknown>
+    }
+    const file = join(opencodeDataDir(), "auth.json")
+    if (!existsSync(file)) return {}
+    return JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
 function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
@@ -176,14 +197,23 @@ function providerConfig(config: ConfigLike, providerID: string): ProviderConfig 
   return config.provider?.[providerID] ?? config.providers?.[providerID] ?? {}
 }
 
-function configuredProviderIDs(config: ConfigLike): string[] {
+function configuredProviderIDs(config: ConfigLike, catalog: ModelsCatalog): string[] {
   const disabled = new Set(stringArray(config.disabled_providers))
   const enabled = stringArray(config.enabled_providers)
   const explicit = Object.keys({
     ...(config.providers ?? {}),
     ...(config.provider ?? {}),
   })
-  const ids = enabled.length > 0 ? enabled : explicit
+  const envConfigured = Object.entries(catalog)
+    .filter(([, provider]) => stringArray(provider.env).some((key) => Boolean(process.env[key])))
+    .map(([id]) => id)
+  const authConfigured = Object.entries(readAuthData())
+    .filter(([, value]) => value !== null && typeof value === "object" && typeof (value as any).type === "string")
+    .map(([id]) => id.replace(/\/+$/, ""))
+  const ids =
+    enabled.length > 0
+      ? enabled
+      : [...explicit, ...envConfigured, ...authConfigured]
   return Array.from(new Set(ids)).filter((id) => !disabled.has(id))
 }
 
@@ -232,7 +262,7 @@ function modelAllowed(providerConfig: ProviderConfig, modelID: string): boolean 
 
 function discoverVisionModels(catalog: ModelsCatalog, config: ConfigLike): VisionModelEntry[] {
   const result: VisionModelEntry[] = []
-  for (const provider of configuredProviderIDs(config)) {
+  for (const provider of configuredProviderIDs(config, catalog)) {
     const configured = providerConfig(config, provider)
     for (const [modelKey, model] of Object.entries(providerModels(provider, catalog, config))) {
       const modelID = modelKey
