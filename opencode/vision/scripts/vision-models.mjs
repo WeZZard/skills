@@ -11,13 +11,17 @@ import { dirname, join, resolve } from "node:path"
 import { homedir } from "node:os"
 
 const env = process.env
+const PICKER_MODEL_LIMIT = 6
+const PICKER_PROVIDER_LIMIT = 2
 
 function usage() {
   return `Usage:
   node scripts/vision-models.mjs
+  node scripts/vision-models.mjs --all
   node scripts/vision-models.mjs --model <provider/model>
 
 Options:
+  --all                 Include all discovered image-capable models as allModels[].
   --model <model>       Image-capable provider/model id to persist.
   --cwd <path>          Directory used for project config discovery.
   --worktree <path>     Stop project config discovery at this directory.
@@ -38,6 +42,7 @@ function parseArgs(argv) {
     dataDir: undefined,
     modelsFile: undefined,
     selectedModel: undefined,
+    includeAll: false,
     help: false,
   }
 
@@ -47,6 +52,10 @@ function parseArgs(argv) {
 
     if (arg === "--help" || arg === "-h") {
       args.help = true
+      continue
+    }
+    if (arg === "--all") {
+      args.includeAll = true
       continue
     }
     if (arg === "--model") {
@@ -507,7 +516,8 @@ function modelCapabilities(model) {
   const output = modelOutputModalities(model)
   const hasDeclaredInput = input.length > 0
   const supportsImage = input.includes("image") || (!hasDeclaredInput && model?.attachment === true)
-  return { input, output, supportsImage }
+  const supportsTextOutput = output.length === 0 || output.includes("text")
+  return { input, output, supportsImage, supportsTextOutput }
 }
 
 function subagentName(providerID, id) {
@@ -541,10 +551,11 @@ function discoverVisionModels(catalog, config, providerSelection) {
     for (const [modelKey, rawModel] of Object.entries(rawModels)) {
       if (!isRecord(rawModel)) continue
       if (!applyProviderModelFilters(providerConfig, modelKey)) continue
-      if (rawModel.status === "deprecated") continue
+      if (rawModel.status && rawModel.status !== "active") continue
 
       const capabilities = modelCapabilities(rawModel)
       if (!capabilities.supportsImage) continue
+      if (!capabilities.supportsTextOutput) continue
 
       const fullModelID = displayModel(providerID, modelKey)
       const entry = {
@@ -554,6 +565,7 @@ function discoverVisionModels(catalog, config, providerSelection) {
         name: typeof rawModel.name === "string" ? rawModel.name : modelKey,
         subagentType: subagentName(providerID, modelKey),
         supportsImage: capabilities.supportsImage,
+        supportsTextOutput: capabilities.supportsTextOutput,
         inputModalities: capabilities.input,
         outputModalities: capabilities.output,
         status: typeof rawModel.status === "string" ? rawModel.status : "active",
@@ -580,20 +592,168 @@ function compareModels(a, b) {
     if (b.status === "active") return 1
   }
   if (a.reasoning !== b.reasoning) return a.reasoning ? -1 : 1
+  if (a.toolCall !== b.toolCall) return a.toolCall ? -1 : 1
   if (a.releaseDate && b.releaseDate && a.releaseDate !== b.releaseDate) {
     return b.releaseDate.localeCompare(a.releaseDate)
+  }
+  if (a.releaseDate !== b.releaseDate) return a.releaseDate ? -1 : 1
+  if (a.contextLimit !== b.contextLimit) {
+    return (b.contextLimit ?? 0) - (a.contextLimit ?? 0)
   }
   return a.model.localeCompare(b.model)
 }
 
-function withPickerDescription(entry, index) {
-  const suffix = index === 0 ? " (Recommended)" : ""
+function normalizeSeriesSource(value) {
+  return value
+    .toLowerCase()
+    .replace(/@/g, "")
+    .replace(/[._:]+/g, "-")
+    .replace(/\//g, " ")
+    .replace(/[^a-z0-9\-\s]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function versionParts(value) {
+  return (value.match(/\d+/g) ?? []).map((part) => Number(part))
+}
+
+function findVersionSpan(source) {
+  const patterns = [
+    { pattern: /\b([a-z]+-)(\d+(?:(?:-\d+)|(?:p\d+))+)\b/, group: 2 },
+    { pattern: /\b([a-z]+)(\d+(?:(?:-\d+)|(?:p\d+))+)\b/, group: 2 },
+    { pattern: /\b(\d+(?:-\d+)+)\b/, group: 1 },
+    { pattern: /\b([a-z]+-)(\d+)(?=$|-)/, group: 2 },
+    { pattern: /\b([a-z]+)(\d+)(?=$|-)/, group: 2 },
+  ]
+
+  for (const { pattern, group } of patterns) {
+    const match = pattern.exec(source)
+    if (!match) continue
+    const text = match[group]
+    const relativeStart = match[0].indexOf(text)
+    return {
+      start: match.index + relativeStart,
+      end: match.index + relativeStart + text.length,
+      parts: versionParts(text),
+    }
+  }
+
+  return undefined
+}
+
+function modelSeries(entry) {
+  for (const source of [entry.modelID, entry.name]) {
+    if (!source) continue
+    const normalized = normalizeSeriesSource(source)
+    if (!normalized) continue
+    const version = findVersionSpan(normalized)
+    if (!version || version.parts.length === 0) continue
+    const key = `${normalized.slice(0, version.start)}<version>${normalized.slice(version.end)}`
+      .replace(/[^a-z0-9<>]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+    return { key, version: version.parts }
+  }
+
+  const fallback = normalizeSeriesSource(entry.modelID || entry.name || entry.model)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  return { key: fallback || entry.model, version: [] }
+}
+
+function compareVersionParts(a, b) {
+  const length = Math.max(a.length, b.length)
+  for (let i = 0; i < length; i += 1) {
+    const left = a[i] ?? 0
+    const right = b[i] ?? 0
+    if (left !== right) return left - right
+  }
+  return 0
+}
+
+function compareSeriesCandidates(a, aSeries, b, bSeries) {
+  const version = compareVersionParts(aSeries.version, bSeries.version)
+  if (version !== 0) return version > 0 ? -1 : 1
+  return compareModels(a, b)
+}
+
+function latestModelsBySeries(models) {
+  const bestBySeries = new Map()
+
+  for (const entry of models) {
+    const series = modelSeries(entry)
+    const key = `${entry.provider}:${series.key}`
+    const current = bestBySeries.get(key)
+    if (
+      !current ||
+      compareSeriesCandidates(entry, series, current.entry, current.series) < 0
+    ) {
+      bestBySeries.set(key, { entry, series })
+    }
+  }
+
+  return Array.from(bestBySeries.values())
+    .map((item) => item.entry)
+    .sort(compareModels)
+}
+
+function addPickerEntry(result, providerCounts, entry, options = {}) {
+  if (!entry) return false
+  if (result.some((item) => item.model === entry.model)) return false
+  if (!options.force) {
+    const providerCount = providerCounts.get(entry.provider) ?? 0
+    if (providerCount >= PICKER_PROVIDER_LIMIT) return false
+  }
+  result.push(entry)
+  providerCounts.set(entry.provider, (providerCounts.get(entry.provider) ?? 0) + 1)
+  return true
+}
+
+function pickerModels(models, persistedChoice) {
+  const ranked = latestModelsBySeries(models)
+  const result = []
+  const providerCounts = new Map()
+  const recommended = ranked[0]
+
+  addPickerEntry(result, providerCounts, recommended)
+  if (persistedChoice) {
+    addPickerEntry(result, providerCounts, persistedChoice, { force: true })
+  }
+
+  for (const entry of ranked) {
+    if (result.length >= PICKER_MODEL_LIMIT) break
+    addPickerEntry(result, providerCounts, entry)
+  }
+
+  return result
+    .slice(0, PICKER_MODEL_LIMIT)
+    .map((entry) =>
+      describeModel(entry, {
+        recommended: entry.model === recommended?.model,
+        saved: entry.model === persistedChoice?.model,
+      }),
+    )
+}
+
+function describeModel(entry, options = {}) {
   const status = entry.status === "active" ? "" : `, ${entry.status}`
+  const tags = [
+    options.recommended ? "Recommended" : undefined,
+    options.saved ? "Saved choice" : undefined,
+  ].filter(Boolean)
+  const suffix = tags.length > 0 ? ` (${tags.join(", ")})` : ""
   return {
     ...entry,
-    recommended: index === 0,
+    recommended: Boolean(options.recommended),
+    savedChoice: Boolean(options.saved),
     pickerDescription: `${entry.name} - image${status}${suffix}`,
   }
+}
+
+function withPickerDescription(entry, index) {
+  return describeModel(entry, { recommended: index === 0 })
 }
 
 function readPersistedChoice(file, modelsByID) {
@@ -615,11 +775,8 @@ function choicePayload(entry) {
     modelID: entry.modelID,
     subagentType: entry.subagentType,
     supportsImage: entry.supportsImage,
+    supportsTextOutput: entry.supportsTextOutput,
   }
-}
-
-function persistedChoicePayload(file, allModelsByID) {
-  return choicePayload(readPersistedChoice(file, allModelsByID)) ?? null
 }
 
 function validateSelectedModel(model, allModelsByID) {
@@ -636,10 +793,15 @@ function persistSelection(file, entry) {
 
 function payload(input) {
   const allModelsByID = new Map(input.allModels.map((entry) => [entry.model, entry]))
-  return {
-    persistedChoice: persistedChoicePayload(input.choiceFile, allModelsByID),
-    recommendedModel: input.models[0]?.model ?? null,
-    models: input.models,
+  const persistedChoice = readPersistedChoice(input.choiceFile, allModelsByID)
+  const picker = pickerModels(input.models, persistedChoice)
+  const result = {
+    persistedChoice: choicePayload(persistedChoice) ?? null,
+    recommendedModel: picker.find((entry) => entry.recommended)?.model ?? picker[0]?.model ?? null,
+    pickerModels: picker,
+    models: picker,
+    modelCount: input.models.length,
+    pickerModelCount: picker.length,
     configuredProviders: input.providerSelection.ids,
     providerSelection: {
       source: input.providerSelection.source,
@@ -660,6 +822,12 @@ function payload(input) {
     },
     warnings: input.warnings,
   }
+
+  if (input.includeAll) {
+    result.allModels = input.models
+  }
+
+  return result
 }
 
 try {
@@ -708,6 +876,7 @@ try {
     worktree: loaded.worktree,
     loadedFiles: loaded.loadedFiles,
     warnings,
+    includeAll: args.includeAll,
   }
 
   if (args.selectedModel) {

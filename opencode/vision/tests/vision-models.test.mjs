@@ -42,6 +42,18 @@ function catalog() {
           release_date: "2026-01-03",
           modalities: { input: ["text"], output: ["text"] },
         },
+        "image-output-only": {
+          id: "image-output-only",
+          name: "Image Output Only",
+          release_date: "2026-01-03",
+          modalities: { input: ["text", "image"], output: ["image"] },
+        },
+        "audio-output-only": {
+          id: "audio-output-only",
+          name: "Audio Output Only",
+          release_date: "2026-01-03",
+          modalities: { input: ["text", "image"], output: ["audio"] },
+        },
         "attachment-only": {
           id: "attachment-only",
           name: "Attachment Only",
@@ -154,21 +166,27 @@ async function withFixture(options, fn) {
   }
 }
 
-function modelIDs(result) {
-  return result.json.models.map((model) => model.model)
+function modelIDs(result, field = "models") {
+  return result.json[field].map((model) => model.model)
+}
+
+function pickerModelIDs(result) {
+  return modelIDs(result, "pickerModels")
 }
 
 test("lists image-capable models only", async () => {
   await withFixture({}, async (fx) => {
-    const result = await runVision(fx)
+    const result = await runVision(fx, ["--all"])
     assert.equal(result.code, 0)
-    assert.deepEqual(new Set(modelIDs(result)), new Set([
+    assert.deepEqual(new Set(modelIDs(result, "allModels")), new Set([
       "alpha/attachment-only",
       "alpha/image-audio",
       "alpha/image-only",
     ]))
     assert.equal(result.json.persistedChoice, null)
     assert.equal(result.json.choiceFile, fx.imageChoice)
+    assert.equal(result.json.modelCount, 3)
+    assert.ok(result.json.models.length <= 6)
   })
 })
 
@@ -185,9 +203,9 @@ test("enabled_providers, disabled_providers, whitelist, and blacklist are honore
       },
     },
   }, async (fx) => {
-    const result = await runVision(fx)
+    const result = await runVision(fx, ["--all"])
     assert.equal(result.code, 0)
-    assert.deepEqual(new Set(modelIDs(result)), new Set([
+    assert.deepEqual(new Set(modelIDs(result, "allModels")), new Set([
       "alpha/attachment-only",
       "alpha/image-audio",
     ]))
@@ -207,9 +225,9 @@ test("JSONC config with comments and trailing commas parses", async () => {
       },
     }`,
   }, async (fx) => {
-    const result = await runVision(fx)
+    const result = await runVision(fx, ["--all"])
     assert.equal(result.code, 0)
-    assert.deepEqual(modelIDs(result), ["alpha/image-audio"])
+    assert.deepEqual(modelIDs(result, "allModels"), ["alpha/image-audio"])
   })
 })
 
@@ -220,9 +238,9 @@ test("saved OpenCode auth providers are treated as configured providers", async 
       alpha: { type: "api", key: "redacted" },
     },
   }, async (fx) => {
-    const result = await runVision(fx)
+    const result = await runVision(fx, ["--all"])
     assert.equal(result.code, 0)
-    assert.deepEqual(new Set(modelIDs(result)), new Set([
+    assert.deepEqual(new Set(modelIDs(result, "allModels")), new Set([
       "alpha/attachment-only",
       "alpha/image-audio",
       "alpha/image-only",
@@ -237,9 +255,9 @@ test("provider env vars are treated as configured providers", async () => {
   await withFixture({
     configObject: {},
   }, async (fx) => {
-    const result = await runVision(fx, [], { BETA_API_KEY: "redacted" })
+    const result = await runVision(fx, ["--all"], { BETA_API_KEY: "redacted" })
     assert.equal(result.code, 0)
-    assert.deepEqual(modelIDs(result), ["beta/beta-image"])
+    assert.deepEqual(modelIDs(result, "allModels"), ["beta/beta-image"])
     assert.deepEqual(result.json.configuredProviders, ["beta"])
     assert.deepEqual(result.json.providerSelection.envProviders, ["beta"])
     assert.equal(result.json.providerSelection.source, "env")
@@ -279,10 +297,331 @@ test("custom provider model keeps config key as user-facing model id", async () 
       },
     },
   }, async (fx) => {
+    const result = await runVision(fx, ["--all"])
+    assert.equal(result.code, 0)
+    assert.deepEqual(modelIDs(result, "allModels"), ["custom/alias"])
+    assert.equal(result.json.allModels[0].subagentType, "vision-custom-alias")
+  })
+})
+
+test("picker shortlist keeps only the latest model in each provider series", async () => {
+  await withFixture({
+    configObject: { enabled_providers: ["openai", "kimi", "anthropic"] },
+    modelCatalog: {
+      openai: {
+        id: "openai",
+        name: "OpenAI",
+        models: {
+          "gpt-5.4": {
+            id: "gpt-5.4",
+            name: "GPT-5.4",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-01",
+            modalities: { input: ["text", "image"], output: ["text"] },
+          },
+          "gpt-5.5": {
+            id: "gpt-5.5",
+            name: "GPT-5.5",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-02",
+            modalities: { input: ["text", "image"], output: ["text"] },
+          },
+          "gpt-5.5-pro": {
+            id: "gpt-5.5-pro",
+            name: "GPT-5.5 Pro",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-02",
+            modalities: { input: ["text", "image"], output: ["text"] },
+          },
+        },
+      },
+      kimi: {
+        id: "kimi",
+        name: "Kimi",
+        models: {
+          k2p5: {
+            id: "k2p5",
+            name: "Kimi K2.5",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-03",
+            modalities: { input: ["text", "image"], output: ["text"] },
+          },
+          k2p7: {
+            id: "k2p7",
+            name: "Kimi K2.7 Code",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-04",
+            modalities: { input: ["text", "image"], output: ["text"] },
+          },
+        },
+      },
+      anthropic: {
+        id: "anthropic",
+        name: "Anthropic",
+        models: {
+          "claude-sonnet-4-5": {
+            id: "claude-sonnet-4-5",
+            name: "Claude Sonnet 4.5",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-05",
+            modalities: { input: ["text", "image"], output: ["text"] },
+          },
+          "claude-sonnet-4-8": {
+            id: "claude-sonnet-4-8",
+            name: "Claude Sonnet 4.8",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-06",
+            modalities: { input: ["text", "image"], output: ["text"] },
+          },
+        },
+      },
+    },
+  }, async (fx) => {
+    const result = await runVision(fx, ["--all"])
+    assert.equal(result.code, 0)
+
+    assert.ok(modelIDs(result, "allModels").includes("openai/gpt-5.4"))
+    assert.ok(modelIDs(result, "allModels").includes("kimi/k2p5"))
+    assert.ok(modelIDs(result, "allModels").includes("anthropic/claude-sonnet-4-5"))
+
+    assert.ok(pickerModelIDs(result).includes("openai/gpt-5.5"))
+    assert.ok(pickerModelIDs(result).includes("openai/gpt-5.5-pro"))
+    assert.ok(pickerModelIDs(result).includes("kimi/k2p7"))
+    assert.ok(pickerModelIDs(result).includes("anthropic/claude-sonnet-4-8"))
+    assert.equal(pickerModelIDs(result).includes("openai/gpt-5.4"), false)
+    assert.equal(pickerModelIDs(result).includes("kimi/k2p5"), false)
+    assert.equal(pickerModelIDs(result).includes("anthropic/claude-sonnet-4-5"), false)
+    assert.equal(result.json.recommendedModel, result.json.pickerModels[0].model)
+  })
+})
+
+test("picker shortlist is capped while full models remain available", async () => {
+  const ids = [
+    "atlas",
+    "beacon",
+    "comet",
+    "delta",
+    "ember",
+    "fable",
+    "glider",
+    "harbor",
+  ]
+  const models = Object.fromEntries(
+    ids.map((id, index) => {
+      return [
+        id,
+        {
+          id,
+          name: id,
+          reasoning: true,
+          tool_call: true,
+          release_date: `2026-01-${String(index + 1).padStart(2, "0")}`,
+          modalities: { input: ["text", "image"], output: ["text"] },
+        },
+      ]
+    }),
+  )
+
+  await withFixture({
+    modelCatalog: {
+      alpha: {
+        id: "alpha",
+        name: "Alpha",
+        models,
+      },
+    },
+  }, async (fx) => {
     const result = await runVision(fx)
     assert.equal(result.code, 0)
-    assert.deepEqual(modelIDs(result), ["custom/alias"])
-    assert.equal(result.json.models[0].subagentType, "vision-custom-alias")
+    assert.equal(result.json.modelCount, 8)
+    assert.equal(result.json.models.length, 2)
+    assert.equal(result.json.pickerModels.length, 2)
+
+    const all = await runVision(fx, ["--all"])
+    assert.equal(all.json.allModels.length, 8)
+  })
+})
+
+test("picker ranking uses reasoning, tool calls, release date, and context", async () => {
+  await withFixture({
+    modelCatalog: {
+      alpha: {
+        id: "alpha",
+        name: "Alpha",
+        models: {
+          atlas: {
+            id: "atlas",
+            name: "Atlas",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-02",
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 100 },
+          },
+          beacon: {
+            id: "beacon",
+            name: "Beacon",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-02",
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 200 },
+          },
+          comet: {
+            id: "comet",
+            name: "Comet",
+            reasoning: true,
+            tool_call: true,
+            release_date: "2026-01-01",
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 1000 },
+          },
+          delta: {
+            id: "delta",
+            name: "Delta",
+            reasoning: true,
+            tool_call: false,
+            release_date: "2026-02-01",
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 1000 },
+          },
+          ember: {
+            id: "ember",
+            name: "Ember",
+            reasoning: false,
+            tool_call: true,
+            release_date: "2026-03-01",
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 1000 },
+          },
+        },
+      },
+    },
+  }, async (fx) => {
+    const result = await runVision(fx)
+    assert.equal(result.code, 0)
+    assert.deepEqual(modelIDs(result), ["alpha/beacon", "alpha/atlas"])
+  })
+})
+
+test("picker shortlist caps provider diversity", async () => {
+  function providerModels(prefix, month) {
+    return Object.fromEntries(
+      ["one", "two", "three"].map((name, index) => [
+        `${prefix}-${name}`,
+        {
+          id: `${prefix}-${name}`,
+          name: `${prefix} ${name}`,
+          reasoning: true,
+          tool_call: true,
+          release_date: `2026-${month}-${String(index + 1).padStart(2, "0")}`,
+          modalities: { input: ["text", "image"], output: ["text"] },
+        },
+      ]),
+    )
+  }
+
+  await withFixture({
+    configObject: { enabled_providers: ["alpha", "beta", "gamma"] },
+    modelCatalog: {
+      alpha: { id: "alpha", name: "Alpha", models: providerModels("alpha", "03") },
+      beta: { id: "beta", name: "Beta", models: providerModels("beta", "02") },
+      gamma: { id: "gamma", name: "Gamma", models: providerModels("gamma", "01") },
+    },
+  }, async (fx) => {
+    const result = await runVision(fx)
+    assert.equal(result.code, 0)
+    assert.equal(result.json.models.length, 6)
+    assert.deepEqual(
+      Object.fromEntries(
+        ["alpha", "beta", "gamma"].map((provider) => [
+          provider,
+          result.json.models.filter((model) => model.provider === provider).length,
+        ]),
+      ),
+      { alpha: 2, beta: 2, gamma: 2 },
+    )
+  })
+})
+
+test("persisted choice is included as saved without replacing recommendation", async () => {
+  const ids = [
+    "atlas",
+    "beacon",
+    "comet",
+    "delta",
+    "ember",
+    "fable",
+    "glider",
+    "harbor",
+  ]
+  const models = Object.fromEntries(
+    ids.map((id, index) => [
+      id,
+      {
+        id,
+        name: id,
+        reasoning: true,
+        tool_call: true,
+        release_date: `2026-01-${String(index + 1).padStart(2, "0")}`,
+        modalities: { input: ["text", "image"], output: ["text"] },
+      },
+    ]),
+  )
+
+  await withFixture({
+    modelCatalog: {
+      alpha: { id: "alpha", name: "Alpha", models },
+    },
+  }, async (fx) => {
+    await writeFile(fx.imageChoice, "alpha/atlas\n")
+    const result = await runVision(fx)
+    assert.equal(result.code, 0)
+    assert.equal(result.json.recommendedModel, "alpha/harbor")
+
+    const saved = result.json.models.find((model) => model.model === "alpha/atlas")
+    assert.ok(saved)
+    assert.equal(saved.savedChoice, true)
+    assert.equal(saved.recommended, false)
+    assert.match(saved.pickerDescription, /Saved choice/)
+  })
+})
+
+test("--model validates against the full discovered set, not only the default picker", async () => {
+  const ids = ["atlas", "beacon", "comet", "delta"]
+  const models = Object.fromEntries(
+    ids.map((id, index) => [
+      id,
+      {
+        id,
+        name: id,
+        reasoning: true,
+        tool_call: true,
+        release_date: `2026-01-${String(index + 1).padStart(2, "0")}`,
+        modalities: { input: ["text", "image"], output: ["text"] },
+      },
+    ]),
+  )
+
+  await withFixture({
+    modelCatalog: {
+      alpha: { id: "alpha", name: "Alpha", models },
+    },
+  }, async (fx) => {
+    const list = await runVision(fx)
+    assert.deepEqual(modelIDs(list), ["alpha/delta", "alpha/comet"])
+
+    const saved = await runVision(fx, ["--model", "alpha/atlas"])
+    assert.equal(saved.code, 0)
+    assert.equal(saved.json.savedChoice.model, "alpha/atlas")
+    assert.equal(await readFile(fx.imageChoice, "utf8"), "alpha/atlas\n")
   })
 })
 

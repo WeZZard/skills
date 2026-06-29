@@ -92,16 +92,21 @@ Restart opencode for both changes to take effect.
 node opencode/vision/scripts/vision-models.mjs
 ```
 
-The script should return `models[]` entries for providers configured through
-OpenCode config, saved OpenCode auth, or matching provider environment
-variables. If it returns an empty list, connect a provider in OpenCode, export
-the provider's API-key environment variable, or add `enabled_providers` /
+The script should return a capped `models[]` / `pickerModels[]` shortlist
+for user questions. It discovers providers configured through OpenCode
+config, saved OpenCode auth, or matching provider environment variables, then
+keeps only active image-input/text-output models. It ranks by reasoning,
+tool-call support, release date, context limit, and stable id; keeps only the
+latest model in each provider/model series, such as GPT 5.5 over GPT 5.4;
+keeps at most two models per provider; and caps the picker at six entries.
+If it returns an empty list, connect a provider in OpenCode, export the
+provider's API-key environment variable, or add `enabled_providers` /
 `provider` entries to the relevant OpenCode config and restart opencode.
 
 To inspect one registered subagent, use any returned `subagentType`:
 
 ```bash
-opencode debug agent vision-openai-gpt-5.2
+opencode debug agent vision-openai-gpt-5.5
 ```
 
 The exact agent name depends on your configured provider/model set.
@@ -181,9 +186,11 @@ The `files` field in `package.json` controls what ships: `dist/`,
 ## Model discovery script
 
 The plugin ships `scripts/vision-models.mjs`. Run it with no arguments to
-list image-capable models from OpenCode's cached model catalog after
+list the capped picker shortlist from OpenCode's cached model catalog after
 applying configured providers from user-level and project-level OpenCode
-config, saved OpenCode auth, and provider environment variables.
+config, saved OpenCode auth, and provider environment variables. Run it with
+`--all` only when you need the full `allModels[]` list for diagnostics or
+manual fuzzy matching.
 
 - Cached models: `OPENCODE_MODELS_PATH`, or
   `~/.cache/opencode/models.json` by default.
@@ -203,20 +210,39 @@ config, saved OpenCode auth, and provider environment variables.
   "ok": true,
   "saved": false,
   "persistedChoice": null,
-  "recommendedModel": "openai/gpt-5.2",
-  "models": [
+  "recommendedModel": "openai/gpt-5.5",
+  "pickerModels": [
     {
-      "model": "openai/gpt-5.2",
+      "model": "openai/gpt-5.5",
       "provider": "openai",
-      "modelID": "gpt-5.2",
-      "name": "GPT-5.2",
-      "subagentType": "vision-openai-gpt-5.2",
+      "modelID": "gpt-5.5",
+      "name": "GPT-5.5",
+      "subagentType": "vision-openai-gpt-5.5",
       "supportsImage": true,
+      "supportsTextOutput": true,
       "recommended": true,
-      "pickerLabel": "openai/gpt-5.2",
-      "pickerDescription": "GPT-5.2 - image (Recommended)"
+      "savedChoice": false,
+      "pickerLabel": "openai/gpt-5.5",
+      "pickerDescription": "GPT-5.5 - image (Recommended)"
     }
   ],
+  "models": [
+    {
+      "model": "openai/gpt-5.5",
+      "provider": "openai",
+      "modelID": "gpt-5.5",
+      "name": "GPT-5.5",
+      "subagentType": "vision-openai-gpt-5.5",
+      "supportsImage": true,
+      "supportsTextOutput": true,
+      "recommended": true,
+      "savedChoice": false,
+      "pickerLabel": "openai/gpt-5.5",
+      "pickerDescription": "GPT-5.5 - image (Recommended)"
+    }
+  ],
+  "modelCount": 42,
+  "pickerModelCount": 1,
   "choiceFile": "/Users/me/.config/opencode/vision-model-image.txt",
   "configuredProviders": ["openai"],
   "providerSelection": {
@@ -234,7 +260,14 @@ config, saved OpenCode auth, and provider environment variables.
 After the user chooses, persist the image selection with `--model`:
 
 ```bash
-node opencode/vision/scripts/vision-models.mjs --model openai/gpt-5.2
+node opencode/vision/scripts/vision-models.mjs --model openai/gpt-5.5
+```
+
+Exact `--model` validation uses the full discovered set internally, not only
+the default picker shortlist. For fuzzy "Other" answers, run:
+
+```bash
+node opencode/vision/scripts/vision-models.mjs --all
 ```
 
 The selection is stored at:

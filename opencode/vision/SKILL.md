@@ -159,11 +159,11 @@ At startup the vision plugin reads this file and, if it holds a known model id, 
 Before asking the user, check whether a model choice is already available:
 
 - If the system prompt contains a `[vision:model-choice]` line, use the matching model id and delegate to the matching `vision-*` subagent.
-- If the system prompt contains a `[vision:model-script]` line, extract the script command from it and run that command without extra flags. It returns currently available image-capable models, matching `vision-*` subagent names, the recommended model, and any persisted choice discovered at runtime.
+- If the system prompt contains a `[vision:model-script]` line, extract the script command from it and run that command without extra flags. It returns a capped `models[]` / `pickerModels[]` shortlist, matching `vision-*` subagent names, the recommended model, counts for the full discovered set, and any persisted choice discovered at runtime.
 - If there is no `[vision:model-script]` line but you are working in this repository, run `node opencode/vision/scripts/vision-models.mjs` from the repository root.
 - If the script returns `models: []`, do not invent or hardcode a fallback model. Report that no configured OpenCode provider currently exposes an image-capable model, include the script warnings, and ask the user to connect a provider in OpenCode, set the provider's API-key environment variable, or configure `enabled_providers` / `provider`.
 - If the script returns a persisted choice, use it directly.
-- If no persisted choice exists, ask the user to choose from the `models[]` returned by the script. Do not use a hardcoded model list.
+- If no persisted choice exists, ask the user to choose from the capped `models[]` returned by the script. Do not ask from a large full model list. Do not use a hardcoded model list.
 
 <MODEL_PICKER_EXAMPLE>
 
@@ -171,14 +171,15 @@ Before asking the user, check whether a model choice is already available:
 node /path/to/opencode-vision/scripts/vision-models.mjs
 ```
 
-Use the returned `models[]` to build the picker:
+Use the returned capped `models[]` to build the picker:
 
 ```js
+const choices = available.models
 question({
   questions: [{
     header: "Vision model",
     question: "I found several models that support vision tasks. Which model would you prefer for visual judgments this session?",
-    options: available.models.map((model) => ({
+    options: choices.map((model) => ({
       label: model.pickerLabel,
       description: model.pickerDescription
     }))
@@ -186,14 +187,24 @@ question({
 })
 ```
 
+The script builds `models[]` / `pickerModels[]` by applying this picker algorithm:
+
+- Keep only active models that support image input and text output.
+- Rank by reasoning support, tool-call support, newer release date, larger context limit, then stable model id.
+- Keep only the latest model in each provider/model series before applying the picker cap. For example, GPT 5.5 supersedes GPT 5.4, and Kimi K2.7 supersedes Kimi K2.5.
+- Keep at most two models per provider and at most six picker entries total.
+- Include a valid persisted choice as `Saved choice` if present, without replacing the actual recommendation.
+
+The full discovered list is not included in default output. For diagnostics or fuzzy manual matching, run the script with `--all` and inspect `allModels[]`.
+
 </MODEL_PICKER_EXAMPLE>
 
 After the user answers:
 
-- Find the matching entry in the script result and use its `subagentType`.
+- Find the matching entry in the capped `models[]` script result and use its `subagentType`.
 - Remember the choice for the rest of the session.
 - Persist the mapped model id by running the script with `--model "<provider/model>"`.
-- If the user picks "Other", map it to the closest model returned by the script, or fall back to the returned `recommendedModel`; only persist a model id returned by the script.
+- If the user picks "Other", first validate exact `provider/model` answers by running the script with `--model "<provider/model>"`. For fuzzy matching, run the script with `--all`, map the answer to the closest `allModels[]` entry, or fall back to the returned `recommendedModel`; only persist a model id returned by the script.
 
 **Model Script Response Shape:**
 
@@ -204,20 +215,39 @@ After the user answers:
   "ok": true,
   "saved": false,
   "persistedChoice": null,
-  "recommendedModel": "openai/gpt-5.2",
-  "models": [
+  "recommendedModel": "openai/gpt-5.5",
+  "pickerModels": [
     {
-      "model": "openai/gpt-5.2",
+      "model": "openai/gpt-5.5",
       "provider": "openai",
-      "modelID": "gpt-5.2",
-      "name": "GPT-5.2",
-      "subagentType": "vision-openai-gpt-5.2",
+      "modelID": "gpt-5.5",
+      "name": "GPT-5.5",
+      "subagentType": "vision-openai-gpt-5.5",
       "supportsImage": true,
+      "supportsTextOutput": true,
       "recommended": true,
-      "pickerLabel": "openai/gpt-5.2",
-      "pickerDescription": "GPT-5.2 - image (Recommended)"
+      "savedChoice": false,
+      "pickerLabel": "openai/gpt-5.5",
+      "pickerDescription": "GPT-5.5 - image (Recommended)"
     }
   ],
+  "models": [
+    {
+      "model": "openai/gpt-5.5",
+      "provider": "openai",
+      "modelID": "gpt-5.5",
+      "name": "GPT-5.5",
+      "subagentType": "vision-openai-gpt-5.5",
+      "supportsImage": true,
+      "supportsTextOutput": true,
+      "recommended": true,
+      "savedChoice": false,
+      "pickerLabel": "openai/gpt-5.5",
+      "pickerDescription": "GPT-5.5 - image (Recommended)"
+    }
+  ],
+  "modelCount": 42,
+  "pickerModelCount": 1,
   "choiceFile": "/Users/me/.config/opencode/vision-model-image.txt",
   "configuredProviders": ["openai"],
   "providerSelection": {
