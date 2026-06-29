@@ -1,38 +1,38 @@
-# vision — Visual Judgment Skill for opencode
+# vision - Dynamic Visual Response Skill for opencode
 
-A typed visual-judgment contract for text-only orchestrators (GLM 5.2).
-The orchestrator captures a screenshot via a browser/computer-use MCP,
-extracts the visual-judgment intent, assembles a versioned request JSON,
-delegates to a vision subagent, and parses a typed report.
+A prompt-authored visual response contract for text-only orchestrators
+(GLM 5.2, DeepSeek, and similar models). The orchestrator captures or
+receives an image, extracts the visual intent, writes a task-specific JSON
+response template directly in the spawning prompt, delegates to a vision
+subagent, and parses the returned JSON.
 
 ## What it gives you
 
-- **10 vision subagents** registered programmatically at init — one per
+- **10 vision subagents** registered programmatically at init - one per
   top-tier vision model across OpenAI, Kimi for Coding, Ollama Cloud, and
   opencode-go.
-- **User-dropped image interception** — an
+- **User-dropped image interception** - an
   `experimental.chat.messages.transform` hook catches images dropped into
   the chat, saves them to `/tmp/vision-<session>-<part>.png`, and replaces
   the image `FilePart` with a `TextPart` carrying the path. This gives the
   orchestrator a stable file path to hand to a vision subagent. See
-  [Source D in SKILL.md](./SKILL.md#source-d--image-attached-to-a-user-message-dropped-into-the-chat).
-- **A stable typed contract** — two versioned JSON Schemas
-  (`visual-judgment-request.v1` / `visual-judgment-report.v1`) replace the
-  old "design your own schema" free-for-all.
-- **Per-session model selection** — the skill asks the user once which
-  vision model to use, then reuses it for the rest of the session.
-- **10 judgment types** — `presence`, `absence`, `alignment`, `ordering`,
-  `equality`, `layout`, `readability`, `state`, `diff`, `describe`.
-- **MCP integration** — works with chrome-devtools, Playwright, and
+  [Source D in SKILL.md](./SKILL.md#source-d---image-attached-to-a-user-message).
+- **Dynamic response templates** - each visual task includes the exact
+  JSON object shape the subagent should return. There are no fixed
+  request/report schema files.
+- **Script-backed model selection** - `scripts/vision-models.mjs`
+  exposes the currently registered models, matching `vision-*` subagents,
+  recommended default, and persisted user choice.
+- **MCP integration** - works with chrome-devtools, Playwright, and
   cua-driver screenshots. Uses the a11y/AX tree when it answers the
   question; delegates to a vision subagent only when pixels matter.
 
 ## Install
 
-Two parts: the plugin (registers subagents) and the skill (the SKILL.md the
-agent sees). Both are one-line commands.
+Two parts: the plugin (registers subagents) and the skill (`SKILL.md`).
+Both are one-line commands.
 
-### 1. Install the plugin (subagent registration)
+### 1. Install the plugin
 
 Add to your `~/.config/opencode/opencode.json`:
 
@@ -45,10 +45,11 @@ Add to your `~/.config/opencode/opencode.json`:
 }
 ```
 
-opencode auto-installs the npm package via Bun on next launch. The plugin's
-`config(cfg)` hook registers 10 `vision-*` subagents programmatically.
+opencode auto-installs the npm package via Bun on next launch. The
+plugin's `config(cfg)` hook registers 10 `vision-*` subagents
+programmatically.
 
-### 2. Install the skill (SKILL.md discovery)
+### 2. Install the skill
 
 ```bash
 npx skills add WeZZard/skills -a opencode -g --skill vision
@@ -56,13 +57,13 @@ npx skills add WeZZard/skills -a opencode -g --skill vision
 
 This uses the [open agent skills CLI](https://github.com/vercel-labs/skills)
 to fetch `SKILL.md` from this repo and drop it into
-`~/.agents/skills/vision/SKILL.md` — a directory opencode scans by default
+`~/.agents/skills/vision/SKILL.md`, a directory opencode scans by default
 (along with `~/.config/opencode/skills/`). No `skills.paths` config entry
-needed.
+is needed.
 
-The old `~/.config/opencode/agents/visual-judge.md` subagent is removed —
-this plugin replaces it with 10 typed `vision-*` subagents. Delete the old
-file if present:
+The old `~/.config/opencode/agents/visual-judge.md` subagent is removed;
+this plugin replaces it with 10 `vision-*` subagents. Delete the old file
+if present:
 
 ```bash
 rm -f ~/.config/opencode/agents/visual-judge.md
@@ -70,14 +71,12 @@ rm -f ~/.config/opencode/agents/visual-judge.md
 
 Restart opencode for both changes to take effect.
 
-> **Why two steps?** opencode's plugin loader resolves the npm package to its
-> `dist/index.js` entrypoint and runs the `config(cfg)` hook that registers
-> the 10 subagents. But opencode's *skill* loader scans filesystem directories
-> for `SKILL.md` — it does not look inside npm packages automatically. The
-> `npx skills` command bridges this gap by placing `SKILL.md` where opencode's
-> default skill scan finds it. This is a workaround for opencode bug #33896
-> (plugin-registered skills not discoverable); it will be withdrawn once the
-> upstream fix (PR #33918) ships.
+> **Why two steps?** opencode's plugin loader resolves the npm package to
+> its `dist/index.js` entrypoint and runs the `config(cfg)` hook that
+> registers the 10 subagents. But opencode's skill loader scans filesystem
+> directories for `SKILL.md`; it does not look inside npm packages
+> automatically. The `npx skills` command bridges this gap by placing
+> `SKILL.md` where opencode's default skill scan finds it.
 
 ## Verify
 
@@ -88,20 +87,14 @@ opencode debug agent vision-openai-gpt-5.5
 Should show the registered subagent with `model: openai/gpt-5.5`,
 `mode: subagent`.
 
-To list all 10:
+For the full available model list, run:
 
 ```bash
-opencode debug agent vision-openai-gpt-5.5
-opencode debug agent vision-kimi-for-coding-k2p7
-opencode debug agent vision-ollama-cloud-gemini-3-flash-preview
-opencode debug agent vision-ollama-cloud-gemma4-31b
-opencode debug agent vision-ollama-cloud-minimax-m3
-opencode debug agent vision-ollama-cloud-qwen3.5-397b
-opencode debug agent vision-opencode-go-kimi-k2.7-code
-opencode debug agent vision-opencode-go-minimax-m3
-opencode debug agent vision-opencode-go-qwen3.7-plus
-opencode debug agent vision-opencode-go-mimo-v2.5
+node opencode/vision/scripts/vision-models.mjs
 ```
+
+The script reads `vision-models.json` and returns each provider/model id
+with its matching `vision-*` subagent.
 
 ## Smoke test
 
@@ -110,58 +103,57 @@ Ask the orchestrator something visual:
 > Visually verify the screenshot at /tmp/foo.png shows a centered button.
 
 The orchestrator should:
-1. Detect the visual-judgment intent.
-2. Ask you (once) which vision model to use.
-3. Assemble a `visual-judgment-request.v1` JSON with `judgment.type:
-   alignment`.
+
+1. Detect the visual intent.
+2. Run the model discovery script, then reuse the persisted choice or ask
+   you to choose from the returned model list.
+3. Build a visual task prompt that lists `/tmp/foo.png` under
+   `Images to inspect` and includes a centered-button JSON response
+   template.
 4. Delegate to the chosen `vision-*` subagent.
-5. Parse the report and tell you pass/fail with the button's position.
+5. Parse the returned JSON and tell you the answer with visual evidence.
 
 ### Dropped-image smoke test
 
-Drop an image file into the opencode chat (e.g. drag a PNG onto the
-input), then send any message (or no message at all).
+Drop an image file into the opencode chat (for example, drag a PNG onto
+the input), then send any message.
 
 The vision plugin's `experimental.chat.messages.transform` hook should:
+
 1. Save the dropped image to `/tmp/vision-<sessionID>-<partID>.png`.
 2. Replace the image `FilePart` with a `TextPart` containing a
    `[vision:dropped-image]` marker and the `/tmp` path.
 
 The orchestrator should then:
-3. Detect the Source D trigger (marker present).
-4. Classify the user's intent — defaulting to `judgment.type: "describe"`
+
+3. Detect the Source D trigger.
+4. Extract the user's visual intent, defaulting to a concise description
    when no specific visual criterion was given.
-5. Ask you (once) which vision model to use — or reuse the prior session
-   choice.
-6. Delegate to a `vision-*` subagent with the `/tmp` path.
-7. Relay the subagent's `observations[]` back to you.
+5. Run the model discovery script, then reuse the persisted choice or ask
+   you to choose from the returned model list.
+6. Delegate to a `vision-*` subagent with a task-specific response
+   template.
+7. Relay the returned JSON fields and evidence back to you.
 
-To verify the plugin is loaded, run
-`opencode debug agent vision-openai-gpt-5.5` — it should show the
-registered subagent. If the subagent is missing, confirm the plugin is in
-`opencode.json`'s `plugin` array and restart opencode.
+## File layout
 
-## File layout (source)
-
-```
+```text
 opencode/vision/                  # this sub-package, published as opencode-vision
   package.json                    # npm package metadata; main -> dist/index.js
-  plugin.ts                        # source: registers 10 vision-* subagents via config(cfg)
-  dist/                            # built on prepublishOnly (gitignored)
-    index.js                       # built bundle — the package entrypoint
-  vision-models.json              # 10-entry manifest (one top-tier per provider × family)
-  subagent-body.md                 # shared subagent prompt template
-  SKILL.md                         # intent-capture protocol + per-session question + MCP integration
-  schemas/
-    visual-judgment-request.v1.json
-    visual-judgment-report.v1.json
-  README.md                        # this file
+  plugin.ts                       # source: registers 10 vision-* subagents via config(cfg)
+  dist/                           # built on prepublishOnly (gitignored)
+    index.js                      # built bundle - package entrypoint
+  scripts/
+    vision-models.mjs             # model discovery + choice persistence
+  vision-models.json              # 10-entry manifest
+  subagent-body.md                # shared subagent prompt template
+  SKILL.md                        # intent-capture protocol + response-template workflow
+  README.md                       # this file
 
-skills/vision/SKILL.md             # symlink → ../../opencode/vision/SKILL.md
-                                   # lets npx skills discover and install the skill
+skills/vision/SKILL.md            # copied from opencode/vision/SKILL.md for skill discovery
 ```
 
-## Build & publish (maintainers)
+## Build & publish
 
 ```bash
 cd opencode/vision
@@ -170,12 +162,12 @@ npm publish                       # runs prepublishOnly -> build -> publish
 ```
 
 The `files` field in `package.json` controls what ships: `dist/`,
-`SKILL.md`, `schemas/`, `subagent-body.md`, `vision-models.json`,
+`SKILL.md`, `scripts/`, `subagent-body.md`, `vision-models.json`, and
 `README.md`. No source `.ts` or `node_modules` leak.
 
 ## Catalog (10 models, 4 providers)
 
-Curation rule: one top-tier model per provider × vendor family; drop
+Curation rule: one top-tier model per provider and vendor family; drop
 non-reasoning, drop superseded within a provider, drop coding-specialized,
 drop Pro/billing variants of the same family; keep cross-provider
 duplicates.
@@ -189,23 +181,80 @@ duplicates.
 | ollama-cloud | minimax-m3 | MiniMax |
 | ollama-cloud | qwen3.5:397b | Qwen 3.5 |
 | opencode-go | kimi-k2.7-code | Kimi K2.7 (cross-provider route) |
-| opencode-go | minimax-m3 | MiniMax (cross-provider route) |
+| opencode-go | minimax-m3 | MiniMax |
 | opencode-go | qwen3.7-plus | Qwen 3.7 |
 | opencode-go | mimo-v2.5 | MiMo |
 
-To add a model: add one line to `vision-models.json` and restart opencode.
-The plugin re-reads the manifest at init.
+To add a model: add one line to `vision-models.json` and restart
+opencode. The plugin re-reads the manifest at init, registers the
+matching subagent, and exposes the entry through the model discovery
+script.
 
-## Schemas
+## Model discovery script
 
-Published via GitHub raw URLs (branch `main`):
+The plugin ships `scripts/vision-models.mjs`. Run it with no arguments to
+list the current manifest-backed model set:
 
-- Request: `https://raw.githubusercontent.com/WeZZard/skills/main/opencode/vision/schemas/visual-judgment-request.v1.json`
-- Report: `https://raw.githubusercontent.com/WeZZard/skills/main/opencode/vision/schemas/visual-judgment-report.v1.json`
+```json
+{
+  "ok": true,
+  "saved": false,
+  "persistedChoice": null,
+  "recommendedModel": "openai/gpt-5.5",
+  "models": [
+    {
+      "model": "openai/gpt-5.5",
+      "provider": "openai",
+      "modelID": "gpt-5.5",
+      "name": "GPT-5.5",
+      "subagentType": "vision-openai-gpt-5.5",
+      "recommended": true,
+      "pickerLabel": "openai/gpt-5.5",
+      "pickerDescription": "GPT-5.5 (Recommended)"
+    }
+  ]
+}
+```
 
-The files also live in this repo under `opencode/vision/schemas/` for
-editing. The URL is the canonical `$id`/`$schema` reference used by the
-SKILL.md and subagent body.
+After the user chooses, run the script with `--select "<provider/model>"`
+to persist the selection to `~/.config/opencode/vision-model.txt`:
+
+```bash
+node opencode/vision/scripts/vision-models.mjs --select openai/gpt-5.5
+```
+
+## Dynamic response templates
+
+The visual response contract is carried in the spawning prompt. A typical
+prompt includes:
+
+```md
+Visual task:
+Determine whether the primary Submit button is horizontally centered.
+
+Images to inspect:
+- current: /tmp/foo.png - screenshot under test
+
+Response template:
+Return exactly one JSON object shaped like this:
+{
+  "buttonFound": true,
+  "isHorizontallyCentered": true,
+  "centerOffsetPx": 0,
+  "evidence": "short visual evidence",
+  "uncertainty": null,
+  "confidence": 0.0
+}
+
+Response rules:
+- Use only the listed images.
+- Match the response template exactly; no markdown, prose wrapper, or extra keys.
+- Include evidence from the image for every conclusion.
+- Use null when a requested measurement or fact cannot be determined.
+```
+
+The orchestrator should design a fresh response template for each visual
+task instead of relying on a fixed global schema.
 
 ## Withdraw the skill workaround
 
@@ -219,5 +268,6 @@ becomes redundant:
 npx skills remove vision -a opencode -g
 ```
 
-The plugin will then handle both subagent registration and skill discovery,
-making the install a single `"plugin": ["opencode-vision"]` line.
+The plugin will then handle both subagent registration and skill
+discovery, making the install a single `"plugin": ["opencode-vision"]`
+line.

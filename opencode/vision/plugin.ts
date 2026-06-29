@@ -23,6 +23,14 @@ const manifest = JSON.parse(
 )
 const bodyTpl = readFileSync(join(dataDir, "subagent-body.md"), "utf8")
 
+type VisionModelEntry = {
+  provider: string
+  model_id: string
+  name: string
+}
+
+const models = manifest.models as VisionModelEntry[]
+
 // Vision-capable orchestrator models — derived from the manifest. If the
 // configured default orchestrator model (cfg.model) is itself vision-capable,
 // the vision-* subagents are pointless (the orchestrator can see images
@@ -30,26 +38,23 @@ const bodyTpl = readFileSync(join(dataDir, "subagent-body.md"), "utf8")
 // checks the configured default at startup; mid-session /model switches are
 // handled by the skill's self-gate note ("When NOT to invoke").
 const VISION_CAPABLE_ORCHESTRATORS = new Set(
-  (manifest.models as Array<{ provider: string; model_id: string }>).map(
-    (m) => `${m.provider}/${m.model_id}`
-  )
+  models.map((m) => `${m.provider}/${m.model_id}`)
 )
 
-// Known `preferredModel` values — used to validate a persisted choice so
+// Known vision model values — used to validate a persisted choice so
 // a stale or corrupt vision-model.txt is ignored instead of injecting
 // garbage into the system prompt.
 const KNOWN_MODEL_IDS = new Set(
-  (manifest.models as Array<{ provider: string; model_id: string }>).map(
-    (m) => `${m.provider}/${m.model_id}`
-  )
+  models.map((m) => `${m.provider}/${m.model_id}`)
 )
 
 // Where the chosen vision model is persisted across sessions. The file
-// holds a single line: the `preferredModel` string (e.g.
-// "openai/gpt-5.5"). The plugin reads it at startup and injects it into
-// the system prompt via experimental.chat.system.transform; the skill
-// writes it after the user answers the model-selection question.
+// holds a single line: the model id string (e.g. "openai/gpt-5.5"). The
+// plugin reads it at startup and injects it into the system prompt via
+// experimental.chat.system.transform. scripts/vision-models.mjs writes it
+// after the user answers the model-selection question.
 const VISION_MODEL_FILE = join(homedir(), ".config", "opencode", "vision-model.txt")
+const VISION_MODELS_SCRIPT = join(dataDir, "scripts", "vision-models.mjs")
 
 const PERMISSION = {
   edit: "deny",
@@ -63,16 +68,23 @@ const PERMISSION = {
   },
 }
 
-function subagentName(entry: {
-  provider: string
-  model_id: string
-}): string {
+function subagentName(entry: Pick<VisionModelEntry, "provider" | "model_id">): string {
   return (
     "vision-" +
     entry.provider +
     "-" +
     entry.model_id.replace(/[/:]/g, "-")
   )
+}
+
+function readPersistedChoice(): string | undefined {
+  try {
+    if (!existsSync(VISION_MODEL_FILE)) return
+    const raw = readFileSync(VISION_MODEL_FILE, "utf8").trim()
+    if (raw && KNOWN_MODEL_IDS.has(raw)) return raw
+  } catch {
+    return
+  }
 }
 
 // Save an image FilePart's bytes to /tmp and return the file path.
@@ -130,11 +142,11 @@ const plugin: Plugin = async () => ({
       return
     }
     cfg.agent ??= {}
-    for (const e of manifest.models) {
+    for (const e of models) {
       const name = subagentName(e)
       cfg.agent[name] ??= {}
       Object.assign(cfg.agent[name], {
-        description: `Visual judgment subagent (${e.name}). Consumes a visual-judgment-request.v1 JSON, analyzes images, emits a visual-judgment-report.v1 JSON. Not coupled to any screenshot tool or UI framework - works with any locally stored image.`,
+        description: `Visual judgment subagent (${e.name}). Consumes a prompt-authored visual task with image paths and a task-specific JSON response template. Not coupled to any screenshot tool or UI framework - works with any locally stored image.`,
         mode: "subagent",
         model: `${e.provider}/${e.model_id}`,
         temperature: 0.1,
@@ -175,33 +187,28 @@ const plugin: Plugin = async () => ({
         ;(part as any).text =
           `[vision:dropped-image] An image was attached to this message ` +
           `and saved to ${path} (original filename: ${filename}). ` +
-          `Use this path as images[].path in a visual-judgment-request.v1 ` +
-          `and delegate to a vision-* subagent.`
+          `If the user's request involves visual judgment, list this path ` +
+          `under "Images to inspect" in a vision subagent prompt.`
         ;(part as any).synthetic = true
       }
     }
   },
 
-  // Persist the user's vision-model choice across sessions. At startup
-  // (and on each system-prompt build), read ~/.config/opencode/vision-model.txt
-  // and, if it holds a known model id, append a one-line note to the system
-  // prompt so the orchestrator reuses it without re-asking. The skill writes
-  // the file after the user answers the model-selection question (Step 4).
+  // Persisted model choice is still read by the plugin so the orchestrator
+  // can avoid re-asking. Model listing and persistence changes are handled
+  // by scripts/vision-models.mjs, not a plugin-injected tool.
   "experimental.chat.system.transform": async (_input, output) => {
-    let choice: string | undefined
-    try {
-      if (existsSync(VISION_MODEL_FILE)) {
-        const raw = readFileSync(VISION_MODEL_FILE, "utf8").trim()
-        if (raw && KNOWN_MODEL_IDS.has(raw)) choice = raw
-      }
-    } catch {
-      // Read failure → no persisted choice; the skill will ask.
-    }
+    output.system.push(
+      `[vision:model-script] Query available vision models with: node ${VISION_MODELS_SCRIPT}. ` +
+        `Persist a choice with: node ${VISION_MODELS_SCRIPT} --select <provider/model>. ` +
+        `Do not use a hardcoded model picker list.`,
+    )
+    const choice = readPersistedChoice()
     if (choice) {
       output.system.push(
         `[vision:model-choice] The user previously selected ${choice} for visual judgments. ` +
           `Reuse this model for all vision-* delegations this session without asking. ` +
-          `To use a different model, write the new choice to ${VISION_MODEL_FILE} and delegate to the matching vision-* subagent.`,
+          `To use a different model, run the vision model script with --select <provider/model> and delegate to the matching vision-* subagent.`,
       )
     }
   },

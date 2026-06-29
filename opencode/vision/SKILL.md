@@ -1,546 +1,310 @@
 ---
 name: vision
 description: >-
-  Use when a tool result contains an image attachment the current model
-  cannot see (attachments[].mime = "image/png",
-  url = "data:image/png;base64,...") OR the user drops an image into the
-  chat (the vision plugin materializes it as a /tmp/vision-*.png path
-  marked "[vision:dropped-image]") OR the user asks to visually
-  verify/check rendered content ("visually verify", "screenshot shows",
-  "centered/visible/hidden", "looks right", "matches the design").
+  You **MUST** use the vision skill when when the your model is text-only (e.g.
+  glm-5.2, deepseek-v4-pro) AND:
+  (1) the user's message contains images;
+  (2) OR the user's message contains URLs or paths to images;
+  (3) OR the user asks to visually verify/check rendered content ("visually
+  verify", "screenshot shows", "centered/visible/hidden", "looks right",
+  "matches the design");
+  (5) OR a tool result contains an image attachment the current model cannot
+  see (attachments[].mime = "image/png", url = "data:image/png;base64,...");
+  (4) OR you think it is necessary to READ any visual contents;
   Triggers on screenshots from chrome-devtools_take_screenshot,
   playwright_browser_take_screenshot,
-  cua-driver_get_window_state/zoom/take_screenshot. Routes image bytes
-  to a vision-* subagent when the orchestrator's model is text-only
-  (e.g. glm-5.2, deepseek-v4-pro) and cannot see images itself.
-  Classifies intent into a typed judgment (presence/absence/alignment/
-  ordering/equality/layout/readability/state/diff/describe), asks the
-  user once per session which vision model to use, assembles a versioned
-  request, delegates, parses the typed report. Image paths from
-  screenshot_out_file/filePath; inline-only images saved to /tmp via node
-  (avoids embedding image bytes in shell commands).
+  cua-driver_get_window_state/zoom/take_screenshot and cannot see images
+  itself. Extracts the visual intent from context, designs a prompt-local JSON
+  response template for that specific task, delegates, and parses the
+  returned JSON.
 ---
 
-# Vision — Visual Judgment Skill
+# Vision
 
-When a task requires visual verification and the orchestrator's model
-cannot see images, this skill routes image bytes to a vision subagent
-that returns a typed report. The extraction pipeline is:
-**Detect → Classify → Assemble → Pick model → Delegate → Parse**.
+Delegates visual tasks to subagents with a vision-capable model.
 
 ## When NOT to invoke this skill
 
-If the orchestrator's model is itself vision-capable (e.g. you are
-running on `kimi-for-coding/k2p7`, `openai/gpt-5.5`,
-`ollama-cloud/gemini-3-flash-preview`, `opencode-go/qwen3.7-plus`, etc. —
-the same models listed in Step 4's mapping table), do NOT delegate to a
-vision subagent. Analyze the image attachment directly — you can see it.
-This skill is only for orchestrators whose model cannot see images
-(e.g. `ollama-cloud/glm-5.2`, `deepseek/deepseek-v4-pro`).
-
-## Why this skill exists
-
-Tool results in opencode can carry image attachments (`attachments[]`
-with `mime: "image/*"` and `url: "data:image/...;base64,..."`). A model
-trained without multimodal support sees the text part of these results
-but the image bytes are invisible to it. This skill recognizes when such
-an attachment is present and routes it to a vision subagent that can see
-it, giving you a stable typed contract for the exchange.
-
-## The two schemas
-
-- **Request** (what you emit, passed as the `task` prompt):
-  https://raw.githubusercontent.com/WeZZard/skills/main/opencode/vision/schemas/visual-judgment-request.v1.json
-- **Report** (what the subagent returns):
-  https://raw.githubusercontent.com/WeZZard/skills/main/opencode/vision/schemas/visual-judgment-report.v1.json
+You **MUST NOT** delegate to a vision subagent if the model is vision-capable.
 
 ## Step 1. Detect
 
-Visual-judgment intent arrives from four sources. Recognize all four.
+Visual intent arrives from four sources. Recognize all four.
 
-### Source A — explicit visual-judgment language in a user prompt
+**Source A - explicit visual language in a user prompt:**
 
-Trigger lexicon (any of these suggests visual judgment):
+Trigger lexicon:
+
+<EXPLICIT_VISUAL_LANGUAGE_EXAMPLES>
+
 - "visually verify", "visually check", "screenshot shows"
 - "looks right", "looks wrong", "looks broken"
 - "centered", "aligned", "overlapping", "misaligned"
 - "visible", "hidden", "not showing"
 - "readable", "legible", "too small", "low contrast"
-- "on" / "off" / "checked" / "disabled" (for a control's visual state)
+- "on" / "off" / "checked" / "disabled" for a visual control state
 - "matches the design", "matches the mockup"
-- acceptance criteria mentioning on-screen state
-- a user-provided image path (e.g. `/tmp/foo.png`)
+- acceptance criteria mentioning on-screen visual state
+- a user-provided image path, e.g. `/tmp/foo.png`
 
-If the user's request contains image-attachment references or a path to a
-screenshot/screenshot file, that is also a trigger.
+</EXPLICIT_VISUAL_LANGUAGE_EXAMPLES>
 
-### Source B — a gap between an MCP task output and a visual criterion
+If the user's request contains image-attachment references or a path to a screenshot file, that is also a trigger.
 
-A `browser-use-*` or `computer-use-cua` subagent returned a screenshot
-path plus a text description of what is on screen. But the user's
-criterion is visual (positional, color, readability, layout) and the text
-description cannot fully prove it. You recognize the gap and extract a
-visual-judgment intent from the combination of user criterion + MCP output.
+**Source B - a gap between text output and a visual criterion:**
 
-**Example**: user says "log into the app and check the dashboard looks
-right." You spawn `browser-use-chrome-devtools` to navigate + screenshot.
-It returns `/tmp/dashboard.png` + "sidebar with nav items, bar chart,
-welcome header." The text describes structure, but "looks right" is a
-visual layout quality the text can't fully prove → you detect a
-visual-judgment need.
+A browser or computer-use tool may return a screenshot path plus a text description of the screen. If the user's criterion is positional, color, readability, layout, or visual comparison, the text description cannot fully prove it. Extract the visual intent from the user criterion plus the tool output and delegate.
 
-### Source C — image attachment in a tool result
+Example: the user says "check the dashboard looks right." A browser subagent returns `/tmp/dashboard.png` and "sidebar, chart, welcome header." The text describes structure, but "looks right" is a visual layout question, so delegate with a response template tailored to layout problems and evidence.
 
-When any tool result in the transcript contains an `attachments[]` entry
-with `mime` starting `image/`, that is an image the orchestrator cannot
-see. This is a trigger regardless of whether the user explicitly asked for
-visual verification — the image's mere presence means a visual judgment
-*could* be needed. Recognize these patterns:
+**Source C - image attachment in a tool result:**
+
+When a tool result contains an `attachments[]` entry with `mime` starting `image/`, that image may be useful. Auto-invoke only when the user's current task has a visual component. If the task has no visual component, do nothing; note the image is available if needed later.
+
+<TOOL_RESULTS_IMAGE_ATTACHMENT_EXAMPLES>
 
 | Tool | Signal in result | File path available? |
-|---|---|---|
-| `chrome-devtools_take_screenshot` | `attachments[].mime = image/png` | Yes, if `filePath` was passed to the tool |
-| `playwright_browser_take_screenshot` | `attachments[].mime = image/png` | Yes, if `filename` was passed (saved to output dir) |
-| `cua-driver_get_window_state` | `screenshot` field (base64) + `screenshot_file_path` if `screenshot_out_file` was passed | Yes if `screenshot_out_file` set |
-| `cua-driver_zoom` | Cropped JPEG returned inline | **No** — inline only, must be saved to disk first (see 3f) |
-| `cua-driver_take_screenshot` | `attachments[].mime = image/png` | Yes if `filePath` set |
+| ---- | ---------------- | -------------------- |
+| `chrome-devtools_take_screenshot` | `attachments[].mime = image/png` | Yes, if `filePath` was passed |
+| `playwright_browser_take_screenshot` | `attachments[].mime = image/png` | Yes, if `filename` was passed |
+| `cua-driver_get_window_state` | `screenshot` base64 plus `screenshot_file_path` if requested | Yes, if `screenshot_out_file` was passed |
+| `cua-driver_zoom` | Cropped JPEG returned inline | No - save to disk first |
+| `cua-driver_take_screenshot` | `attachments[].mime = image/png` | Yes, if `filePath` was passed |
 
-**Gating rule**: auto-invoke only when the user's current task has a
-visual component (layout, alignment, presence, state, readability — see
-Step 2). If the task has no visual component, do nothing; note the image
-is available if needed later.
+</TOOL_RESULTS_IMAGE_ATTACHMENT_EXAMPLES>
 
-### Source D — image attached to a user message (dropped into the chat)
+**Source D - image attached to a user message:**
 
-When the user drops an image into the chat, the vision plugin's
-`experimental.chat.messages.transform` hook materializes it as a file on
-disk and surfaces the path to the orchestrator. For every `FilePart`
-with `type: "file"` and `mime: "image/*"` on a user message, the hook:
+When the user drops an image into the chat, the vision plugin's `experimental.chat.messages.transform` hook materializes it as a file on disk and surfaces the path to the orchestrator. For every user-message `FilePart` with `type: "file"` and `mime: "image/*"`, the hook:
 
-1. Saves the bytes to `/tmp/vision-<sessionID>-<partID>.<ext>` via
-   `writeFileSync` (data URLs) or `copyFileSync` (file paths). Image
-   bytes never touch the shell.
-2. Replaces the `FilePart` in place with a `TextPart` whose `text` is:
+1. Saves the bytes to `/tmp/vision-<sessionID>-<partID>.<ext>` via `writeFileSync` (data URLs) or `copyFileSync` (file paths). Image bytes never touch the shell.
+2. Replaces the `FilePart` with text like:
 
-   ```
-   [vision:dropped-image] An image was attached to this message and
-   saved to /tmp/vision-...png (original filename: ...). If the user's
-   request involves visual judgment, use this path as images[].path in
-   a visual-judgment-request.v1 and delegate to a vision-* subagent.
+   ```text
+   [vision:dropped-image] An image was attached to this message and saved to /tmp/vision-...png (original filename: ...). If the user's request involves visual judgment, list this path under "Images to inspect" in a vision subagent prompt.
    ```
 
-When you (the orchestrator) see a turn containing the marker
-`[vision:dropped-image]`, a `/tmp/vision-*.png` path is materialized for
-you. Treat it exactly like a Source A user-provided image path: extract
-the path, classify the user's intent, assemble a
-`visual-judgment-request.v1` with that path in `images[].path`, and
-delegate to a `vision-*` subagent.
+When you see `[vision:dropped-image]`, extract the `/tmp/vision-*.png` path from the same turn.
+If the user gave no visual criterion beyond the image itself, ask for a concise description of the visible screen or object using a response template that includes `summary`, `notableItems`, `uncertainItems`, and `evidence`.
 
-**Recognition pattern**:
-- Turn text contains `[vision:dropped-image]` → a dropped image was
-  saved to the path in the same text. Proceed to Step 2.
-- Classify like any other Source A trigger: if the user's accompanying
-  text names a specific visual criterion ("is the button centered?",
-  "does the layout match?"), use that `judgment.type`. If the user gave
-  no criterion beyond dropping the image, default
-  `judgment.type: "describe"` with
-  `focus: "overall layout and primary UI elements"`.
+## Step 2. Extract visual intent
 
-## Step 2. Classify
+Convert the current user request and image context into a direct visual
+task. Do not classify into a closed taxonomy. Capture:
 
-Map the NL task to one of the 10 closed `judgment.type` values. Each has
-typed `parameters`.
+- The exact visual question to answer.
+- Which image IDs are needed and why.
+- Whether the answer is a pass/fail check, a description, a comparison, a list of findings, a measurement, or a state read.
+- What evidence the orchestrator needs to cite back to the user.
+- What uncertainty or failure path is appropriate.
 
-| Type | When to use | Typed parameters |
-|---|---|---|
-| `presence` | Is X visible on screen? | `subject`, `expectation: present\|absent` |
-| `absence` | Is X NOT visible? (dual of presence) | `subject`, `expectation: absent` |
-| `alignment` | Is X centered / left-aligned / top along an axis? | `subject`, `axis`, `expectation`, `tolerance` |
-| `ordering` | Are items in expected left-to-right or top-to-bottom order? | `direction: ltr\|ttb`, `expected[]` |
-| `equality` | Do two images render the same thing? | `subjects[2]`, `threshold: exact\|perceptual` |
-| `layout` | Open-ended structural check (arrangement, spacing) | `expectations` (NL) |
-| `readability` | Is text legible? (contrast, size) | `subject` |
-| `state` | Is a control in a given state? (toggle, checkbox) | `subject`, `expectedState` |
-| `diff` | What changed between two screenshots? | `baseline`, `current` (image labels) |
-| `describe` | Open-ended description of what's on screen | `focus` |
+Before delegating, check whether the text tree already answers the question.
+Browser and desktop MCPs often return an accessibility/AX tree alongside the screenshot.
+Use that cheap text source first.
 
-Worked examples (one per type) are in the appendix at the bottom of this
-file. When in doubt, pick the most specific type that fits; fall back to
-`describe` if nothing fits.
+<VISUAL_INTENT_EXTRACTION_EXAMPLE>
 
-## Step 3. Assemble
+| Criterion | Source | Delegate to vision? |
+| --------- | ------ | ------------------- |
+| "Button exists" | a11y tree element present | No |
+| "Button is enabled/disabled" | a11y tree state | No |
+| "Button text says Submit" | a11y tree title/value | No |
+| "Button is centered" | Screenshot position | Yes |
+| "Text is readable" | Screenshot contrast/size | Yes |
+| "Toggle is blue" | Screenshot color | Yes |
+| "Layout matches design" | Screenshot structure | Yes |
+| "Two screenshots are visually different" | Screenshot pair | Yes |
 
-Construct the `visual-judgment-request.v1` JSON object.
+</VISUAL_INTENT_EXTRACTION_EXAMPLE>
 
-### 3a. Gather image paths
+## Step 3. Gather image paths
 
 Image paths come from:
 
+<IMAGE_PATHS_SOURCES>
+
 | Source | How to get the path |
-|---|---|
-| User-provided | Use the path the user gave (e.g. `/tmp/foo.png`). |
-| User-dropped image (Source D) | The vision plugin already saved the image to `/tmp/vision-<sessionID>-<partID>.<ext>` and injected the path into the turn text as a `[vision:dropped-image]` marker. Extract the path from that marker text — no file I/O needed. |
-| chrome-devtools MCP | `chrome-devtools_take_screenshot({ filePath: "/tmp/shot.png" })` — saves PNG to disk. |
-| Playwright MCP | `playwright_browser_take_screenshot({ filename: "shot.png" })` — saves to the configured output directory. |
-| cua-driver MCP | `cua-driver_get_window_state({ pid, window_id, screenshot_out_file: "/tmp/win.png" })` — saves window screenshot to disk. Also returns the AX tree as text. |
-| Browser-use subagent output | The subagent returns the path in its text response; extract it. |
+| ------ | ------------------- |
+| User-provided | Use the path the user gave, e.g. `/tmp/foo.png`. |
+| User-dropped image | Extract the `/tmp/vision-*.png` path from the `[vision:dropped-image]` marker. |
+| chrome-devtools MCP | Use `chrome-devtools_take_screenshot({ filePath: "/tmp/shot.png" })`. |
+| Playwright MCP | Use `playwright_browser_take_screenshot({ filename: "shot.png" })`. |
+| cua-driver MCP | Use `cua-driver_get_window_state({ pid, window_id, screenshot_out_file: "/tmp/win.png" })`. |
+| Browser-use subagent output | Extract the returned screenshot path from the subagent text. |
 
-For each image, assign a `label` (short, used in `observations[].imageLabel`)
-and a `role` (`baseline` = before/reference, `current` = the thing under
-test, `reference` = design target).
+</IMAGE_PATHS_SOURCES>
 
-### 3b. Dual-track: a11y tree vs. visual judgment
+You **MUST** assign each image a short contract ID such as `current`, `before`, `after`, `reference`, or `detail`. Use these IDs in the prompt and in the response template.
 
-Before delegating, check whether the text tree already answers the
-question. All three MCPs (chrome-devtools, Playwright, cua-driver) return
-an accessibility/AX tree alongside the screenshot. You can read that text
-directly — no vision call needed.
+**Inline-only Image Attachments:**
 
-| Criterion | Source | Delegate to vision? |
-|---|---|---|
-| "Button exists" | a11y tree (element present) | No |
-| "Button is enabled/disabled" | a11y tree (`AXEnabled`) | No |
-| "Button text says 'Submit'" | a11y tree (`AXTitle`/`AXValue`) | No |
-| "Button is centered" | Screenshot (positional) | **Yes** |
-| "Text is readable" | Screenshot (contrast/size) | **Yes** |
-| "Toggle is blue" | Screenshot (color) | **Yes** |
-| "Layout matches design" | Screenshot (structural) | **Yes** |
-| "Two screenshots are identical" | Screenshot pair | **Yes** |
+Some tool results return `attachments[].url = "data:image/...;base64,"` but no file path.
+The vision subagent needs a file path to read.
+Save the inline image to disk first.
 
-Use the cheap text source first. Only pay for a vision call when the text
-tree cannot answer.
+Prefer avoiding inline images altogether: when calling screenshot tools, pass the file-path option where available.
 
-### 3c. Fill typed parameters + NL criteria
+If you must handle an inline-only image, write the base64 payload to a file using Node via stdin or a temporary script.
+Do not embed the raw base64 payload in a shell command; screenshots may contain sensitive content that should not appear in shell history, transcripts, or logs.
 
-Fill `judgment.parameters` per the type (Step 2 table). If the typed
-parameters cannot fully express the nuance, add a free-form `criteria`
-string as a fallback for the subagent. Also set `responseContract` if you
-want something specific back beyond the fixed report envelope.
+## Step 4. Pick model when necessary
 
-### 3d. Edge case — MCP output has no screenshot path
+The user's vision-model choice is persisted in `~/.config/opencode/vision-model.txt` so it carries over to future sessions. At startup the vision plugin reads this file and, if it holds a known model id, appends a `[vision:model-choice]` line to the system prompt.
 
-If a browser-use subagent returned only text (no path) but a visual
-judgment is still needed, capture a screenshot yourself by driving the
-MCP directly (see 3a table), or re-task the subagent with explicit
-screenshot-save instructions.
+Before asking the user, check whether a model choice is already available:
 
-### 3e. Edge case — built-in computer-use MCP
+- If the system prompt contains a `[vision:model-choice]` line, use that model id and delegate to the matching `vision-*` subagent.
+- If the system prompt contains a `[vision:model-script]` line, extract the script command from it and run that command with no arguments. It returns the currently available vision models, their matching `vision-*` subagent names, the recommended model, and any persisted choice discovered at runtime.
+- If there is no `[vision:model-script]` line but you are working in this repository, run `node opencode/vision/scripts/vision-models.mjs` from the repository root.
+- If the script returns a non-null `persistedChoice`, use `persistedChoice.model` and `persistedChoice.subagentType` directly.
+- If no persisted choice exists, ask the user to choose from the `models[]` returned by the script. Do not use a hardcoded model list.
 
-The built-in Claude Code `computer-use` MCP returns screenshots as inline
-base64 images, not file paths. The vision subagent needs a file path to
-`read`. Prefer `cua-driver` for desktop visual judgments — it has
-`screenshot_out_file`.
+<MODEL_PICKER_EXAMPLE>
 
-### 3f. Inline-only image attachments (no file path)
-
-Some tool results return image attachments with
-`attachments[].url = "data:image/...;base64,..."` but **no file path** —
-e.g. `cua-driver_zoom` (inline-only, no path param), or
-`playwright_browser_take_screenshot` called without a `filename`. The
-vision subagent needs a file path to `read`. Save the inline image to
-disk first.
-
-**Note**: this section covers inline-only *tool-result* images. A
-user-dropped chat image is handled by the plugin's
-`experimental.chat.messages.transform` hook (see Source D), which
-materializes a `/tmp/vision-*.png` path as part of the turn text — so
-for Source D you do **not** need the save-to-disk step below; the path
-is already in the turn text.
-
-**Prefer avoiding inline images altogether**: when calling
-`cua-driver_get_window_state`, always pass `screenshot_out_file` so a
-file path is available directly. When calling
-`chrome-devtools_take_screenshot` or `playwright_browser_take_screenshot`,
-always pass `filePath` / `filename`. This avoids the inline-only case
-entirely and is the safest path.
-
-If you must handle an inline-only image, write the base64 payload to a
-file using `node -e` (which avoids passing the base64 through the shell
-command line — screenshots may contain sensitive data like tokens or
-credentials, and embedding raw image bytes in shell commands creates an
-exfiltration risk):
-
-```
-If a tool result has attachments[].url starting "data:image/...;base64,"
-but no file path:
-  1. Extract the base64 payload from the data URL (the part after
-     ";base64,").
-  2. Write it to /tmp/vision-<random>.png using node, which avoids
-     passing the base64 through the shell:
-       node -e "require('fs').writeFileSync('/tmp/vision-<random>.png',
-       Buffer.from('<base64>','base64'))"
-     Or write a small script to /tmp and run it, passing the base64 via
-     stdin to avoid it appearing in the command line.
-  3. Use that path in the request's images[].path.
+```sh
+node /path/to/opencode-vision/scripts/vision-models.mjs
 ```
 
-Do not embed the raw base64 payload in a shell command — screenshots
-may contain sensitive content (tokens, credentials) that should not
-appear in shell history, transcripts, or logs.
+Use the returned `models[]` to build the picker:
 
-## Step 4. Pick model (once per session, persisted across sessions)
-
-The user's vision-model choice is persisted in
-`~/.config/opencode/vision-model.txt` so it carries over to future
-sessions. At startup the vision plugin reads this file and, if it holds
-a known model id, appends a `[vision:model-choice]` line to the system
-prompt.
-
-**Before asking the user**, check the system prompt:
-
-- If the system prompt contains a `[vision:model-choice]` line, a
-  persisted choice is already active. Extract the model id from the line
-  (it appears right after "previously selected"), map it to its
-  `vision-*` subagent via the table below, and delegate directly. **Do
-  not ask the user again** — reuse the persisted choice for the rest of
-  the session.
-- If the system prompt has **no** `[vision:model-choice]` line (first
-  run, or the file was deleted/corrupt), call the `question` tool once:
-
-```
+```js
 question({
   questions: [{
     header: "Vision model",
     question: "I found several models that support vision tasks. Which model would you prefer for visual judgments this session?",
-    options: [
-      { label: "openai/gpt-5.5", description: "Highest accuracy (Recommended)" },
-      { label: "kimi-for-coding/k2p7", description: "Kimi K2.7 Code" },
-      { label: "ollama-cloud/gemini-3-flash-preview", description: "Gemini 3 Flash, 1M context" },
-      { label: "ollama-cloud/gemma4:31b", description: "Gemma 4 31B" },
-      { label: "ollama-cloud/minimax-m3", description: "MiniMax M3" },
-      { label: "ollama-cloud/qwen3.5:397b", description: "Qwen 3.5 397B" },
-      { label: "opencode-go/kimi-k2.7-code", description: "Kimi K2.7 Code via opencode-go" },
-      { label: "opencode-go/minimax-m3", description: "MiniMax M3 via opencode-go" },
-      { label: "opencode-go/qwen3.7-plus", description: "Qwen 3.7 Plus, 1M context" },
-      { label: "opencode-go/mimo-v2.5", description: "MiMo V2.5, 1M context" }
-    ]
+    options: available.models.map((model) => ({
+      label: model.pickerLabel,
+      description: model.pickerDescription
+    }))
   }]
 })
 ```
 
-The tool auto-adds an "Other" option (type your own). After the user
-answers:
+</MODEL_PICKER_EXAMPLE>
 
-- Map the answer to a `subagent_type` via the table below.
-- Remember the choice for the rest of the session. Do not ask again.
-  Reuse the chosen model for all subsequent visual judgments in this
-  session.
-- **Persist the choice** by writing the `preferredModel` string (e.g.
-  `openai/gpt-5.5`) to `~/.config/opencode/vision-model.txt` so the
-  next session picks it up automatically. Use a single `node -e` or
-  `write` call — the file holds one line, the model id:
-  ```
-  node -e "require('fs').writeFileSync(require('path').join(require('os').homedir(),'.config','opencode','vision-model.txt'),'openai/gpt-5.5')"
-  ```
-  Replace the model id with the user's actual choice. On the next
-  session start, the plugin reads this file and injects the choice into
-  the system prompt, so Step 4's "check the system prompt" branch fires
-  and the question is skipped.
-- If the user picks "Other" and types a model id, map it to the closest
-  matching `vision-*` subagent from the table, or fall back to
-  `vision-openai-gpt-5.5` if no match. Only persist the mapped
-  `preferredModel` (one of the known ids in the table), not the
-  free-form input — an unknown id would be ignored on next startup.
+After the user answers:
 
-### `preferredModel → subagent_type` mapping table
+- Find the matching entry in the script result and use its `subagentType`.
+- Remember the choice for the rest of the session.
+- Persist the mapped model id by running the script with `--select "<provider/model>"`.
+- If the user picks "Other", map it to the closest model returned by the script, or fall back to the returned `recommendedModel`; only persist a model id returned by the script.
 
+**Model Script Response Shape:**
+
+<MODEL_SCRIPT_RESPONSE_EXAMPLE>
+
+```json
+{
+  "ok": true,
+  "saved": false,
+  "persistedChoice": null,
+  "recommendedModel": "openai/gpt-5.5",
+  "models": [
+    {
+      "model": "openai/gpt-5.5",
+      "provider": "openai",
+      "modelID": "gpt-5.5",
+      "name": "GPT-5.5",
+      "subagentType": "vision-openai-gpt-5.5",
+      "recommended": true,
+      "pickerLabel": "openai/gpt-5.5",
+      "pickerDescription": "GPT-5.5 (Recommended)"
+    }
+  ]
+}
 ```
-openai/gpt-5.5                       -> vision-openai-gpt-5.5
-kimi-for-coding/k2p7                 -> vision-kimi-for-coding-k2p7
-ollama-cloud/gemini-3-flash-preview  -> vision-ollama-cloud-gemini-3-flash-preview
-ollama-cloud/gemma4:31b              -> vision-ollama-cloud-gemma4-31b
-ollama-cloud/minimax-m3              -> vision-ollama-cloud-minimax-m3
-ollama-cloud/qwen3.5:397b            -> vision-ollama-cloud-qwen3.5-397b
-opencode-go/kimi-k2.7-code           -> vision-opencode-go-kimi-k2.7-code
-opencode-go/minimax-m3               -> vision-opencode-go-minimax-m3
-opencode-go/qwen3.7-plus             -> vision-opencode-go-qwen3.7-plus
-opencode-go/mimo-v2.5                -> vision-opencode-go-mimo-v2.5
-```
+
+</MODEL_SCRIPT_RESPONSE_EXAMPLE>
 
 ## Step 5. Delegate
 
-Spawn the subagent with the assembled request JSON as the `prompt`:
+Spawn the chosen subagent with the full visual task prompt:
 
-```
+```js
 task({
   subagent_type: "<mapped subagent_type>",
-  description: "<short, e.g. 'Verify Submit button is centered'>",
-  prompt: <the full visual-judgment-request.v1 JSON object>
+  description: "<short visual task description>",
+  prompt: `<the spawning prompt>`
 })
 ```
+
+You **MUST** develop the spawning prompt per the following rules.
+
+You **MUST** use this spawning-prompt structure in the following template:
+
+<SPAWNING_PROMPT_TEMPLATE>
+
+````md
+## Visual Task
+
+<one or two sentences describing the exact visual question>
+
+## Images to Inspect
+
+- <image-id>: <local path> - <why this image is relevant>
+
+## Response Template
+
+Return exactly one JSON object shaped like this. Keep these keys exactly, replace placeholder values with observed values, and do not add keys:
+
+<RESPONSE_TEMPLATE>
+{
+  "...": "..."
+}
+</RESPONSE_TEMPLATE>
+
+## Response Rules
+
+- The response **MUST** use only the listed images.
+- The response **MUST** match the response template exactly; no markdown, prose wrapper, or extra keys.
+- The response **MUST** include evidence from the image for every conclusion.
+- The response **MUST** include an explicit uncertainty/failure path appropriate to this task.
+- The response **MUST** use null when a requested measurement or fact cannot be determined.
+````
+
+</SPAWNING_PROMPT_TEMPLATE>
+
+**Spawning Prompt Generation Principles:**
+
+- Each visual task **MUST** carries its own response shape inside the spawning prompt.
+- The spawning prompt shape **MUST** be just large enough to answer the current user request and should include its own uncertainty or failure fields.
+
+**Response-template Design Principles:**
+
+Build the smallest JSON object that lets you answer the user.
+Include the template directly in the subagent prompt.
+The subagent must replace placeholder values with observed values and must not add fields.
+
+Good templates usually include:
+
+- A task-specific conclusion field, e.g. `isCentered`, `layoutLooksOk`, `visible`, `matchesReference`, `changes`.
+- Evidence fields that quote or describe what is visible.
+- Measurements only when needed; use `null` if not determinable.
+- `confidence` from `0` to `1` when the user needs a judgment.
+- `uncertainty` or `limitations` when the task can fail partially.
+
+Avoid generic catch-all fields such as `observations` unless the user asked for an open-ended list.
+Avoid asking for pixel precision unless the screenshot context actually supports it.
+
+**MUST:**
+
+- You **MUST** generate the smallest JSON shape that answers the current task.
+- You **MUST** prefer booleans, enums, numbers, arrays, and nullable fields over vague prose when you may branch on the result.
+- You **MUST** always include enough visual evidence for the orchestrator to cite back to the user.
+- You **MUST** include uncertainty in the template, not as an afterthought.
+- You **MUST** use arrays with one representative item shape for repeated findings.
+- You **MUST** require per-image references and structured changes for comparisons.
+
+**MUST NOT:**
+
+- You **MUST NOT** directly reuse a generic fixed envelope shown in the **SPAWNING PROMPT TEMPLATE**.
 
 ## Step 6. Parse
 
-The subagent returns a `visual-judgment-report.v1` JSON object. Branch on
-`status` and `verdict`:
+The subagent **MUST** return one JSON object and nothing else.
+You **MUST** parse it and compare the returned keys to the response template you authored.
 
-- `status: "ok"` + `verdict: "pass"` → criterion met. Report success to
-  the user, citing `observations[]` as evidence.
-- `status: "ok"` + `verdict: "fail"` → criterion not met. Report failure,
-  citing the specific `observations[]` (e.g. "button is 42px right of
-  center"). Include `reasoning`.
-- `status: "ok"` + `verdict: "inconclusive"` → informational (for `diff`
-  and `describe`) or genuinely undeterminable. Surface `observations[]`
-  and `diff[]` directly to the user.
-- `status: "error"` → the subagent could not analyze the image(s). Check
-  `errors[]` (codes: `file_not_found`, `unsupported_format`,
-  `model_unavailable`). If `model_unavailable`, retry with a different
-  model from the mapping table, or re-ask the user.
-- `status: "insufficient-evidence"` → the subagent analyzed the image but
-  cannot reach a verdict. Report this honestly; do not pretend a verdict.
-
-Surface `observations[]` as citations so the user sees what the subagent
-actually saw. Include `confidence` in your report to the user.
-
-## Two integration patterns
-
-### Pattern 1 — Direct (simple "screenshot + judge")
-
-Use when the browser/desktop interaction is trivial (just navigate and
-look). You drive the MCP directly, capture one screenshot, delegate one
-judgment.
-
-```
-You: chrome-devtools_navigate_page({ url: "http://localhost:3000" })
-You: chrome-devtools_take_screenshot({ filePath: "/tmp/login.png" })
-You: [assemble request with /tmp/login.png]
-You: task({ subagent_type: "vision-openai-gpt-5.5", prompt: <request> })
-```
-
-### Pattern 2 — Two-phase (complex interaction, then judge)
-
-Use when interaction is non-trivial (navigate, click, fill, navigate
-again). You spawn a `browser-use-*` or `computer-use-cua` subagent to
-perform the interaction and capture a screenshot. It returns the path.
-You then delegate to a `vision-*` subagent.
-
-```
-You: task({
-  subagent_type: "browser-use-chrome-devtools",
-  prompt: "Navigate to /login, fill credentials, click Submit, wait for
-           dashboard, take a screenshot to /tmp/dashboard.png. Return
-           the file path and a brief text description."
-})
-  -> subagent returns: "/tmp/dashboard.png, sidebar + chart + header"
-You: [assemble request with /tmp/dashboard.png, judgment.type=layout]
-You: task({ subagent_type: "vision-openai-gpt-5.5", prompt: <request> })
-```
-
-Separation of concerns: the browser subagent knows how to drive; the
-vision subagent knows how to see.
-
----
-
-## Appendix — worked examples per judgment type
-
-### presence — "is X visible?"
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/WeZZard/skills/main/opencode/vision/schemas/visual-judgment-request.v1.json",
-  "id": "vj-001",
-  "preferredModel": "openai/gpt-5.5",
-  "images": [{ "path": "/tmp/login.png", "label": "login-screen", "role": "current" }],
-  "judgment": { "type": "presence", "parameters": { "subject": "Submit button", "expectation": "present" } },
-  "criteria": "A clickable button labeled 'Submit' or equivalent, within the login form area.",
-  "responseContract": "Return pass/fail and note the button's position if found."
-}
-```
-
-### absence — "is X NOT visible?"
-```json
-{
-  "id": "vj-002", "preferredModel": "openai/gpt-5.5",
-  "images": [{ "path": "/tmp/post-logout.png", "label": "home", "role": "current" }],
-  "judgment": { "type": "absence", "parameters": { "subject": "error banner", "expectation": "absent" } },
-  "criteria": "No red/error banner at the top of the page or anywhere on screen."
-}
-```
-
-### alignment — "is X centered on an axis?"
-```json
-{
-  "id": "vj-003", "preferredModel": "openai/gpt-5.5",
-  "images": [{ "path": "/tmp/header.png", "label": "header", "role": "current" }],
-  "judgment": { "type": "alignment", "parameters": { "subject": "logo", "axis": "horizontal", "expectation": "centered", "tolerance": "loose" } },
-  "criteria": "Logo should be roughly centered in the header band, allowing minor off-center within ~5%."
-}
-```
-
-### ordering — "are items in expected LTR/TTB order?"
-```json
-{
-  "id": "vj-004", "preferredModel": "openai/gpt-5.5",
-  "images": [{ "path": "/tmp/nav.png", "label": "navbar", "role": "current" }],
-  "judgment": { "type": "ordering", "parameters": { "direction": "ltr", "expected": ["Home", "Products", "About", "Contact"] } },
-  "criteria": "Items read left-to-right in the specified order."
-}
-```
-
-### equality — "do two images match?"
-```json
-{
-  "id": "vj-005", "preferredModel": "openai/gpt-5.5",
-  "images": [
-    { "path": "/tmp/chart-v1.png", "label": "v1", "role": "baseline" },
-    { "path": "/tmp/chart-v2.png", "label": "v2", "role": "current" }
-  ],
-  "judgment": { "type": "equality", "parameters": { "subjects": ["v1", "v2"], "threshold": "perceptual" } },
-  "criteria": "Minor pixel-level anti-aliasing differences are acceptable; structural differences are not."
-}
-```
-
-### layout — "does the structure match expectations?"
-```json
-{
-  "id": "vj-006", "preferredModel": "openai/gpt-5.5",
-  "images": [{ "path": "/tmp/form.png", "label": "signup-form", "role": "current" }],
-  "judgment": { "type": "layout", "parameters": { "expectations": "Fields stacked vertically; equal vertical gaps; labels above inputs." } },
-  "criteria": "Email, Password, Confirm Password fields in that top-to-bottom order."
-}
-```
-
-### readability — "is the text legible?"
-```json
-{
-  "id": "vj-007", "preferredModel": "openai/gpt-5.5",
-  "images": [{ "path": "/tmp/page.png", "label": "page", "role": "current" }],
-  "judgment": { "type": "readability", "parameters": { "subject": "footer text" } },
-  "criteria": "Footer text should be readable at normal viewing distance; not blurry, not too small, sufficient contrast."
-}
-```
-
-### state — "is the control in the expected state?"
-```json
-{
-  "id": "vj-008", "preferredModel": "openai/gpt-5.5",
-  "images": [{ "path": "/tmp/settings.png", "label": "settings-panel", "role": "current" }],
-  "judgment": { "type": "state", "parameters": { "subject": "notifications toggle", "expectedState": "on" } },
-  "criteria": "Toggle knob should be on the right side with the accent color (blue)."
-}
-```
-
-### diff — "what changed between two screenshots?"
-```json
-{
-  "id": "vj-009", "preferredModel": "openai/gpt-5.5",
-  "images": [
-    { "path": "/tmp/before.png", "label": "before", "role": "baseline" },
-    { "path": "/tmp/after.png", "label": "after", "role": "current" }
-  ],
-  "judgment": { "type": "diff", "parameters": { "baseline": "before", "current": "after" } },
-  "criteria": "Report all visual differences: added/removed/changed elements, color shifts, position changes."
-}
-```
-
-### describe — "what's on screen?"
-```json
-{
-  "id": "vj-010", "preferredModel": "openai/gpt-5.5",
-  "images": [{ "path": "/tmp/screenshot.png", "label": "screen", "role": "current" }],
-  "judgment": { "type": "describe", "parameters": { "focus": "overall layout and primary UI elements" } },
-  "criteria": "Capture: app type, main regions, primary actions, color scheme."
-}
-```
-
-For `diff` and `describe`, expect `verdict: "inconclusive"` — these are
-informational, not pass/fail. Use `diff[]` and `observations[]` directly.
+- You **MUST** retry once with the same subagent and include the invalid output plus the template if the JSON is malformed or contains extra/missing keys.
+- You **MUST** report that honestly and do not invent a stronger conclusion if the response uses uncertainty or failure fields.
+- You **MUST** cite the evidence fields when reporting back to the user.
+- You **MUST** include confidence only if your template requested it.
