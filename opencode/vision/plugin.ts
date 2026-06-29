@@ -1,5 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync, existsSync, writeFileSync, copyFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 
@@ -58,6 +58,50 @@ function subagentName(entry: {
   )
 }
 
+// Save an image FilePart's bytes to /tmp and return the file path.
+// FilePart.url may be a `data:image/...;base64,...` URL or an
+// absolute `file://`/path URL. We never pass image bytes through the
+// shell — writeFileSync only. The path is stable per (sessionID, partID)
+// so re-runs of the transform don't duplicate files.
+function saveImagePart(
+  url: string,
+  sessionID: string,
+  partID: string,
+  ext: string,
+): string {
+  const tmpDir = "/tmp"
+  const name = `vision-${sessionID}-${partID}.${ext}`
+  const out = join(tmpDir, name)
+  if (url.startsWith("data:")) {
+    const comma = url.indexOf(",")
+    const payload = comma >= 0 ? url.slice(comma + 1) : ""
+    writeFileSync(out, Buffer.from(payload, "base64"))
+  } else {
+    // file:// or plain path — copy so the orchestrator has a stable
+    // /tmp path even if the source is on a removable volume.
+    let src = url
+    if (url.startsWith("file://")) src = fileURLToPath(url)
+    try {
+      copyFileSync(src, out)
+    } catch {
+      // If copy fails (e.g. source already gone), fall back to writing
+      // an empty file so the path still exists; the vision subagent
+      // will report file_not_found / unsupported_format.
+      writeFileSync(out, "")
+    }
+  }
+  return out
+}
+
+// Map common image mime types to a file extension for the /tmp path.
+function mimeToExt(mime: string): string {
+  if (mime.includes("png")) return "png"
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg"
+  if (mime.includes("webp")) return "webp"
+  if (mime.includes("gif")) return "gif"
+  return "png"
+}
+
 const plugin: Plugin = async () => ({
   config: async (cfg) => {
     // Startup gate (B): if the configured default orchestrator model is
@@ -83,6 +127,41 @@ const plugin: Plugin = async () => ({
           .replaceAll("{{model_id}}", e.model_id),
         permission: PERMISSION,
       })
+    }
+  },
+
+  // Source D: materialize user-dropped chat images as /tmp paths.
+  // When a user attaches an image to a message, save the bytes to /tmp
+  // and replace the FilePart with a TextPart carrying the path plus a
+  // marker the SKILL.md Detect step recognizes. This gives the
+  // orchestrator a stable file path to hand to a vision-* subagent,
+  // turning a user-message image attachment into the same shape as
+  // Source A ("user-provided image path").
+  "experimental.chat.messages.transform": async (_input, output) => {
+    for (const m of output.messages) {
+      if (m.info.role !== "user") continue
+      for (const part of m.parts) {
+        if (part.type !== "file") continue
+        if (!part.mime || !part.mime.startsWith("image/")) continue
+        const ext = mimeToExt(part.mime)
+        const path = saveImagePart(
+          part.url,
+          m.info.sessionID,
+          part.id,
+          ext,
+        )
+        const filename = part.filename ?? path.split("/").pop() ?? "image"
+        // Mutate the part in place into a text part carrying the path.
+        // The SKILL.md Source D section tells the orchestrator to treat
+        // the path as a visual-judgment trigger.
+        ;(part as any).type = "text"
+        ;(part as any).text =
+          `[vision:dropped-image] An image was attached to this message ` +
+          `and saved to ${path} (original filename: ${filename}). ` +
+          `Use this path as images[].path in a visual-judgment-request.v1 ` +
+          `and delegate to a vision-* subagent.`
+        ;(part as any).synthetic = true
+      }
     }
   },
 })

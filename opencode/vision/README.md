@@ -10,6 +10,12 @@ delegates to a vision subagent, and parses a typed report.
 - **10 vision subagents** registered programmatically at init — one per
   top-tier vision model across OpenAI, Kimi for Coding, Ollama Cloud, and
   opencode-go.
+- **User-dropped image interception** — an
+  `experimental.chat.messages.transform` hook catches images dropped into
+  the chat, saves them to `/tmp/vision-<session>-<part>.png`, and replaces
+  the image `FilePart` with a `TextPart` carrying the path. This gives the
+  orchestrator a stable file path to hand to a vision subagent. See
+  [Source D in SKILL.md](./SKILL.md#source-d--image-attached-to-a-user-message-dropped-into-the-chat).
 - **A stable typed contract** — two versioned JSON Schemas
   (`visual-judgment-request.v1` / `visual-judgment-report.v1`) replace the
   old "design your own schema" free-for-all.
@@ -110,6 +116,30 @@ The orchestrator should:
    alignment`.
 4. Delegate to the chosen `vision-*` subagent.
 5. Parse the report and tell you pass/fail with the button's position.
+
+### Dropped-image smoke test
+
+Drop an image file into the opencode chat (e.g. drag a PNG onto the
+input), then send any message (or no message at all).
+
+The vision plugin's `experimental.chat.messages.transform` hook should:
+1. Save the dropped image to `/tmp/vision-<sessionID>-<partID>.png`.
+2. Replace the image `FilePart` with a `TextPart` containing a
+   `[vision:dropped-image]` marker and the `/tmp` path.
+
+The orchestrator should then:
+3. Detect the Source D trigger (marker present).
+4. Classify the user's intent — defaulting to `judgment.type: "describe"`
+   when no specific visual criterion was given.
+5. Ask you (once) which vision model to use — or reuse the prior session
+   choice.
+6. Delegate to a `vision-*` subagent with the `/tmp` path.
+7. Relay the subagent's `observations[]` back to you.
+
+To verify the plugin is loaded, run
+`opencode debug agent vision-openai-gpt-5.5` — it should show the
+registered subagent. If the subagent is missing, confirm the plugin is in
+`opencode.json`'s `plugin` array and restart opencode.
 
 ## File layout (source)
 

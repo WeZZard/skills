@@ -3,7 +3,9 @@ name: vision
 description: >-
   Use when a tool result contains an image attachment the current model
   cannot see (attachments[].mime = "image/png",
-  url = "data:image/png;base64,...") OR the user asks to visually
+  url = "data:image/png;base64,...") OR the user drops an image into the
+  chat (the vision plugin materializes it as a /tmp/vision-*.png path
+  marked "[vision:dropped-image]") OR the user asks to visually
   verify/check rendered content ("visually verify", "screenshot shows",
   "centered/visible/hidden", "looks right", "matches the design").
   Triggers on screenshots from chrome-devtools_take_screenshot,
@@ -54,7 +56,7 @@ it, giving you a stable typed contract for the exchange.
 
 ## Step 1. Detect
 
-Visual-judgment intent arrives from three sources. Recognize all three.
+Visual-judgment intent arrives from four sources. Recognize all four.
 
 ### Source A — explicit visual-judgment language in a user prompt
 
@@ -108,6 +110,42 @@ visual component (layout, alignment, presence, state, readability — see
 Step 2). If the task has no visual component, do nothing; note the image
 is available if needed later.
 
+### Source D — image attached to a user message (dropped into the chat)
+
+When the user drops an image into the chat, the vision plugin's
+`experimental.chat.messages.transform` hook materializes it as a file on
+disk and surfaces the path to the orchestrator. For every `FilePart`
+with `type: "file"` and `mime: "image/*"` on a user message, the hook:
+
+1. Saves the bytes to `/tmp/vision-<sessionID>-<partID>.<ext>` via
+   `writeFileSync` (data URLs) or `copyFileSync` (file paths). Image
+   bytes never touch the shell.
+2. Replaces the `FilePart` in place with a `TextPart` whose `text` is:
+
+   ```
+   [vision:dropped-image] An image was attached to this message and
+   saved to /tmp/vision-...png (original filename: ...). If the user's
+   request involves visual judgment, use this path as images[].path in
+   a visual-judgment-request.v1 and delegate to a vision-* subagent.
+   ```
+
+When you (the orchestrator) see a turn containing the marker
+`[vision:dropped-image]`, a `/tmp/vision-*.png` path is materialized for
+you. Treat it exactly like a Source A user-provided image path: extract
+the path, classify the user's intent, assemble a
+`visual-judgment-request.v1` with that path in `images[].path`, and
+delegate to a `vision-*` subagent.
+
+**Recognition pattern**:
+- Turn text contains `[vision:dropped-image]` → a dropped image was
+  saved to the path in the same text. Proceed to Step 2.
+- Classify like any other Source A trigger: if the user's accompanying
+  text names a specific visual criterion ("is the button centered?",
+  "does the layout match?"), use that `judgment.type`. If the user gave
+  no criterion beyond dropping the image, default
+  `judgment.type: "describe"` with
+  `focus: "overall layout and primary UI elements"`.
+
 ## Step 2. Classify
 
 Map the NL task to one of the 10 closed `judgment.type` values. Each has
@@ -141,6 +179,7 @@ Image paths come from:
 | Source | How to get the path |
 |---|---|
 | User-provided | Use the path the user gave (e.g. `/tmp/foo.png`). |
+| User-dropped image (Source D) | The vision plugin already saved the image to `/tmp/vision-<sessionID>-<partID>.<ext>` and injected the path into the turn text as a `[vision:dropped-image]` marker. Extract the path from that marker text — no file I/O needed. |
 | chrome-devtools MCP | `chrome-devtools_take_screenshot({ filePath: "/tmp/shot.png" })` — saves PNG to disk. |
 | Playwright MCP | `playwright_browser_take_screenshot({ filename: "shot.png" })` — saves to the configured output directory. |
 | cua-driver MCP | `cua-driver_get_window_state({ pid, window_id, screenshot_out_file: "/tmp/win.png" })` — saves window screenshot to disk. Also returns the AX tree as text. |
@@ -200,6 +239,13 @@ e.g. `cua-driver_zoom` (inline-only, no path param), or
 `playwright_browser_take_screenshot` called without a `filename`. The
 vision subagent needs a file path to `read`. Save the inline image to
 disk first.
+
+**Note**: this section covers inline-only *tool-result* images. A
+user-dropped chat image is handled by the plugin's
+`experimental.chat.messages.transform` hook (see Source D), which
+materializes a `/tmp/vision-*.png` path as part of the turn text — so
+for Source D you do **not** need the save-to-disk step below; the path
+is already in the turn text.
 
 **Prefer avoiding inline images altogether**: when calling
 `cua-driver_get_window_state`, always pass `screenshot_out_file` so a
