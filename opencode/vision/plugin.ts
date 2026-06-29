@@ -25,7 +25,6 @@ type VisionModelEntry = {
   model_id: string
   name: string
   supportsImage: boolean
-  supportsVideo: boolean
 }
 
 type RawModel = {
@@ -126,23 +125,17 @@ function opencodeModelsFile(): string {
   return join(opencodeCacheDir(), file)
 }
 
-function visionChoiceFiles(): Record<"image" | "video", string> {
-  const configDir = opencodeConfigDir()
-  return {
-    image: join(configDir, "vision-model-image.txt"),
-    video: join(configDir, "vision-model-video.txt"),
-  }
+function visionChoiceFile(): string {
+  return join(opencodeConfigDir(), "vision-model-image.txt")
 }
 
-function readPersistedChoice(mediaType: "image" | "video"): string | undefined {
+function readPersistedChoice(): string | undefined {
   try {
-    const file = visionChoiceFiles()[mediaType]
+    const file = visionChoiceFile()
     if (!existsSync(file)) return
     const raw = readFileSync(file, "utf8").trim()
     const model = registeredModels.get(raw)
-    if (!model) return
-    if (mediaType === "image" && model.supportsImage) return raw
-    if (mediaType === "video" && model.supportsVideo) return raw
+    if (model?.supportsImage) return raw
   } catch {
     return
   }
@@ -223,15 +216,14 @@ function modelInputModalities(model: RawModel): string[] {
 
 function isVisionModel(model: RawModel): boolean {
   const input = modelInputModalities(model)
-  if (input.includes("image") || input.includes("video")) return true
+  if (input.includes("image")) return true
   return input.length === 0 && model.attachment === true
 }
 
-function modelCapabilities(model: RawModel): { supportsImage: boolean; supportsVideo: boolean } {
+function modelCapabilities(model: RawModel): { supportsImage: boolean } {
   const input = modelInputModalities(model)
   const supportsImage = input.includes("image") || (input.length === 0 && model.attachment === true)
-  const supportsVideo = input.includes("video")
-  return { supportsImage, supportsVideo }
+  return { supportsImage }
 }
 
 function providerModels(
@@ -303,12 +295,12 @@ function configuredModelVisionCapable(
   return Boolean(match && isVisionModel(match))
 }
 
-// Save an image/video FilePart's bytes to /tmp and return the file path.
-// FilePart.url may be a `data:*/*;base64,...` URL or an
+// Save an image FilePart's bytes to /tmp and return the file path.
+// FilePart.url may be a `data:image/*;base64,...` URL or an
 // absolute `file://`/path URL. We never pass image bytes through the
 // shell — writeFileSync only. The path is stable per (sessionID, partID)
 // so re-runs of the transform don't duplicate files.
-function saveMediaPart(
+function saveImagePart(
   url: string,
   sessionID: string,
   partID: string,
@@ -338,23 +330,18 @@ function saveMediaPart(
   return out
 }
 
-function mediaTypeFromMime(mime: string): "image" | "video" | undefined {
-  if (mime.startsWith("image/")) return "image"
-  if (mime.startsWith("video/")) return "video"
-  return
+function isImageMime(mime: string): boolean {
+  if (mime.startsWith("image/")) return true
+  return false
 }
 
-// Map common image/video mime types to a file extension for the /tmp path.
+// Map common image mime types to a file extension for the /tmp path.
 function mimeToExt(mime: string): string {
   if (mime.includes("png")) return "png"
   if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg"
   if (mime.includes("webp")) return "webp"
   if (mime.includes("gif")) return "gif"
-  if (mime.includes("mp4")) return "mp4"
-  if (mime.includes("quicktime") || mime.includes("mov")) return "mov"
-  if (mime.includes("webm")) return "webm"
-  if (mime.includes("matroska") || mime.includes("mkv")) return "mkv"
-  return mime.startsWith("video/") ? "mp4" : "png"
+  return "png"
 }
 
 const plugin: Plugin = async () => ({
@@ -379,7 +366,7 @@ const plugin: Plugin = async () => ({
       const name = subagentName(e)
       cfg.agent[name] ??= {}
       Object.assign(cfg.agent[name], {
-        description: `Visual judgment subagent (${e.name}). Consumes a prompt-authored visual task with media paths and a task-specific JSON response template. Not coupled to any screenshot tool or UI framework - works with locally stored images and videos supported by the model.`,
+        description: `Visual judgment subagent (${e.name}). Consumes a prompt-authored visual task with image paths and a task-specific JSON response template. Not coupled to any screenshot tool or UI framework - works with locally stored images supported by the model.`,
         mode: "subagent",
         model: `${e.provider}/${e.model_id}`,
         temperature: 0.1,
@@ -392,31 +379,29 @@ const plugin: Plugin = async () => ({
     }
   },
 
-  // Source D: materialize user-dropped chat media as /tmp paths.
-  // When a user attaches an image or video to a message, save the bytes to /tmp
+  // Source D: materialize user-dropped chat images as /tmp paths.
+  // When a user attaches an image to a message, save the bytes to /tmp
   // and replace the FilePart with a TextPart carrying the path plus a
   // marker the SKILL.md Detect step recognizes. This gives the
   // orchestrator a stable file path to hand to a vision-* subagent,
-  // turning user-message media attachments into the same shape as
-  // Source A ("user-provided media path").
+  // turning user-message image attachments into the same shape as
+  // Source A ("user-provided image path").
   "experimental.chat.messages.transform": async (_input, output) => {
     for (const m of output.messages) {
       if (m.info.role !== "user") continue
       for (const part of m.parts) {
         if (part.type !== "file") continue
         if (!part.mime) continue
-        const mediaType = mediaTypeFromMime(part.mime)
-        if (!mediaType) continue
+        if (!isImageMime(part.mime)) continue
         const ext = mimeToExt(part.mime)
-        const path = saveMediaPart(
+        const path = saveImagePart(
           part.url,
           m.info.sessionID,
           part.id,
           ext,
         )
-        const filename = part.filename ?? path.split("/").pop() ?? mediaType
+        const filename = part.filename ?? path.split("/").pop() ?? "image"
         const payload = JSON.stringify({
-          mediaType,
           mime: part.mime,
           path,
           originalFilename: filename,
@@ -425,7 +410,7 @@ const plugin: Plugin = async () => ({
         // The SKILL.md Source D section tells the orchestrator to treat
         // the path as a visual-judgment trigger.
         ;(part as any).type = "text"
-        ;(part as any).text = `[vision:dropped-media] ${payload}`
+        ;(part as any).text = `[vision:dropped-image] ${payload}`
         ;(part as any).synthetic = true
       }
     }
@@ -436,19 +421,17 @@ const plugin: Plugin = async () => ({
   // by scripts/vision-models.mjs, not a plugin-injected tool.
   "experimental.chat.system.transform": async (_input, output) => {
     output.system.push(
-      `[vision:model-script] Query available vision models with: node ${VISION_MODELS_SCRIPT} --media <image|video|image,video>. ` +
-        `Persist choices with: node ${VISION_MODELS_SCRIPT} --media-type=<image|video> --model <provider/model>. ` +
+      `[vision:model-script] Query available image-capable vision models with: node ${VISION_MODELS_SCRIPT}. ` +
+        `Persist a choice with: node ${VISION_MODELS_SCRIPT} --model <provider/model>. ` +
         `Do not use a hardcoded model picker list.`,
     )
-    for (const mediaType of ["image", "video"] as const) {
-      const choice = readPersistedChoice(mediaType)
-      if (choice) {
-        output.system.push(
-          `[vision:model-choice] media=${mediaType} model=${choice}. ` +
-            `Reuse this model for ${mediaType} visual delegations without asking. ` +
-            `To use a different model, run the vision model script with --media-type=${mediaType} --model <provider/model>.`,
-        )
-      }
+    const choice = readPersistedChoice()
+    if (choice) {
+      output.system.push(
+        `[vision:model-choice] model=${choice}. ` +
+          `Reuse this model for image visual delegations without asking. ` +
+          `To use a different model, run the vision model script with --model <provider/model>.`,
+      )
     }
   },
 })

@@ -11,18 +11,14 @@ import { dirname, join, resolve } from "node:path"
 import { homedir } from "node:os"
 
 const env = process.env
-const MEDIA_TYPES = new Set(["image", "video"])
 
 function usage() {
   return `Usage:
-  node scripts/vision-models.mjs [--media image[,video]]
-  node scripts/vision-models.mjs --media-type=video --model <provider/model>
-  node scripts/vision-models.mjs --media-type=image --model <provider/model> --media-type=video --model <provider/model>
+  node scripts/vision-models.mjs
+  node scripts/vision-models.mjs --model <provider/model>
 
 Options:
-  --media <list>        Required media capabilities for listing. May repeat; comma-separated values are accepted. Defaults to image.
-  --media-type <type>   Media type for the following --model persistence pair: image or video.
-  --model <model>       Provider/model id to persist for the preceding --media-type.
+  --model <model>       Image-capable provider/model id to persist.
   --cwd <path>          Directory used for project config discovery.
   --worktree <path>     Stop project config discovery at this directory.
   --config-dir <path>   OpenCode config directory. Defaults to OPENCODE_CONFIG_DIR or XDG config.
@@ -31,7 +27,7 @@ Options:
 
 Outputs JSON describing configured models from OpenCode's cached catalog after
 applying OpenCode provider config, saved auth, and matching provider environment
-variables. Returned models must support every requested media type.`
+variables. Returned models must support image input.`
 }
 
 function parseArgs(argv) {
@@ -41,12 +37,10 @@ function parseArgs(argv) {
     configDir: undefined,
     dataDir: undefined,
     modelsFile: undefined,
-    media: [],
-    selections: [],
+    selectedModel: undefined,
     help: false,
   }
 
-  let pendingMediaType
   for (let i = 0; i < argv.length; i += 1) {
     const rawArg = argv[i]
     const [arg, inlineValue] = splitInlineArg(rawArg)
@@ -55,22 +49,9 @@ function parseArgs(argv) {
       args.help = true
       continue
     }
-    if (arg === "--media") {
-      addMediaList(args.media, inlineValue ?? readRequiredValue(argv, i, arg))
-      if (inlineValue === undefined) i += 1
-      continue
-    }
-    if (arg === "--media-type") {
-      pendingMediaType = normalizeMediaType(inlineValue ?? readRequiredValue(argv, i, arg), arg)
-      if (inlineValue === undefined) i += 1
-      continue
-    }
     if (arg === "--model") {
-      const model = inlineValue ?? readRequiredValue(argv, i, arg)
+      args.selectedModel = inlineValue ?? readRequiredValue(argv, i, arg)
       if (inlineValue === undefined) i += 1
-      if (!pendingMediaType) throw new Error("--model requires a preceding --media-type")
-      args.selections.push({ mediaType: pendingMediaType, model })
-      pendingMediaType = undefined
       continue
     }
     if (arg === "--cwd") {
@@ -101,9 +82,6 @@ function parseArgs(argv) {
     throw new Error(`Unknown argument: ${rawArg}`)
   }
 
-  if (pendingMediaType) throw new Error(`--media-type=${pendingMediaType} requires a following --model`)
-  if (args.media.length === 0) args.media.push("image")
-  args.media = unique(args.media)
   return args
 }
 
@@ -117,20 +95,6 @@ function readRequiredValue(argv, index, flag) {
   const value = argv[index + 1]
   if (!value || value.startsWith("--")) {
     throw new Error(`${flag} requires a value`)
-  }
-  return value
-}
-
-function addMediaList(target, raw) {
-  for (const item of raw.split(",")) {
-    const media = normalizeMediaType(item.trim(), "--media")
-    target.push(media)
-  }
-}
-
-function normalizeMediaType(value, flag) {
-  if (!MEDIA_TYPES.has(value)) {
-    throw new Error(`${flag} must be one of: image, video`)
   }
   return value
 }
@@ -174,11 +138,8 @@ function opencodeModelsFile(args) {
   return join(opencodeCacheDir(), file)
 }
 
-function choiceFiles(configDir) {
-  return {
-    image: join(configDir, "vision-model-image.txt"),
-    video: join(configDir, "vision-model-video.txt"),
-  }
+function choiceFile(configDir) {
+  return join(configDir, "vision-model-image.txt")
 }
 
 function isRecord(value) {
@@ -546,18 +507,7 @@ function modelCapabilities(model) {
   const output = modelOutputModalities(model)
   const hasDeclaredInput = input.length > 0
   const supportsImage = input.includes("image") || (!hasDeclaredInput && model?.attachment === true)
-  const supportsVideo = input.includes("video")
-  return { input, output, supportsImage, supportsVideo }
-}
-
-function supportsMedia(entry, media) {
-  if (media === "image") return entry.supportsImage
-  if (media === "video") return entry.supportsVideo
-  return false
-}
-
-function supportsAllMedia(entry, mediaList) {
-  return mediaList.every((media) => supportsMedia(entry, media))
+  return { input, output, supportsImage }
 }
 
 function subagentName(providerID, id) {
@@ -576,7 +526,7 @@ function applyProviderModelFilters(providerConfig, modelKey) {
   return true
 }
 
-function discoverVisionModels(catalog, config, providerSelection, requestedMedia) {
+function discoverVisionModels(catalog, config, providerSelection) {
   const models = []
   const missingProviders = []
 
@@ -594,7 +544,7 @@ function discoverVisionModels(catalog, config, providerSelection, requestedMedia
       if (rawModel.status === "deprecated") continue
 
       const capabilities = modelCapabilities(rawModel)
-      if (!capabilities.supportsImage && !capabilities.supportsVideo) continue
+      if (!capabilities.supportsImage) continue
 
       const fullModelID = displayModel(providerID, modelKey)
       const entry = {
@@ -604,7 +554,6 @@ function discoverVisionModels(catalog, config, providerSelection, requestedMedia
         name: typeof rawModel.name === "string" ? rawModel.name : modelKey,
         subagentType: subagentName(providerID, modelKey),
         supportsImage: capabilities.supportsImage,
-        supportsVideo: capabilities.supportsVideo,
         inputModalities: capabilities.input,
         outputModalities: capabilities.output,
         status: typeof rawModel.status === "string" ? rawModel.status : "active",
@@ -617,7 +566,7 @@ function discoverVisionModels(catalog, config, providerSelection, requestedMedia
         pickerLabel: fullModelID,
         pickerDescription: "",
       }
-      if (supportsAllMedia(entry, requestedMedia)) models.push(entry)
+      models.push(entry)
     }
   }
 
@@ -631,7 +580,6 @@ function compareModels(a, b) {
     if (b.status === "active") return 1
   }
   if (a.reasoning !== b.reasoning) return a.reasoning ? -1 : 1
-  if (a.supportsVideo !== b.supportsVideo) return a.supportsVideo ? -1 : 1
   if (a.releaseDate && b.releaseDate && a.releaseDate !== b.releaseDate) {
     return b.releaseDate.localeCompare(a.releaseDate)
   }
@@ -639,25 +587,21 @@ function compareModels(a, b) {
 }
 
 function withPickerDescription(entry, index) {
-  const capabilities = [
-    entry.supportsImage ? "image" : undefined,
-    entry.supportsVideo ? "video" : undefined,
-  ].filter(Boolean)
   const suffix = index === 0 ? " (Recommended)" : ""
   const status = entry.status === "active" ? "" : `, ${entry.status}`
   return {
     ...entry,
     recommended: index === 0,
-    pickerDescription: `${entry.name} - ${capabilities.join("+")}${status}${suffix}`,
+    pickerDescription: `${entry.name} - image${status}${suffix}`,
   }
 }
 
-function readPersistedChoice(file, modelsByID, mediaType) {
+function readPersistedChoice(file, modelsByID) {
   try {
     if (!existsSync(file)) return undefined
     const raw = readFileSync(file, "utf8").trim()
     const entry = modelsByID.get(raw)
-    if (entry && supportsMedia(entry, mediaType)) return entry
+    if (entry?.supportsImage) return entry
   } catch {
     return undefined
   }
@@ -671,50 +615,29 @@ function choicePayload(entry) {
     modelID: entry.modelID,
     subagentType: entry.subagentType,
     supportsImage: entry.supportsImage,
-    supportsVideo: entry.supportsVideo,
   }
 }
 
-function persistedChoicesPayload(files, allModelsByID) {
-  const result = {}
-  for (const mediaType of MEDIA_TYPES) {
-    const choice = readPersistedChoice(files[mediaType], allModelsByID, mediaType)
-    if (choice) result[mediaType] = choicePayload(choice)
-  }
-  return result
+function persistedChoicePayload(file, allModelsByID) {
+  return choicePayload(readPersistedChoice(file, allModelsByID)) ?? null
 }
 
-function validateSelections(selections, allModelsByID) {
-  const validated = []
-  const seen = new Set()
-  for (const selection of selections) {
-    if (seen.has(selection.mediaType)) {
-      throw new Error(`Duplicate selection for media type: ${selection.mediaType}`)
-    }
-    seen.add(selection.mediaType)
-    const entry = allModelsByID.get(selection.model)
-    if (!entry) throw new Error(`Unknown model for ${selection.mediaType}: ${selection.model}`)
-    if (!supportsMedia(entry, selection.mediaType)) {
-      throw new Error(`Model ${selection.model} does not support ${selection.mediaType}`)
-    }
-    validated.push({ mediaType: selection.mediaType, entry })
-  }
-  return validated
+function validateSelectedModel(model, allModelsByID) {
+  const entry = allModelsByID.get(model)
+  if (!entry) throw new Error(`Unknown image model: ${model}`)
+  if (!entry.supportsImage) throw new Error(`Model ${model} does not support image input`)
+  return entry
 }
 
-function persistSelections(files, validated) {
-  for (const { mediaType, entry } of validated) {
-    const file = files[mediaType]
-    mkdirSync(dirname(file), { recursive: true })
-    writeFileSync(file, `${entry.model}\n`)
-  }
+function persistSelection(file, entry) {
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, `${entry.model}\n`)
 }
 
 function payload(input) {
   const allModelsByID = new Map(input.allModels.map((entry) => [entry.model, entry]))
   return {
-    requestedMedia: input.requestedMedia,
-    persistedChoices: persistedChoicesPayload(input.choiceFiles, allModelsByID),
+    persistedChoice: persistedChoicePayload(input.choiceFile, allModelsByID),
     recommendedModel: input.models[0]?.model ?? null,
     models: input.models,
     configuredProviders: input.providerSelection.ids,
@@ -726,7 +649,7 @@ function payload(input) {
       enabledProviders: input.providerSelection.enabled,
       disabledProviders: input.providerSelection.disabled,
     },
-    choiceFiles: input.choiceFiles,
+    choiceFile: input.choiceFile,
     sources: {
       modelsFile: input.modelsFile,
       configDir: input.configDir,
@@ -749,19 +672,14 @@ try {
   const configDir = opencodeConfigDir(args)
   const dataDir = opencodeDataDir(args)
   const modelsFile = opencodeModelsFile(args)
-  const files = choiceFiles(configDir)
+  const file = choiceFile(configDir)
   const catalog = readModelsCatalog(modelsFile)
   const authData = readAuthData(dataDir)
   const loaded = loadOpenCodeConfig(args, configDir)
   const providerSelection = configuredProviderIDs(loaded.config, catalog, authData)
-  const allDiscovered = discoverVisionModels(catalog, loaded.config, providerSelection, ["image"])
-  const allEntries = [
-    ...allDiscovered.models,
-    ...discoverVisionModels(catalog, loaded.config, providerSelection, ["video"]).models,
-  ]
-  const allModels = uniqueBy(allEntries, (entry) => entry.model)
+  const discovered = discoverVisionModels(catalog, loaded.config, providerSelection)
+  const allModels = discovered.models
   const allModelsByID = new Map(allModels.map((entry) => [entry.model, entry]))
-  const discovered = discoverVisionModels(catalog, loaded.config, providerSelection, args.media)
   const warnings = []
 
   if (providerSelection.source === "none") {
@@ -775,37 +693,32 @@ try {
     )
   }
   if (discovered.models.length === 0) {
-    warnings.push(
-      `No configured models support all requested media types: ${args.media.join(", ")}.`,
-    )
+    warnings.push("No configured models support image input.")
   }
 
   const common = {
-    requestedMedia: args.media,
     models: discovered.models,
     allModels,
     providerSelection,
     configDir,
     dataDir,
     modelsFile,
-    choiceFiles: files,
+    choiceFile: file,
     cwd: loaded.cwd,
     worktree: loaded.worktree,
     loadedFiles: loaded.loadedFiles,
     warnings,
   }
 
-  if (args.selections.length > 0) {
-    const validated = validateSelections(args.selections, allModelsByID)
-    persistSelections(files, validated)
+  if (args.selectedModel) {
+    const selected = validateSelectedModel(args.selectedModel, allModelsByID)
+    persistSelection(file, selected)
     console.log(
       JSON.stringify(
         {
           ok: true,
           saved: true,
-          savedChoices: Object.fromEntries(
-            validated.map(({ mediaType, entry }) => [mediaType, choicePayload(entry)]),
-          ),
+          savedChoice: choicePayload(selected),
           ...payload(common),
         },
         null,
@@ -839,16 +752,4 @@ try {
     ),
   )
   process.exit(1)
-}
-
-function uniqueBy(items, key) {
-  const seen = new Set()
-  const result = []
-  for (const item of items) {
-    const value = key(item)
-    if (seen.has(value)) continue
-    seen.add(value)
-    result.push(item)
-  }
-  return result
 }

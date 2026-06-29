@@ -28,41 +28,32 @@ function catalog() {
           release_date: "2026-01-01",
           modalities: { input: ["text", "image"], output: ["text"] },
         },
-        "video-only": {
-          id: "video-only",
-          name: "Video Only",
+        "image-audio": {
+          id: "image-audio",
+          name: "Image Audio",
           reasoning: true,
           tool_call: true,
           release_date: "2026-01-02",
-          modalities: { input: ["text", "video"], output: ["text"] },
-        },
-        "image-video": {
-          id: "image-video",
-          name: "Image Video",
-          attachment: true,
-          reasoning: true,
-          tool_call: true,
-          release_date: "2026-01-03",
-          modalities: { input: ["text", "image", "video"], output: ["text"] },
+          modalities: { input: ["text", "image", "audio"], output: ["text"] },
         },
         "text-only": {
           id: "text-only",
           name: "Text Only",
-          release_date: "2026-01-04",
+          release_date: "2026-01-03",
           modalities: { input: ["text"], output: ["text"] },
         },
         "attachment-only": {
           id: "attachment-only",
           name: "Attachment Only",
           attachment: true,
-          release_date: "2026-01-05",
+          release_date: "2026-01-04",
         },
-        "deprecated-video": {
-          id: "deprecated-video",
-          name: "Deprecated Video",
+        "deprecated-image": {
+          id: "deprecated-image",
+          name: "Deprecated Image",
           status: "deprecated",
-          release_date: "2026-01-06",
-          modalities: { input: ["text", "video"], output: ["text"] },
+          release_date: "2026-01-05",
+          modalities: { input: ["text", "image"], output: ["text"] },
         },
       },
     },
@@ -74,7 +65,7 @@ function catalog() {
         "beta-image": {
           id: "beta-image",
           name: "Beta Image",
-          release_date: "2026-01-07",
+          release_date: "2026-01-06",
           modalities: { input: ["text", "image"], output: ["text"] },
         },
       },
@@ -108,7 +99,6 @@ async function fixture({ configText, configObject, modelCatalog = catalog(), aut
     projectDir,
     modelsFile,
     imageChoice: join(configDir, "vision-model-image.txt"),
-    videoChoice: join(configDir, "vision-model-video.txt"),
     obsoleteChoice: join(configDir, ["vision", "model"].join("-") + ".txt"),
   }
 }
@@ -168,40 +158,17 @@ function modelIDs(result) {
   return result.json.models.map((model) => model.model)
 }
 
-test("--media image returns image-capable models only", async () => {
+test("lists image-capable models only", async () => {
   await withFixture({}, async (fx) => {
-    const result = await runVision(fx, ["--media", "image"])
+    const result = await runVision(fx)
     assert.equal(result.code, 0)
     assert.deepEqual(new Set(modelIDs(result)), new Set([
       "alpha/attachment-only",
+      "alpha/image-audio",
       "alpha/image-only",
-      "alpha/image-video",
     ]))
-    assert.equal(result.json.requestedMedia.length, 1)
-    assert.equal(result.json.requestedMedia[0], "image")
-  })
-})
-
-test("--media video returns video-capable models only", async () => {
-  await withFixture({}, async (fx) => {
-    const result = await runVision(fx, ["--media", "video"])
-    assert.equal(result.code, 0)
-    assert.deepEqual(new Set(modelIDs(result)), new Set([
-      "alpha/video-only",
-      "alpha/image-video",
-    ]))
-  })
-})
-
-test("comma-separated and repeated --media require all media types", async () => {
-  await withFixture({}, async (fx) => {
-    const comma = await runVision(fx, ["--media", "image,video"])
-    const repeated = await runVision(fx, ["--media", "image", "--media", "video"])
-    assert.equal(comma.code, 0)
-    assert.equal(repeated.code, 0)
-    assert.deepEqual(modelIDs(comma), ["alpha/image-video"])
-    assert.deepEqual(modelIDs(repeated), ["alpha/image-video"])
-    assert.deepEqual(comma.json.requestedMedia, ["image", "video"])
+    assert.equal(result.json.persistedChoice, null)
+    assert.equal(result.json.choiceFile, fx.imageChoice)
   })
 })
 
@@ -212,17 +179,17 @@ test("enabled_providers, disabled_providers, whitelist, and blacklist are honore
       disabled_providers: ["beta"],
       provider: {
         alpha: {
-          whitelist: ["image-only", "image-video", "attachment-only"],
+          whitelist: ["image-only", "image-audio", "attachment-only"],
           blacklist: ["image-only"],
         },
       },
     },
   }, async (fx) => {
-    const result = await runVision(fx, ["--media", "image"])
+    const result = await runVision(fx)
     assert.equal(result.code, 0)
     assert.deepEqual(new Set(modelIDs(result)), new Set([
       "alpha/attachment-only",
-      "alpha/image-video",
+      "alpha/image-audio",
     ]))
     assert.deepEqual(result.json.configuredProviders, ["alpha"])
   })
@@ -235,14 +202,14 @@ test("JSONC config with comments and trailing commas parses", async () => {
       "enabled_providers": ["alpha",],
       "provider": {
         "alpha": {
-          "whitelist": ["image-video",],
+          "whitelist": ["image-audio",],
         },
       },
     }`,
   }, async (fx) => {
-    const result = await runVision(fx, ["--media", "image,video"])
+    const result = await runVision(fx)
     assert.equal(result.code, 0)
-    assert.deepEqual(modelIDs(result), ["alpha/image-video"])
+    assert.deepEqual(modelIDs(result), ["alpha/image-audio"])
   })
 })
 
@@ -253,11 +220,12 @@ test("saved OpenCode auth providers are treated as configured providers", async 
       alpha: { type: "api", key: "redacted" },
     },
   }, async (fx) => {
-    const result = await runVision(fx, ["--media", "video"])
+    const result = await runVision(fx)
     assert.equal(result.code, 0)
     assert.deepEqual(new Set(modelIDs(result)), new Set([
-      "alpha/video-only",
-      "alpha/image-video",
+      "alpha/attachment-only",
+      "alpha/image-audio",
+      "alpha/image-only",
     ]))
     assert.deepEqual(result.json.configuredProviders, ["alpha"])
     assert.deepEqual(result.json.providerSelection.authProviders, ["alpha"])
@@ -269,7 +237,7 @@ test("provider env vars are treated as configured providers", async () => {
   await withFixture({
     configObject: {},
   }, async (fx) => {
-    const result = await runVision(fx, ["--media", "image"], { BETA_API_KEY: "redacted" })
+    const result = await runVision(fx, [], { BETA_API_KEY: "redacted" })
     assert.equal(result.code, 0)
     assert.deepEqual(modelIDs(result), ["beta/beta-image"])
     assert.deepEqual(result.json.configuredProviders, ["beta"])
@@ -287,7 +255,7 @@ test("disabled_providers excludes auth-backed and env-backed providers", async (
       alpha: { type: "api", key: "redacted" },
     },
   }, async (fx) => {
-    const result = await runVision(fx, ["--media", "image"], { BETA_API_KEY: "redacted" })
+    const result = await runVision(fx, [], { BETA_API_KEY: "redacted" })
     assert.equal(result.code, 0)
     assert.deepEqual(result.json.models, [])
     assert.deepEqual(result.json.configuredProviders, [])
@@ -311,48 +279,40 @@ test("custom provider model keeps config key as user-facing model id", async () 
       },
     },
   }, async (fx) => {
-    const result = await runVision(fx, ["--media", "image"])
+    const result = await runVision(fx)
     assert.equal(result.code, 0)
     assert.deepEqual(modelIDs(result), ["custom/alias"])
     assert.equal(result.json.models[0].subagentType, "vision-custom-alias")
   })
 })
 
-test("media/model pairs persist image and video choices", async () => {
+test("model selection persists image choice", async () => {
   await withFixture({}, async (fx) => {
-    const result = await runVision(fx, [
-      "--media-type=image",
-      "--model",
-      "alpha/image-only",
-      "--media-type=video",
-      "--model",
-      "alpha/video-only",
-    ])
+    const result = await runVision(fx, ["--model", "alpha/image-only"])
     assert.equal(result.code, 0)
     assert.equal(result.json.saved, true)
+    assert.equal(result.json.savedChoice.model, "alpha/image-only")
+    assert.equal(result.json.persistedChoice.model, "alpha/image-only")
     assert.equal(await readFile(fx.imageChoice, "utf8"), "alpha/image-only\n")
-    assert.equal(await readFile(fx.videoChoice, "utf8"), "alpha/video-only\n")
   })
 })
 
-test("persisted choices are reported and the obsolete single choice file is ignored", async () => {
+test("persisted choice is reported and the obsolete single choice file is ignored", async () => {
   await withFixture({}, async (fx) => {
-    await writeFile(fx.obsoleteChoice, "alpha/image-video\n")
+    await writeFile(fx.obsoleteChoice, "alpha/image-audio\n")
     await writeFile(fx.imageChoice, "alpha/image-only\n")
-    const result = await runVision(fx, ["--media", "image"])
+    const result = await runVision(fx)
     assert.equal(result.code, 0)
-    assert.equal(result.json.persistedChoices.image.model, "alpha/image-only")
-    assert.equal(result.json.persistedChoices.video, undefined)
+    assert.equal(result.json.persistedChoice.model, "alpha/image-only")
   })
 })
 
 test("stale persisted choices are ignored", async () => {
   await withFixture({}, async (fx) => {
     await writeFile(fx.imageChoice, "alpha/text-only\n")
-    await writeFile(fx.videoChoice, "alpha/image-only\n")
-    const result = await runVision(fx, ["--media", "image"])
+    const result = await runVision(fx)
     assert.equal(result.code, 0)
-    assert.deepEqual(result.json.persistedChoices, {})
+    assert.equal(result.json.persistedChoice, null)
   })
 })
 
@@ -361,14 +321,14 @@ test("missing configured provider and no configured providers return warnings", 
     modelCatalog: {},
     configObject: { enabled_providers: ["missing"] },
   }, async (fx) => {
-    const result = await runVision(fx, ["--media", "image"])
+    const result = await runVision(fx)
     assert.equal(result.code, 0)
     assert.deepEqual(result.json.models, [])
     assert.match(result.json.warnings.join("\n"), /missing/)
   })
 
   await withFixture({ configObject: {} }, async (fx) => {
-    const result = await runVision(fx, ["--media", "image"])
+    const result = await runVision(fx)
     assert.equal(result.code, 0)
     assert.deepEqual(result.json.models, [])
     assert.match(result.json.warnings.join("\n"), /No OpenCode provider configuration/)
@@ -377,35 +337,23 @@ test("missing configured provider and no configured providers return warnings", 
 
 test("negative CLI cases exit nonzero without writes", async () => {
   await withFixture({}, async (fx) => {
-    const invalidMedia = await runVision(fx, ["--media", "audio"])
-    assert.notEqual(invalidMedia.code, 0)
-    assert.match(invalidMedia.json.message, /image, video/)
+    const oldListFlag = await runVision(fx, [["--", "me", "dia"].join(""), "image"])
+    assert.notEqual(oldListFlag.code, 0)
+    assert.match(oldListFlag.json.message, /Unknown argument/)
 
-    const incomplete = await runVision(fx, ["--media-type=image"])
-    assert.notEqual(incomplete.code, 0)
+    const oldPairFlag = await runVision(fx, [["--", "me", "dia-type=image"].join(""), "--model", "alpha/image-only"])
+    assert.notEqual(oldPairFlag.code, 0)
+    assert.match(oldPairFlag.json.message, /Unknown argument/)
 
-    const unknown = await runVision(fx, ["--media-type=image", "--model", "alpha/unknown"])
+    const missingModelValue = await runVision(fx, ["--model"])
+    assert.notEqual(missingModelValue.code, 0)
+
+    const unknown = await runVision(fx, ["--model", "alpha/unknown"])
     assert.notEqual(unknown.code, 0)
     assert.equal(existsSync(fx.imageChoice), false)
 
-    const mismatched = await runVision(fx, ["--media-type=video", "--model", "alpha/image-only"])
-    assert.notEqual(mismatched.code, 0)
-    assert.equal(existsSync(fx.videoChoice), false)
-  })
-})
-
-test("invalid multi-pair persistence writes no partial files", async () => {
-  await withFixture({}, async (fx) => {
-    const result = await runVision(fx, [
-      "--media-type=image",
-      "--model",
-      "alpha/image-only",
-      "--media-type=video",
-      "--model",
-      "alpha/image-only",
-    ])
-    assert.notEqual(result.code, 0)
+    const textOnly = await runVision(fx, ["--model", "alpha/text-only"])
+    assert.notEqual(textOnly.code, 0)
     assert.equal(existsSync(fx.imageChoice), false)
-    assert.equal(existsSync(fx.videoChoice), false)
   })
 })

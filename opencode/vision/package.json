@@ -1,7 +1,7 @@
 {
   "name": "opencode-vision",
   "version": "0.4.0",
-  "description": "Dynamic visual-response skill for opencode. Registers vision subagents from OpenCode's configured image/video-capable models and teaches a text-only orchestrator to extract visual intent, design a task-specific JSON response template, and delegate to a vision subagent.",
+  "description": "Dynamic visual-response skill for opencode. Registers vision subagents from OpenCode's configured image-capable models and teaches a text-only orchestrator to extract visual intent, design a task-specific JSON response template, and delegate to a vision subagent.",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
