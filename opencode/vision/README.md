@@ -31,43 +31,23 @@ delegates to a vision subagent, and parses the returned JSON.
 
 ## Install
 
-Two parts: the plugin (registers subagents) and the skill (`SKILL.md`).
-Both are one-line commands.
+One command:
 
-### 1. Install the plugin
-
-Add to your `~/.config/opencode/opencode.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "enabled_providers": ["openai"],
-  "plugin": [
-    "opencode-vision"
-  ]
-}
+```bash
+opencode plugin opencode-vision -g
 ```
 
 opencode auto-installs the npm package via Bun on next launch. The
-plugin's `config(cfg)` hook registers `vision-*` subagents for configured
-providers whose cached models support image input.
+package's `postinstall` script copies `SKILL.md` into
+`~/.config/opencode/skills/vision/` (where opencode's skill scan finds
+it), and the plugin's `config(cfg)` hook registers `vision-*` subagents
+for configured providers whose cached models support image input. Then
+restart opencode.
 
 The plugin intentionally does not ship a fixed model catalog. Configure
 providers with `enabled_providers` and/or `provider` entries, and the
 model script will intersect that provider set with OpenCode's cached
 model catalog.
-
-### 2. Install the skill
-
-```bash
-npx skills add WeZZard/skills -a opencode -g --skill vision
-```
-
-This uses the [open agent skills CLI](https://github.com/vercel-labs/skills)
-to fetch `SKILL.md` from this repo and drop it into
-`~/.agents/skills/vision/SKILL.md`, a directory opencode scans by default
-(along with `~/.config/opencode/skills/`). No `skills.paths` config entry
-is needed.
 
 The old `~/.config/opencode/agents/visual-judge.md` subagent is removed;
 this plugin replaces it with dynamically registered `vision-*` subagents.
@@ -77,14 +57,14 @@ Delete the old file if present:
 rm -f ~/.config/opencode/agents/visual-judge.md
 ```
 
-Restart opencode for both changes to take effect.
+Restart opencode for the change to take effect.
 
-> **Why two steps?** opencode's plugin loader resolves the npm package to
-> its `dist/index.js` entrypoint and runs the `config(cfg)` hook that
-> registers the dynamic subagents. But opencode's skill loader scans
-> filesystem directories for `SKILL.md`; it does not look inside npm
-> packages automatically. The `npx skills` command bridges this gap by placing
-> `SKILL.md` where opencode's default skill scan finds it.
+> **How it works**: the plugin entry in `opencode.json` makes opencode
+> load `dist/index.js` (the hooks + subagent registration). The npm
+> `postinstall` script (`scripts/install-skill.mjs`) copies `SKILL.md`
+> into opencode's default skill scan path so the orchestrator can load
+> the workflow. Both happen from the single npm install — no separate
+> skill-fetch command needed.
 
 ## Verify
 
@@ -288,19 +268,3 @@ Response rules:
 
 The orchestrator should design a fresh response template for each visual
 task instead of relying on a fixed global schema.
-
-## Withdraw the skill workaround
-
-When opencode bug [#33896](https://github.com/anomalyco/opencode/issues/33896)
-is fixed (PR [#33918](https://github.com/anomalyco/opencode/pull/33918)
-merged and shipped), the plugin can self-register the skill via the v2
-`ctx.skill.transform()` API. At that point the `npx skills`-installed file
-becomes redundant:
-
-```bash
-npx skills remove vision -a opencode -g
-```
-
-The plugin will then handle both subagent registration and skill
-discovery, making the install a single `"plugin": ["opencode-vision"]`
-line.
