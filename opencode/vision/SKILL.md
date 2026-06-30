@@ -5,8 +5,8 @@ description: >-
   glm-5.2, deepseek-v4-pro) AND:
   (1) the user's message contains images;
   (2) OR the user's message contains URLs or paths to images;
-  (3) OR the user asks to visually verify/check rendered content ("visually
-  verify", "screenshot shows", "centered/visible/hidden", "looks right",
+  (3) OR the user asks to visually verify/check something ("visually verify",
+  "screenshot shows", "centered/visible/hidden", "looks right",
   "matches the design");
   (5) OR a tool result contains an image attachment the current model
   cannot see (attachments[].mime = "image/png",
