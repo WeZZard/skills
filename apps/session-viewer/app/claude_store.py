@@ -65,22 +65,6 @@ def _read_first_json(path: Path, max_lines: int = 240) -> list[dict[str, Any]]:
     return events
 
 
-def _latest_ai_title(path: Path) -> str | None:
-    title = None
-    try:
-        with path.open("r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                try:
-                    raw = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(raw, dict) and raw.get("type") == "ai-title":
-                    title = explicit_title_from_event(raw) or title
-    except OSError:
-        return None
-    return title
-
-
 def _summary_from_file(projects_dir: Path, path: Path) -> ConversationSummary:
     project_key = path.parent.name
     session_uuid = path.stem
@@ -89,6 +73,7 @@ def _summary_from_file(projects_dir: Path, path: Path) -> ConversationSummary:
     timestamps = []
     title = None
     explicit_title = None
+    latest_ai_title = None
     model = "Unknown"
     directory = None
     git_branch = None
@@ -99,6 +84,8 @@ def _summary_from_file(projects_dir: Path, path: Path) -> ConversationSummary:
         raw_explicit_title = explicit_title_from_event(raw)
         if raw_explicit_title and (raw.get("type") == "ai-title" or explicit_title is None):
             explicit_title = raw_explicit_title
+        if raw_explicit_title and raw.get("type") == "ai-title":
+            latest_ai_title = raw_explicit_title
         directory = directory or raw.get("cwd")
         branch = raw.get("gitBranch") or raw.get("branch")
         if git_branch is None and isinstance(branch, str) and branch.strip():
@@ -134,7 +121,6 @@ def _summary_from_file(projects_dir: Path, path: Path) -> ConversationSummary:
         else 0
     )
     updated = int(path.stat().st_mtime * 1000)
-    latest_ai_title = _latest_ai_title(path)
     return ConversationSummary(
         id=ref.opaque_id,
         title=latest_ai_title or explicit_title or title or session_uuid,
@@ -178,6 +164,18 @@ def list_sessions(
                 continue
             summaries.append(summary)
     return sorted(summaries, key=lambda s: s.time_updated or 0, reverse=True)
+
+
+def get_summary(opaque_id: str, source_path: str | Path | None = None) -> ConversationSummary | None:
+    projects_dir = resolve_projects_dir(source_path)
+    try:
+        ref = decode_session_ref(opaque_id)
+    except Exception:
+        return None
+    main_path = _session_file(projects_dir, ref)
+    if not main_path.exists():
+        return None
+    return _summary_from_file(projects_dir, main_path)
 
 
 def list_directories(source_path: str | Path | None = None) -> list[str]:
@@ -482,3 +480,108 @@ def load_conversation(
 
 def get_source_info(source_path: str | Path | None = None) -> dict[str, Any]:
     return source_info(source_path)
+
+
+def _read_first_event_nav(path: Path, session_id: str, agent_path: str) -> tuple[NavAddress | None, str, str | None, str | None]:
+    """Read the first valid JSON line to get nav address + title + model. Returns (nav, title, model, agent_id)."""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    raw = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(raw, dict):
+                    continue
+                agent_id = raw.get("agentId")
+                model = None
+                message = raw.get("message") if isinstance(raw.get("message"), dict) else None
+                if isinstance(message, dict) and isinstance(message.get("model"), str):
+                    model = message["model"]
+                title = explicit_title_from_event(raw) or raw.get("cwd") or path.stem
+                nav = NavAddress(
+                    sessionId=session_id,
+                    jsonlFile=str(path),
+                    lineNumber=1,
+                    eventIndex=0,
+                    scope="subagent",
+                    agentPath=agent_path,
+                    elementType="event",
+                    view="raw",
+                )
+                return nav, title, model, agent_id
+    except OSError:
+        pass
+    return None, path.stem, None, None
+
+
+def load_boot_export(
+    opaque_id: str,
+    source_path: str | Path | None = None,
+) -> ConversationExport | None:
+    """Parse only the main file; create skeleton exports for subagents from first-line + meta."""
+    projects_dir = resolve_projects_dir(source_path)
+    try:
+        ref = decode_session_ref(opaque_id)
+    except Exception:
+        return None
+    main_path = _session_file(projects_dir, ref)
+    if not main_path.exists():
+        return None
+
+    main = parse_jsonl_file(main_path, session_id=opaque_id)
+    root = _make_export(main, opaque_id=opaque_id)
+
+    discovered = _discover_subagents(main_path.parent, ref.session_id)
+    agent_ids = {agent_id for agent_id, _, _, _, _ in discovered}
+
+    parent_map: dict[str, tuple[str | None, str | None, str, str]] = {}
+    part_nav_by_id: dict[str, Any] = {}
+    for message_id, part in _iter_tool_parts(root):
+        spawn = _tool_spawn_agent_id(main, part)
+        if spawn:
+            aid, basis = spawn
+            if aid in agent_ids:
+                parent_map[aid] = (part.id, message_id, basis, "")
+                if part.nav:
+                    part_nav_by_id[part.id] = part.nav
+
+    for agent_id, path, agent_path, agent_type, agent_description in discovered:
+        nav, title, model, _ = _read_first_event_nav(path, opaque_id, agent_path)
+        child_summary = ConversationSummary(
+            id=f"{opaque_id}:{agent_path}",
+            title=title or agent_id,
+            directory=main.cwd,
+            gitBranch=main.git_branch,
+            version=None,
+            model=model or "Unknown",
+            message_count=0,
+            subagent_count=0,
+        )
+        task_part_id, task_message_id, basis, _ = parent_map.get(agent_id, (None, None, "no parent match", ""))
+        parent_nav = part_nav_by_id.get(task_part_id) if task_part_id else None
+        result_nav = main.tool_result_navs.get(task_part_id) if task_part_id else None
+        child = ConversationExport(
+            summary=child_summary,
+            messages=[],
+            task_part_id=task_part_id,
+            task_message_id=task_message_id,
+            parent_task_nav=parent_nav,
+            parent_result_nav=result_nav,
+            agent_type=agent_type or "subagent",
+            agent_description=agent_description or "",
+            relationship_basis=basis,
+            relationship_hint=f"attached by {basis}" if basis != "no parent match" else "unattached transcript",
+            raw_events=[],
+            parser_diagnostics=[],
+            nav_index=[nav] if nav else [],
+        )
+        root.subagent_transcripts.append(child)
+
+    root.summary.subagent_count = len(root.subagent_transcripts)
+    _assign_workflow_siblings(root)
+    attach_problem_flags(root)
+    return root

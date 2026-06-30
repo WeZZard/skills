@@ -31,6 +31,7 @@ class ParsedTranscript:
     git_branch: str | None = None
     model: str | None = None
     title: str | None = None
+    latest_ai_title: str | None = None
     messages: list[Message] = field(default_factory=list)
     raw_events: list[RawEvent] = field(default_factory=list)
     diagnostics: list[ParserDiagnostic] = field(default_factory=list)
@@ -284,8 +285,7 @@ def parse_jsonl_file(
         return parsed
 
     try:
-        with path.open("r", encoding="utf-8", errors="replace") as fh:
-            lines = fh.readlines()
+        fh = path.open("r", encoding="utf-8", errors="replace")
     except OSError as exc:
         nav = _nav(
             session_id=session_id,
@@ -308,305 +308,309 @@ def parse_jsonl_file(
         )
         return parsed
 
-    for event_index, line in enumerate(lines):
-        line_number = event_index + 1
-        stripped = line.strip()
-        event_nav = _nav(
-            session_id=session_id,
-            path=path,
-            line_number=line_number,
-            event_index=event_index,
-            scope=scope,
-            agent_path=agent_path,
-            element_type="event",
-            view="raw",
-        )
-        if not stripped:
-            continue
-        try:
-            raw: dict[str, Any] = json.loads(stripped)
-        except json.JSONDecodeError as exc:
-            is_partial_final_line = event_index == len(lines) - 1 and not line.endswith("\n")
-            kind = "partial_json" if is_partial_final_line else "invalid_json"
-            severity = "warning" if is_partial_final_line else "error"
-            prefix = "Partial final JSONL" if is_partial_final_line else "Invalid JSONL"
-            parsed.raw_events.append(
-                RawEvent(
-                    id=f"{path}:{line_number}",
-                    nav=event_nav,
-                    raw=stripped,
-                    parse_error=str(exc),
-                )
-            )
-            parsed.diagnostics.append(
-                ParserDiagnostic(
-                    id=f"parse:{path}:{line_number}",
-                    severity=severity,
-                    kind=kind,
-                    message=f"{prefix} at line {line_number}: {exc}",
-                    nav=event_nav,
-                )
-            )
-            parsed.nav_index.append(event_nav)
-            continue
-
-        parsed.raw_events.append(RawEvent(id=f"{path}:{line_number}", nav=event_nav, raw=raw))
-        parsed.nav_index.append(event_nav)
-        explicit_title = explicit_title_from_event(raw)
-        if explicit_title and raw.get("type") == "ai-title":
-            parsed.title = explicit_title
-            has_ai_title = True
-        elif explicit_title and not has_ai_title and parsed.title is None:
-            parsed.title = explicit_title
-        parsed.agent_id = parsed.agent_id or raw.get("agentId")
-        parsed.cwd = parsed.cwd or raw.get("cwd")
-        branch = raw.get("gitBranch") or raw.get("branch")
-        if parsed.git_branch is None and isinstance(branch, str) and branch.strip():
-            parsed.git_branch = branch.strip()
-        event_type = raw.get("type") or "unknown"
-        timestamp = parse_timestamp(raw.get("timestamp"))
-        version = raw.get("version")
-        message = raw.get("message") if isinstance(raw.get("message"), dict) else None
-        role = (message or {}).get("role") or (
-            "system" if event_type in {"system", "attachment"} else event_type
-        )
-        model = (message or {}).get("model")
-        if isinstance(model, str):
-            parsed.model = parsed.model or model
-
-        message_nav = _nav(
-            session_id=session_id,
-            path=path,
-            line_number=line_number,
-            event_index=event_index,
-            scope=scope,
-            agent_path=agent_path,
-            element_type="message",
-            message_id=raw.get("uuid"),
-        )
-        msg = Message(
-            id=raw.get("uuid") or f"{path.name}:{line_number}",
-            role=role if role in {"user", "assistant", "system"} else "system",
-            agent=agent_path,
-            model=model,
-            modelID=model if isinstance(model, str) else None,
-            time_created=timestamp,
-            time_updated=timestamp,
-            finish=(message or {}).get("stop_reason"),
-            parts=[],
-            nav=message_nav,
-        )
-        if version:
-            msg.summary = None
-
-        content = (message or {}).get("content")
-        if isinstance(content, str):
-            content = [{"type": "text", "text": content}]
-        elif not isinstance(content, list):
-            content = []
-
-        for content_index, item in enumerate(content):
-            if not isinstance(item, dict):
-                continue
-            ctype = item.get("type")
-            pointer = json_pointer("message", "content", content_index)
-            part_nav = _nav(
+    with fh:
+        for event_index, line in enumerate(fh):
+            line_number = event_index + 1
+            stripped = line.strip()
+            event_nav = _nav(
                 session_id=session_id,
                 path=path,
                 line_number=line_number,
                 event_index=event_index,
                 scope=scope,
                 agent_path=agent_path,
-                element_type=str(ctype or "part"),
-                message_id=msg.id,
-                content_index=content_index,
-                tool_use_id=item.get("id") or item.get("tool_use_id"),
-                pointer=pointer,
+                element_type="event",
+                view="raw",
             )
-            if ctype == "text":
-                text = item.get("text") or ""
-                msg.parts.append(
-                    GenericPart(
-                        id=f"{msg.id}:{content_index}",
-                        type="text",
-                        text=text,
-                        time_created=timestamp,
-                        nav=part_nav,
+            if not stripped:
+                continue
+            try:
+                raw: dict[str, Any] = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                is_partial_final_line = not line.endswith("\n")
+                kind = "partial_json" if is_partial_final_line else "invalid_json"
+                severity = "warning" if is_partial_final_line else "error"
+                prefix = "Partial final JSONL" if is_partial_final_line else "Invalid JSONL"
+                parsed.raw_events.append(
+                    RawEvent(
+                        id=f"{path}:{line_number}",
+                        nav=event_nav,
+                        raw=stripped,
+                        parse_error=str(exc),
                     )
                 )
-                title_candidate = title_candidate_from_text(text, raw)
-                if parsed.title is None and role == "user" and title_candidate:
-                    parsed.title = title_candidate
-            elif ctype == "thinking":
-                msg.parts.append(
-                    GenericPart(
-                        id=f"{msg.id}:thinking:{content_index}",
-                        type="reasoning",
-                        text=item.get("thinking") or item.get("text") or "",
-                        time_created=timestamp,
-                        nav=part_nav,
+                parsed.diagnostics.append(
+                    ParserDiagnostic(
+                        id=f"parse:{path}:{line_number}",
+                        severity=severity,
+                        kind=kind,
+                        message=f"{prefix} at line {line_number}: {exc}",
+                        nav=event_nav,
                     )
                 )
-            elif ctype == "tool_use":
-                tool_id = item.get("id") or f"{msg.id}:tool:{content_index}"
-                tool_id_text = str(tool_id)
-                part = GenericPart(
-                    id=tool_id_text,
-                    type="tool",
-                    tool=_part_tool_name(item.get("name")),
-                    time_created=timestamp,
-                    nav=part_nav,
-                    state={
-                        "input": item.get("input")
-                        if isinstance(item.get("input"), dict)
-                        else {},
-                        "status": "pending",
-                        "title": item.get("name") or "tool",
-                        "rawName": item.get("name"),
-                        "metadata": item.get("metadata") if isinstance(item.get("metadata"), dict) else None,
-                    },
+                parsed.nav_index.append(event_nav)
+                continue
+
+            parsed.raw_events.append(RawEvent(id=f"{path}:{line_number}", nav=event_nav, raw=raw))
+            parsed.nav_index.append(event_nav)
+            explicit_title = explicit_title_from_event(raw)
+            if explicit_title and raw.get("type") == "ai-title":
+                parsed.title = explicit_title
+                parsed.latest_ai_title = explicit_title
+                has_ai_title = True
+            elif explicit_title and not has_ai_title and parsed.title is None:
+                parsed.title = explicit_title
+            elif explicit_title and raw.get("type") == "last-prompt" and parsed.latest_ai_title is None:
+                parsed.latest_ai_title = explicit_title
+            parsed.agent_id = parsed.agent_id or raw.get("agentId")
+            parsed.cwd = parsed.cwd or raw.get("cwd")
+            branch = raw.get("gitBranch") or raw.get("branch")
+            if parsed.git_branch is None and isinstance(branch, str) and branch.strip():
+                parsed.git_branch = branch.strip()
+            event_type = raw.get("type") or "unknown"
+            timestamp = parse_timestamp(raw.get("timestamp"))
+            version = raw.get("version")
+            message = raw.get("message") if isinstance(raw.get("message"), dict) else None
+            role = (message or {}).get("role") or (
+                "system" if event_type in {"system", "attachment"} else event_type
+            )
+            model = (message or {}).get("model")
+            if isinstance(model, str):
+                parsed.model = parsed.model or model
+
+            message_nav = _nav(
+                session_id=session_id,
+                path=path,
+                line_number=line_number,
+                event_index=event_index,
+                scope=scope,
+                agent_path=agent_path,
+                element_type="message",
+                message_id=raw.get("uuid"),
+            )
+            msg = Message(
+                id=raw.get("uuid") or f"{path.name}:{line_number}",
+                role=role if role in {"user", "assistant", "system"} else "system",
+                agent=agent_path,
+                model=model,
+                modelID=model if isinstance(model, str) else None,
+                time_created=timestamp,
+                time_updated=timestamp,
+                finish=(message or {}).get("stop_reason"),
+                parts=[],
+                nav=message_nav,
+            )
+            if version:
+                msg.summary = None
+
+            content = (message or {}).get("content")
+            if isinstance(content, str):
+                content = [{"type": "text", "text": content}]
+            elif not isinstance(content, list):
+                content = []
+
+            for content_index, item in enumerate(content):
+                if not isinstance(item, dict):
+                    continue
+                ctype = item.get("type")
+                pointer = json_pointer("message", "content", content_index)
+                part_nav = _nav(
+                    session_id=session_id,
+                    path=path,
+                    line_number=line_number,
+                    event_index=event_index,
+                    scope=scope,
+                    agent_path=agent_path,
+                    element_type=str(ctype or "part"),
+                    message_id=msg.id,
+                    content_index=content_index,
+                    tool_use_id=item.get("id") or item.get("tool_use_id"),
+                    pointer=pointer,
                 )
-                if tool_id_text in tool_use_navs:
-                    parsed.diagnostics.append(
-                        ParserDiagnostic(
-                            id=f"duplicate-tool-use:{path}:{line_number}:{tool_id_text}",
-                            kind="duplicate_tool_use_id",
-                            message=f"Duplicate tool_use id {tool_id_text}.",
-                            nav=part_nav,
-                            related=[tool_use_navs[tool_id_text]],
-                        )
-                    )
-                else:
-                    tool_use_navs[tool_id_text] = part_nav
-                    tool_parts[tool_id_text] = part
-                msg.parts.append(part)
-            elif ctype == "tool_result":
-                tool_id = str(item.get("tool_use_id") or "")
-                result_text = _text_from_content(item.get("content"))
-                is_error = bool(item.get("is_error"))
-                result_part = GenericPart(
-                    id=f"{tool_id}:result:{line_number}",
-                    type="tool_result",
-                    tool="tool_result",
-                    text=result_text,
-                    time_created=timestamp,
-                    nav=part_nav,
-                    state={
-                        "tool_use_id": tool_id,
-                        "is_error": is_error,
-                        "output": None if is_error else result_text,
-                        "error": result_text if is_error else None,
-                    },
-                )
-                msg.parts.append(result_part)
-                if not tool_id:
-                    parsed.diagnostics.append(
-                        ParserDiagnostic(
-                            id=f"missing-tool-result-id:{path}:{line_number}:{content_index}",
-                            kind="missing_tool_result_id",
-                            message="tool_result is missing tool_use_id.",
+                if ctype == "text":
+                    text = item.get("text") or ""
+                    msg.parts.append(
+                        GenericPart(
+                            id=f"{msg.id}:{content_index}",
+                            type="text",
+                            text=text,
+                            time_created=timestamp,
                             nav=part_nav,
                         )
                     )
-                elif tool_id in tool_result_seen_navs:
-                    parsed.diagnostics.append(
-                        ParserDiagnostic(
-                            id=f"duplicate-tool-result:{path}:{line_number}:{tool_id}",
-                            kind="duplicate_tool_result_id",
-                            message=f"Duplicate tool_result for tool_use_id {tool_id}.",
-                            nav=part_nav,
-                            related=[tool_result_seen_navs[tool_id]],
-                        )
-                    )
-                else:
-                    tool_result_seen_navs[tool_id] = part_nav
-                    parsed.tool_result_navs[tool_id] = part_nav
-                if tool_id and tool_id not in tool_use_navs:
-                    parsed.diagnostics.append(
-                        ParserDiagnostic(
-                            id=f"orphan-tool-result:{path}:{line_number}:{tool_id}",
-                            kind="orphan_tool_result",
-                            message=f"tool_result references unknown tool_use_id {tool_id}.",
+                    title_candidate = title_candidate_from_text(text, raw)
+                    if parsed.title is None and role == "user" and title_candidate:
+                        parsed.title = title_candidate
+                elif ctype == "thinking":
+                    msg.parts.append(
+                        GenericPart(
+                            id=f"{msg.id}:thinking:{content_index}",
+                            type="reasoning",
+                            text=item.get("thinking") or item.get("text") or "",
+                            time_created=timestamp,
                             nav=part_nav,
                         )
                     )
-                if tool_id in tool_parts:
-                    state = tool_parts[tool_id].state or {}
-                    state["status"] = "error" if is_error else "completed"
-                    if is_error:
-                        state["error"] = result_text
-                    else:
-                        state["output"] = result_text
-                    tool_parts[tool_id].state = state
-                tool_use_result = raw.get("toolUseResult")
-                if isinstance(tool_use_result, dict) and isinstance(
-                    tool_use_result.get("agentId"), str
-                ):
-                    parsed.tool_result_agent_ids[tool_id] = tool_use_result["agentId"]
-                    if tool_id in tool_parts:
-                        state = tool_parts[tool_id].state or {}
-                        metadata = (
-                            state.get("metadata")
-                            if isinstance(state.get("metadata"), dict)
-                            else {}
-                        )
-                        metadata["agentId"] = tool_use_result["agentId"]
-                        state["metadata"] = metadata
-                        tool_parts[tool_id].state = state
-            elif ctype == "image":
-                source = item.get("source") if isinstance(item.get("source"), dict) else {}
-                media_type = source.get("media_type") or source.get("type") or item.get("media_type")
-                source_type = source.get("type") or item.get("source_type")
-                summary = "Image"
-                if isinstance(media_type, str) and media_type:
-                    summary = f"{summary}: {media_type}"
-                elif isinstance(source_type, str) and source_type:
-                    summary = f"{summary}: {source_type}"
-                msg.parts.append(
-                    GenericPart(
-                        id=f"{msg.id}:image:{content_index}",
-                        type="image",
-                        text=summary,
+                elif ctype == "tool_use":
+                    tool_id = item.get("id") or f"{msg.id}:tool:{content_index}"
+                    tool_id_text = str(tool_id)
+                    part = GenericPart(
+                        id=tool_id_text,
+                        type="tool",
+                        tool=_part_tool_name(item.get("name")),
                         time_created=timestamp,
                         nav=part_nav,
                         state={
-                            "media_type": media_type,
-                            "source_type": source_type,
-                            "has_data": bool(source.get("data")),
+                            "input": item.get("input")
+                            if isinstance(item.get("input"), dict)
+                            else {},
+                            "status": "pending",
+                            "title": item.get("name") or "tool",
+                            "rawName": item.get("name"),
+                            "metadata": item.get("metadata") if isinstance(item.get("metadata"), dict) else None,
                         },
                     )
+                    if tool_id_text in tool_use_navs:
+                        parsed.diagnostics.append(
+                            ParserDiagnostic(
+                                id=f"duplicate-tool-use:{path}:{line_number}:{tool_id_text}",
+                                kind="duplicate_tool_use_id",
+                                message=f"Duplicate tool_use id {tool_id_text}.",
+                                nav=part_nav,
+                                related=[tool_use_navs[tool_id_text]],
+                            )
+                        )
+                    else:
+                        tool_use_navs[tool_id_text] = part_nav
+                        tool_parts[tool_id_text] = part
+                    msg.parts.append(part)
+                elif ctype == "tool_result":
+                    tool_id = str(item.get("tool_use_id") or "")
+                    result_text = _text_from_content(item.get("content"))
+                    is_error = bool(item.get("is_error"))
+                    result_part = GenericPart(
+                        id=f"{tool_id}:result:{line_number}",
+                        type="tool_result",
+                        tool="tool_result",
+                        text=result_text,
+                        time_created=timestamp,
+                        nav=part_nav,
+                        state={
+                            "tool_use_id": tool_id,
+                            "is_error": is_error,
+                            "output": None if is_error else result_text,
+                            "error": result_text if is_error else None,
+                        },
+                    )
+                    msg.parts.append(result_part)
+                    if not tool_id:
+                        parsed.diagnostics.append(
+                            ParserDiagnostic(
+                                id=f"missing-tool-result-id:{path}:{line_number}:{content_index}",
+                                kind="missing_tool_result_id",
+                                message="tool_result is missing tool_use_id.",
+                                nav=part_nav,
+                            )
+                        )
+                    elif tool_id in tool_result_seen_navs:
+                        parsed.diagnostics.append(
+                            ParserDiagnostic(
+                                id=f"duplicate-tool-result:{path}:{line_number}:{tool_id}",
+                                kind="duplicate_tool_result_id",
+                                message=f"Duplicate tool_result for tool_use_id {tool_id}.",
+                                nav=part_nav,
+                                related=[tool_result_seen_navs[tool_id]],
+                            )
+                        )
+                    else:
+                        tool_result_seen_navs[tool_id] = part_nav
+                        parsed.tool_result_navs[tool_id] = part_nav
+                    if tool_id and tool_id not in tool_use_navs:
+                        parsed.diagnostics.append(
+                            ParserDiagnostic(
+                                id=f"orphan-tool-result:{path}:{line_number}:{tool_id}",
+                                kind="orphan_tool_result",
+                                message=f"tool_result references unknown tool_use_id {tool_id}.",
+                                nav=part_nav,
+                            )
+                        )
+                    if tool_id in tool_parts:
+                        state = tool_parts[tool_id].state or {}
+                        state["status"] = "error" if is_error else "completed"
+                        if is_error:
+                            state["error"] = result_text
+                        else:
+                            state["output"] = result_text
+                        tool_parts[tool_id].state = state
+                    tool_use_result = raw.get("toolUseResult")
+                    if isinstance(tool_use_result, dict) and isinstance(
+                        tool_use_result.get("agentId"), str
+                    ):
+                        parsed.tool_result_agent_ids[tool_id] = tool_use_result["agentId"]
+                        if tool_id in tool_parts:
+                            state = tool_parts[tool_id].state or {}
+                            metadata = (
+                                state.get("metadata")
+                                if isinstance(state.get("metadata"), dict)
+                                else {}
+                            )
+                            metadata["agentId"] = tool_use_result["agentId"]
+                            state["metadata"] = metadata
+                            tool_parts[tool_id].state = state
+                elif ctype == "image":
+                    source = item.get("source") if isinstance(item.get("source"), dict) else {}
+                    media_type = source.get("media_type") or source.get("type") or item.get("media_type")
+                    source_type = source.get("type") or item.get("source_type")
+                    summary = "Image"
+                    if isinstance(media_type, str) and media_type:
+                        summary = f"{summary}: {media_type}"
+                    elif isinstance(source_type, str) and source_type:
+                        summary = f"{summary}: {source_type}"
+                    msg.parts.append(
+                        GenericPart(
+                            id=f"{msg.id}:image:{content_index}",
+                            type="image",
+                            text=summary,
+                            time_created=timestamp,
+                            nav=part_nav,
+                            state={
+                                "media_type": media_type,
+                                "source_type": source_type,
+                                "has_data": bool(source.get("data")),
+                            },
+                        )
+                    )
+
+                parsed.nav_index.append(part_nav)
+
+            if not msg.parts and event_type in {"system", "attachment"}:
+                text = _compact_event_text(raw, str(event_type))
+                state = _attachment_event_state(raw) if event_type == "attachment" else _system_event_state(raw)
+                part_nav = _nav(
+                    session_id=session_id,
+                    path=path,
+                    line_number=line_number,
+                    event_index=event_index,
+                    scope=scope,
+                    agent_path=agent_path,
+                    element_type=event_type,
+                    message_id=msg.id,
+                    pointer="/" + event_type if event_type in raw else None,
                 )
-
-            parsed.nav_index.append(part_nav)
-
-        if not msg.parts and event_type in {"system", "attachment"}:
-            text = _compact_event_text(raw, str(event_type))
-            state = _attachment_event_state(raw) if event_type == "attachment" else _system_event_state(raw)
-            part_nav = _nav(
-                session_id=session_id,
-                path=path,
-                line_number=line_number,
-                event_index=event_index,
-                scope=scope,
-                agent_path=agent_path,
-                element_type=event_type,
-                message_id=msg.id,
-                pointer="/" + event_type if event_type in raw else None,
-            )
-            msg.parts.append(
-                GenericPart(
-                    id=f"{msg.id}:raw",
-                    type="attachment" if event_type == "attachment" else "system",
-                    text=text,
-                    state=state,
-                    time_created=timestamp,
-                    nav=part_nav,
+                msg.parts.append(
+                    GenericPart(
+                        id=f"{msg.id}:raw",
+                        type="attachment" if event_type == "attachment" else "system",
+                        text=text,
+                        state=state,
+                        time_created=timestamp,
+                        nav=part_nav,
+                    )
                 )
-            )
-            parsed.nav_index.append(part_nav)
+                parsed.nav_index.append(part_nav)
 
-        if msg.parts:
-            parsed.messages.append(msg)
+            if msg.parts:
+                parsed.messages.append(msg)
 
     if parsed.title is None:
         parsed.title = parsed.agent_type or parsed.agent_id or path.stem

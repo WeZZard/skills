@@ -179,6 +179,22 @@ def list_directories(source_path: str | Path | None = None) -> list[str]:
     return sorted({s.directory for s in list_sessions(source_path=source_path) if s.directory})
 
 
+def get_summary(session_id: str, source_path: str | Path | None = None) -> ConversationSummary | None:
+    db_path = _db_path(source_path)
+    if not db_path.is_file():
+        return None
+    try:
+        with _connect_readonly(db_path) as connection:
+            row = connection.execute(
+                "select * from session where id = ?", (session_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return _summary_from_session_row(connection, row)
+    except sqlite3.Error:
+        return None
+
+
 class _OpenCodeParser:
     def __init__(
         self,

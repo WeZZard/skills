@@ -1,4 +1,4 @@
-const SESSION_DATA = JSON.parse(document.getElementById("conversation-data").textContent);
+let SESSION_DATA = null;
 
 const state = {
   layout: "graph",
@@ -241,7 +241,7 @@ function scopedToolKey(nav, toolId) {
 }
 
 function firstNav(transcript) {
-  return transcript.messages?.[0]?.nav || transcript.raw_events?.[0]?.nav || transcript.parent_task_nav || null;
+  return transcript.messages?.[0]?.nav || transcript.raw_events?.[0]?.nav || transcript.first_nav || transcript.parent_task_nav || null;
 }
 
 function transcriptTitle(transcript, fallback = "Transcript") {
@@ -1903,26 +1903,116 @@ function buildModels() {
     if (callKey && resultKey) addBidirectionalEdge(callKey, resultKey, "tool_pair", "Tool result", "Tool call", scoped.split("::")[1]);
   }
 
-  model.tracks.forEach((track) => {
-    if (!track.parentTaskNav || !track.firstCapsuleKey) return;
-    const parentKey = navKeyToCapsuleKey.get(navKey(track.parentTaskNav));
-    if (!parentKey) return;
-    const edge = {
-      type: "spawn",
-      label: "Spawned subagent",
-      basis: track.relationshipBasis || track.relationship,
-      sourceKey: parentKey,
-      targetKey: track.firstCapsuleKey,
-      trackId: track.id,
-    };
-    model.spawnEdges.push(edge);
-    addBidirectionalEdge(parentKey, track.firstCapsuleKey, "spawn", "Spawned subagent", "Parent spawn", edge.basis);
-    const resultKey = navKeyToCapsuleKey.get(navKey(track.parentResultNav));
-    if (resultKey) addBidirectionalEdge(track.lastCapsuleKey, resultKey, "parent_result", "Parent result", "Child completion", track.id);
-  });
+  model.tracks.forEach((track) => buildSpawnEdgesForTrack(track));
+  buildSkeletonSearchIndex();
 
-  buildSearchIndex();
   layoutGraph();
+}
+
+const skeletonSearchKeys = new Set();
+
+function buildSkeletonSearchIndex() {
+  model.tracks.forEach((track) => {
+    if (track.depth === 0) return;
+    if (track.capsuleKeys.length) return;
+    if (!track.nav) return;
+    const key = navKey(track.nav);
+    if (searchIndexByKey.has(key)) return;
+    const sourceText = [
+      track.title || "",
+      track.agentDescription || "",
+      track.agentType || "",
+      track.relationship || "",
+    ].filter(Boolean).join("\n");
+    searchIndexByKey.set(key, {
+      key,
+      trackId: track.id,
+      messageIndex: 0,
+      kindLabel: track.agentType || "subagent",
+      lineLabel: track.agentType || "subagent",
+      sourceText,
+      keyHaystack: normalizeForSearch(sourceText),
+      valueHaystack: normalizeForSearch(sourceText),
+    });
+    skeletonSearchKeys.add(key);
+  });
+}
+
+function clearSkeletonSearchEntry(key) {
+  if (skeletonSearchKeys.has(key)) {
+    skeletonSearchKeys.delete(key);
+    searchIndexByKey.delete(key);
+  }
+}
+
+const pendingSpawnEdgeTrackIds = new Set();
+
+function buildSpawnEdgesForTrack(track) {
+  if (!track.parentTaskNav || !track.firstCapsuleKey) return;
+  const parentKey = navKeyToCapsuleKey.get(navKey(track.parentTaskNav));
+  if (!parentKey) {
+    pendingSpawnEdgeTrackIds.add(track.id);
+    return;
+  }
+  if (model.spawnEdges.some((e) => e.trackId === track.id)) return;
+  const edge = {
+    type: "spawn",
+    label: "Spawned subagent",
+    basis: track.relationshipBasis || track.relationship,
+    sourceKey: parentKey,
+    targetKey: track.firstCapsuleKey,
+    trackId: track.id,
+  };
+  model.spawnEdges.push(edge);
+  addBidirectionalEdge(parentKey, track.firstCapsuleKey, "spawn", "Spawned subagent", "Parent spawn", edge.basis);
+  const resultKey = navKeyToCapsuleKey.get(navKey(track.parentResultNav));
+  if (resultKey) addBidirectionalEdge(track.lastCapsuleKey, resultKey, "parent_result", "Parent result", "Child completion", track.id);
+  pendingSpawnEdgeTrackIds.delete(track.id);
+}
+
+function retryPendingSpawnEdges() {
+  if (!pendingSpawnEdgeTrackIds.size) return;
+  for (const trackId of [...pendingSpawnEdgeTrackIds]) {
+    const track = trackById.get(trackId);
+    if (track) buildSpawnEdgesForTrack(track);
+  }
+}
+
+let searchIndexBuilt = false;
+
+function ensureSearchIndex() {
+  if (searchIndexBuilt) return;
+  searchIndexBuilt = true;
+  buildSearchIndex();
+}
+
+function buildSearchIndexForTrack(track) {
+  if (track.nav) clearSkeletonSearchEntry(navKey(track.nav));
+  track.capsuleKeys.forEach((key) => {
+    const capsule = capsuleByKey.get(key);
+    if (!capsule) return;
+    clearSkeletonSearchEntry(key);
+    const trackForIndex = trackById.get(capsule.trackId);
+    const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
+    const sourceText = capsuleSearchText(capsule, trackForIndex);
+    const rawObj = capsule.rawOnly ? capsule.rawEvent?.raw : capsule.message;
+    const flattened = [];
+    flattenJsonKV(rawObj, "", flattened);
+    const keyStrings = flattened.map((f) => f.key);
+    const rawValueStrings = flattened.map((f) => f.value);
+    const keyHaystack = normalizeForSearch(keyStrings.join(" "));
+    const valueHaystack = normalizeForSearch([...rawValueStrings, sourceText].join(" "));
+    searchIndexByKey.set(capsule.key, {
+      key: capsule.key,
+      trackId: capsule.trackId,
+      messageIndex: capsule.messageIndex,
+      kindLabel: kind?.fullLabel || capsule.lineType || capsule.type,
+      lineLabel: kind?.line?.label || capsule.lineType || capsule.type,
+      sourceText,
+      keyHaystack,
+      valueHaystack,
+    });
+  });
 }
 
 function timelineTrackGroupLeftForViewport(viewportWidth, trackSpan) {
@@ -2580,6 +2670,9 @@ function applySearchQuery(target, text) {
     renderReader();
     renderLeftNavigation();
   }
+  if (ss.queryText && hasUnloadedSubagentTracks()) {
+    fetchServerSearch(ss.queryText, target === "graph" ? "timeline" : "all");
+  }
 }
 
 function commitStagedSearch(target, text) {
@@ -2687,10 +2780,28 @@ function setSearchCursorForLayout(key, layout = state.layout) {
 }
 
 function focusSearchResult(key, layout = state.layout) {
-  if (!key || !capsuleByKey.has(key)) return;
-  setSearchCursorForLayout(key, layout);
-  focusCapsule(key, { scroll: true });
-  renderSearchPanels();
+  if (!key) return;
+  if (capsuleByKey.has(key)) {
+    setSearchCursorForLayout(key, layout);
+    focusCapsule(key, { scroll: true });
+    renderSearchPanels();
+    return;
+  }
+  const serverRecord = (serverSearchResults || []).find((r) => r.key === key);
+  if (serverRecord) {
+    const trackId = serverRecord.trackId;
+    if (trackId && trackById.has(trackId) && !loadedTrackIds.has(trackId)) {
+      ensureTrackLoaded(trackId).then(() => {
+        const realKey = navKey(serverRecord.nav);
+        if (capsuleByKey.has(realKey)) {
+          setSearchCursorForLayout(realKey, layout);
+          focusCapsule(realKey, { scroll: true });
+        }
+        renderSearchPanels();
+      });
+      return;
+    }
+  }
 }
 
 function moveSearchResult(delta, layout = state.layout) {
@@ -2714,6 +2825,7 @@ function renderReader() {
   const mainTrack = model.tracks[0];
   els.readerMainStream.innerHTML = mainTrack ? renderTrack(mainTrack, { panel: false }) : "";
   renderPanels();
+  scheduleReaderVirtualRender();
 }
 
 function renderPanels(options = {}) {
@@ -2992,10 +3104,15 @@ function bindSubagentSeparatorResize() {
   }
 }
 
+const READER_VIRTUAL_CHUNK = 60;
+const READER_VIRTUAL_OVERSCAN = 20;
+const readerRenderState = { scrollLeft: 0, scrollTop: 0, frame: null };
+
 function renderTrack(track, options = {}) {
   const panel = Boolean(options.panel);
   const title = trackTitle(track);
   const capsules = track.capsuleKeys.map((key) => capsuleByKey.get(key)).filter(Boolean);
+  const bodyAttr = panel ? "" : "data-reader-virtual-body";
   return `
     <section class="reader-track ${track.depth === 0 ? "main-track" : "subagent-track"} ${panel ? "subagent-panel" : ""}" id="track-${domId(track.id)}" data-agent-id="${escAttr(track.id)}" data-track-kind="${track.depth === 0 ? "main" : "subagent"}">
       <header class="reader-track-header">
@@ -3010,10 +3127,59 @@ function renderTrack(track, options = {}) {
         </div>
         ${renderAgentConnector(track)}
       </header>
-      <div class="reader-track-body">
-        ${capsules.length ? capsules.map((capsule) => renderReaderCapsule(capsule, track)).join("") : '<div class="agent-track-empty">No messages in this transcript.</div>'}
+      <div class="reader-track-body" ${bodyAttr}>
+        ${panel ? renderReaderTrackBody(track, 0, capsules.length) : renderReaderTrackBody(track, 0, Math.min(READER_VIRTUAL_CHUNK, capsules.length))}
       </div>
     </section>`;
+}
+
+function getResolvedCapsules(track) {
+  if (track._resolvedCapsules && track._capsuleVersion === track.capsuleVersion) {
+    return track._resolvedCapsules;
+  }
+  const capsules = track.capsuleKeys.map((key) => capsuleByKey.get(key)).filter(Boolean);
+  track._resolvedCapsules = capsules;
+  track._capsuleVersion = track.capsuleVersion || 0;
+  return capsules;
+}
+
+function renderReaderTrackBody(track, start, end) {
+  const capsules = getResolvedCapsules(track);
+  if (!capsules.length) return '<div class="agent-track-empty">No messages in this transcript.</div>';
+  const total = capsules.length;
+  const clampedStart = Math.max(0, Math.min(start, total));
+  const clampedEnd = Math.min(end, total);
+  const beforeSpacer = clampedStart > 0 ? `<div class="reader-virtual-spacer reader-virtual-spacer-before" data-count="${clampedStart}" style="height:${clampedStart * 96}px"></div>` : "";
+  const afterSpacer = clampedEnd < total ? `<div class="reader-virtual-spacer reader-virtual-spacer-after" data-count="${total - clampedEnd}" style="height:${(total - clampedEnd) * 96}px"></div>` : "";
+  const visible = capsules.slice(clampedStart, clampedEnd).map((capsule) => renderReaderCapsule(capsule, track)).join("");
+  return beforeSpacer + visible + afterSpacer;
+}
+
+function scheduleReaderVirtualRender() {
+  if (state.layout !== "reader") return;
+  if (readerRenderState.frame) return;
+  readerRenderState.frame = requestAnimationFrame(() => {
+    readerRenderState.frame = null;
+    renderReaderVirtualChunk();
+  });
+}
+
+function renderReaderVirtualChunk() {
+  const container = els.mainContent;
+  if (!container) return;
+  const track = model.tracks[0];
+  if (!track) return;
+  const body = container.querySelector("[data-reader-virtual-body]");
+  if (!body) return;
+  const scrollTop = container.scrollTop;
+  const viewHeight = container.clientHeight;
+  const estimatedHeight = 96;
+  const start = Math.max(0, Math.floor((scrollTop - READER_VIRTUAL_OVERSCAN * estimatedHeight) / estimatedHeight));
+  const end = Math.min(track.capsuleKeys.length, Math.ceil((scrollTop + viewHeight + READER_VIRTUAL_OVERSCAN * estimatedHeight) / estimatedHeight) + READER_VIRTUAL_CHUNK);
+  const currentStart = parseInt(body.querySelector(".reader-virtual-spacer-before")?.dataset.count || "0", 10);
+  const currentEnd = track.capsuleKeys.length - parseInt(body.querySelector(".reader-virtual-spacer-after")?.dataset.count || "0", 10);
+  if (start === currentStart && end === currentEnd) return;
+  body.innerHTML = renderReaderTrackBody(track, start, end);
 }
 
 function renderAgentConnector(track) {
@@ -3516,6 +3682,7 @@ function capsuleSearchText(capsule, track) {
 
 function buildSearchIndex() {
   searchIndexByKey.clear();
+  skeletonSearchKeys.clear();
   model.capsules.forEach((capsule) => {
     const track = trackById.get(capsule.trackId);
     const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
@@ -3538,6 +3705,7 @@ function buildSearchIndex() {
       valueHaystack,
     });
   });
+  buildSkeletonSearchIndex();
 }
 
 function searchResultTrackAllowed(track) {
@@ -3548,12 +3716,13 @@ function searchResultTrackAllowed(track) {
 }
 
 function searchResults(options) {
+  ensureSearchIndex();
   const scope = (options && options.scope) || "all";
   const layout = scope === "timeline" ? "graph" : state.layout;
   const ss = searchStateForLayout(layout);
   const expr = ss && ss.expression;
   if (!expr) return [];
-  return model.capsules
+  const localResults = model.capsules
     .map((capsule) => searchIndexByKey.get(capsule.key))
     .filter(Boolean)
     .filter((record) => {
@@ -3561,6 +3730,40 @@ function searchResults(options) {
       if (scope === "timeline" && !searchResultTrackAllowed(track)) return false;
       return matchesExpr(record, expr);
     });
+  const localKeys = new Set(localResults.map((r) => r.key));
+  const serverHits = (serverSearchResults || []).filter((record) => {
+    if (localKeys.has(record.key)) return false;
+    const track = trackById.get(record.trackId);
+    if (scope === "timeline" && !searchResultTrackAllowed(track)) return false;
+    return true;
+  });
+  return [...localResults, ...serverHits];
+}
+
+let serverSearchResults = [];
+let serverSearchTimer = null;
+let serverSearchQueryId = 0;
+
+function fetchServerSearch(query, scope) {
+  if (serverSearchTimer) clearTimeout(serverSearchTimer);
+  const myId = ++serverSearchQueryId;
+  serverSearchTimer = setTimeout(() => {
+    const { base } = sessionApiBase();
+    const params = new URLSearchParams({ q: query, scope: scope === "timeline" ? state.timelineSearchScope : "all" });
+    fetch(`${base}/search?${params}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((results) => {
+        if (myId !== serverSearchQueryId) return;
+        serverSearchResults = results || [];
+        scheduleGraphRender();
+        renderTimelineSearchShelf();
+      })
+      .catch(() => {});
+  }, 200);
+}
+
+function hasUnloadedSubagentTracks() {
+  return model.tracks.some((track) => track.depth > 0 && !loadedTrackIds.has(track.id));
 }
 
 function searchResultSnippet(record, maxLength) {
@@ -3756,6 +3959,11 @@ function renderGraphVirtual() {
     if (track.timelineSearchHidden) return false;
     const bounds = timelineTrackBounds(track);
     return bounds.right >= viewLeft - overscanX && bounds.left <= viewRight + overscanX;
+  });
+  visibleTracks.forEach((track) => {
+    if (track.depth > 0 && !loadedTrackIds.has(track.id) && !pendingTrackLoads.has(track.id)) {
+      ensureTrackLoaded(track.id);
+    }
   });
 
   els.graphSizer.style.width = `${model.width}px`;
@@ -4282,6 +4490,10 @@ function scrollReaderCapsuleIntoView(capsule, instant = false) {
   if (!capsule || capsule.rawOnly) return;
   const track = trackById.get(capsule.trackId);
   if (!track) return;
+  if (track.depth > 0 && !loadedTrackIds.has(track.id)) {
+    ensureTrackLoaded(track.id).then(() => scrollReaderCapsuleIntoView(capsule, instant));
+    return;
+  }
   if (track.depth > 0 && !state.openPanelIds.has(track.id)) {
     state.openPanelIds.add(track.id);
     renderLeftNavigation();
@@ -4454,6 +4666,10 @@ function selectTimelineTrack(trackId, options = {}) {
 function selectReaderTrack(trackId, options = {}) {
   const track = trackById.get(trackId);
   if (!track) return;
+  if (track.depth > 0 && !loadedTrackIds.has(track.id)) {
+    ensureTrackLoaded(track.id).then(() => selectReaderTrack(trackId, options));
+    return;
+  }
   const wasSelected = state.readerSelectedTrackId === trackId;
   const wasOpen = state.openPanelIds.has(trackId);
   state.readerSelectedTrackId = trackId;
@@ -4868,6 +5084,20 @@ function timelineMetrics() {
 }
 
 function exposeDebugState() {
+  const computeCounts = () => {
+    const loadedMessages = model.capsules.filter((capsule) => !capsule.rawOnly).length;
+    const skeletonMessages = model.tracks.reduce((sum, track) => {
+      if (loadedTrackIds.has(track.id) || track.depth === 0) return sum;
+      return sum + (track.transcript?.message_count || 0);
+    }, 0);
+    return {
+      tracks: model.tracks.length,
+      lanes: model.tracks.length,
+      capsules: model.capsules.length,
+      messages: loadedMessages + skeletonMessages,
+      problems: allProblems().length,
+    };
+  };
   window.SESSION_VIEWER = {
     tracks: model.tracks,
     capsules: model.capsules.map((capsule) => ({
@@ -4887,13 +5117,8 @@ function exposeDebugState() {
       height: capsule.height,
     })),
     spawnEdges: model.spawnEdges,
-    counts: {
-      tracks: model.tracks.length,
-      lanes: model.tracks.length,
-      capsules: model.capsules.length,
-      messages: model.capsules.filter((capsule) => !capsule.rawOnly).length,
-      problems: allProblems().length,
-    },
+    counts: computeCounts(),
+    recomputeCounts() { this.counts = computeCounts(); this.capsules = model.capsules.map((capsule) => ({ key: capsule.key, trackId: capsule.trackId, messageIndex: capsule.messageIndex, type: capsule.type, lineType: capsule.lineType, contentTypes: capsule.contentTypes, summary: capsule.summary, problemCount: capsule.problemCount, rawOnly: capsule.rawOnly, nav: capsule.nav, x: capsule.x, y: capsule.y, width: capsule.width, height: capsule.height })); },
     current: () => ({
       layout: state.layout,
       capsuleKey: state.currentCapsuleKey,
@@ -4925,8 +5150,207 @@ function exposeDebugState() {
   };
 }
 
+const loadedTrackIds = new Set();
+const pendingTrackLoads = new Map();
+
+function sessionApiBase() {
+  const workbench = els.workbench;
+  const agent = workbench?.dataset.agent || "claude";
+  const sessionId = workbench?.dataset.sessionId || "";
+  return { agent, sessionId, base: `/api/conversation/${agent}/${sessionId}` };
+}
+
+function ensureTrackLoaded(trackId) {
+  if (loadedTrackIds.has(trackId) || trackId === "main") return Promise.resolve();
+  if (pendingTrackLoads.has(trackId)) return pendingTrackLoads.get(trackId);
+  const track = trackById.get(trackId);
+  if (!track || track.depth === 0) return Promise.resolve();
+  const { base } = sessionApiBase();
+  const encodedId = encodeURIComponent(trackId);
+  const promise = fetch(`${base}/track/${encodedId}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((payload) => {
+      pendingTrackLoads.delete(trackId);
+      if (!payload) return;
+      populateTrack(track, payload);
+      loadedTrackIds.add(trackId);
+    })
+    .catch(() => {
+      pendingTrackLoads.delete(trackId);
+    });
+  pendingTrackLoads.set(trackId, promise);
+  return promise;
+}
+
+let populateBatchPending = false;
+const populatedTrackIdsThisBatch = new Set();
+
+function flushPopulateBatch() {
+  populateBatchPending = false;
+  const loadedAny = populatedTrackIdsThisBatch.size > 0;
+  populatedTrackIdsThisBatch.clear();
+  if (!loadedAny) return;
+  retryPendingSpawnEdges();
+  layoutGraph(els.graphViewport?.clientWidth || 0);
+  scheduleGraphRender();
+  renderLeftNavigation();
+}
+
+function schedulePopulateFlush() {
+  if (populateBatchPending) return;
+  populateBatchPending = true;
+  requestAnimationFrame(() => flushPopulateBatch());
+}
+
+function populateTrack(track, payload) {
+  track.transcript.messages = payload.messages || [];
+  track.transcript.raw_events = payload.raw_events || [];
+  track.transcript.problem_flags = payload.problem_flags || [];
+  track.transcript.parser_diagnostics = payload.parser_diagnostics || [];
+  track.messages = track.transcript.messages;
+  track.capsuleKeys = [];
+  track._resolvedCapsules = null;
+  const laneProblems = new Set();
+  (track.transcript.problem_flags || []).forEach((problem) =>
+    laneProblems.add(`${navKey(problem.nav)}::${problem.kind}`)
+  );
+  track.problemCount = laneProblems.size;
+  buildTrackCapsules(track);
+  if (searchIndexBuilt) buildSearchIndexForTrack(track);
+  if (window.SESSION_VIEWER) window.SESSION_VIEWER.recomputeCounts();
+  populatedTrackIdsThisBatch.add(track.id);
+  if (state.openPanelIds.has(track.id)) renderPanels({ pinTrackId: track.id });
+  if (state.layout === "reader" && state.readerSelectedTrackId === track.id) renderMessageIndex();
+  schedulePopulateFlush();
+}
+
+function buildTrackCapsules(track) {
+  const laneIndex = track.index;
+  const renderedAddresses = new Set();
+  const existingKeys = track.capsuleKeys.slice();
+  for (const key of existingKeys) {
+    const capsule = capsuleByKey.get(key);
+    if (capsule && capsule.trackId === track.id) capsuleByKey.delete(key);
+  }
+  track.capsuleKeys = [];
+  (track.messages || []).forEach((message, messageIndex) => {
+    const key = rememberNav(message.nav) || `${track.id}:message:${messageIndex}`;
+    const parts = message.parts || [];
+    const problems = problemListForMessage(message);
+    const kindModel = messageKindModel(message);
+    const type = kindModel.primaryKey;
+    const capsule = {
+      key,
+      trackId: track.id,
+      laneIndex,
+      message,
+      nav: message.nav,
+      role: message.role || "",
+      type,
+      label: `${kindModel.fullLabel} ${messageIndex + 1}`,
+      kindModel,
+      lineType: kindModel.line.label,
+      contentTypes: kindModel.contentKinds.map((kind) => kind.label),
+      summary: compact(messageText(message) || message.role || "message"),
+      timestamp: message.time_created || 0,
+      lineNumber: message.nav?.lineNumber || 0,
+      messageIndex,
+      partTypes: parts.map((part) => part.type),
+      problems,
+      problemCount: problems.length,
+      rawEvent: null,
+      rawOnly: false,
+      x: 0,
+      y: 0,
+      width: model.blockWidth,
+      height: model.blockHeight,
+    };
+    capsuleByKey.set(key, capsule);
+    model.capsules.push(capsule);
+    track.capsuleKeys.push(key);
+    navKeyToCapsuleKey.set(key, key);
+    renderedAddresses.add(eventAddress(message.nav));
+    parts.forEach((part) => {
+      const partKey = rememberNav(part.nav);
+      if (partKey) navKeyToCapsuleKey.set(partKey, key);
+      renderedAddresses.add(eventAddress(part.nav));
+      const toolId = part.nav?.toolUseId || part.state?.tool_use_id || part.id || "";
+      const scoped = scopedToolKey(part.nav, toolId);
+      if (part.type === "tool" && scoped) toolCallByScopedId.set(scoped, part.nav);
+      if (part.type === "tool_result" && scoped) toolResultByScopedId.set(scoped, part.nav);
+    });
+  });
+  (track.transcript.raw_events || []).forEach((event) => {
+    if (renderedAddresses.has(eventAddress(event.nav))) return;
+    const key = rememberNav(event.nav);
+    if (capsuleByKey.has(key)) return;
+    const kindModel = rawEventKindModel(event);
+    const capsule = {
+      key,
+      trackId: track.id,
+      laneIndex,
+      message: null,
+      nav: event.nav,
+      role: "raw",
+      type: kindModel.primaryKey,
+      label: kindModel.fullLabel,
+      kindModel,
+      lineType: kindModel.line.label,
+      contentTypes: kindModel.contentKinds.map((kind) => kind.label),
+      summary: compact(rawText(event)),
+      timestamp: Date.parse(event.raw?.timestamp || "") || 0,
+      lineNumber: event.nav?.lineNumber || 0,
+      messageIndex: track.capsuleKeys.length,
+      partTypes: ["raw_event"],
+      problems: problemsByNavKey.get(key) || [],
+      problemCount: (problemsByNavKey.get(key) || []).length,
+      rawEvent: event,
+      rawOnly: true,
+      x: 0,
+      y: 0,
+      width: model.blockWidth,
+      height: model.blockHeight,
+    };
+    capsuleByKey.set(key, capsule);
+    model.capsules.push(capsule);
+    track.capsuleKeys.push(key);
+    navKeyToCapsuleKey.set(key, key);
+  });
+  track.firstCapsuleKey = track.capsuleKeys[0] || "";
+  track.lastCapsuleKey = track.capsuleKeys[track.capsuleKeys.length - 1] || "";
+  track.capsuleVersion = (track.capsuleVersion || 0) + 1;
+  track.capsuleKeys.forEach((key, index) => {
+    const next = track.capsuleKeys[index + 1];
+    if (next) addBidirectionalEdge(key, next, "sequence", "Next message", "Previous message");
+  });
+  buildSpawnEdgesForTrack(track);
+}
+
+function backgroundLoadSubagentTracks() {
+  const viewport = els.graphViewport;
+  const viewLeft = viewport?.scrollLeft || 0;
+  const viewRight = viewLeft + (viewport?.clientWidth || 0);
+  const subagentTracks = model.tracks.filter((track) => track.depth > 0 && !loadedTrackIds.has(track.id));
+  subagentTracks.sort((a, b) => {
+    const aVisible = (a.x || 0) >= viewLeft - 400 && (a.x || 0) <= viewRight + 400;
+    const bVisible = (b.x || 0) >= viewLeft - 400 && (b.x || 0) <= viewRight + 400;
+    if (aVisible !== bVisible) return aVisible ? -1 : 1;
+    return (a.x || 0) - (b.x || 0);
+  });
+  const concurrency = 8;
+  let index = 0;
+  function loadNext() {
+    if (index >= subagentTracks.length) return;
+    const track = subagentTracks[index];
+    index += 1;
+    ensureTrackLoaded(track.id).then(loadNext);
+  }
+  for (let i = 0; i < concurrency; i += 1) loadNext();
+}
+
 function initialize() {
   buildModels();
+  hideLoadingShell();
   updateCommandBarHeight();
   state.layout = getLayoutFromUrl();
   state.timelineSelectedTrackId = model.tracks[0]?.id || "main";
@@ -4943,9 +5367,47 @@ function initialize() {
   if (!restored && model.capsules.length) focusCapsule(model.capsules[0].key, { push: false, history: false, instant: true });
   exposeDebugState();
   replaceCurrentHistoryState();
+  backgroundLoadSubagentTracks();
 }
 
-initialize();
+function showLoadingShell() {
+  const graphLayout = document.getElementById("graphLayout");
+  if (graphLayout) {
+    const loader = document.createElement("div");
+    loader.className = "reader-track-body";
+    loader.style.cssText = "padding:24px;color:var(--muted,#6b7280);font-size:13px";
+    loader.textContent = "Loading session data…";
+    loader.id = "sessionLoadingMessage";
+    graphLayout.appendChild(loader);
+  }
+}
+
+function hideLoadingShell() {
+  const loader = document.getElementById("sessionLoadingMessage");
+  if (loader) loader.remove();
+}
+
+function bootstrapConversation() {
+  showLoadingShell();
+  const { agent, sessionId, base } = sessionApiBase();
+  fetch(base + "/boot")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (!data) {
+        const loader = document.getElementById("sessionLoadingMessage");
+        if (loader) loader.textContent = "Failed to load session data.";
+        return;
+      }
+      SESSION_DATA = data;
+      initialize();
+    })
+    .catch((err) => {
+      const loader = document.getElementById("sessionLoadingMessage");
+      if (loader) loader.textContent = "Failed to load session: " + String(err);
+    });
+}
+
+bootstrapConversation();
 
 els.layoutButtons.forEach((button) => {
   button.addEventListener("click", () => setLayout(button.dataset.layout));
@@ -4959,6 +5421,7 @@ els.leftTabs.forEach((button) => {
 });
 
 els.graphViewport.addEventListener("scroll", scheduleGraphRender, { passive: true });
+els.mainContent?.addEventListener("scroll", scheduleReaderVirtualRender, { passive: true });
 window.addEventListener("resize", () => {
   updateCommandBarHeight();
   scheduleGraphRender();

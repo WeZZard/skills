@@ -10,12 +10,38 @@ from app.models import ConversationExport, NavAddress, ProblemFlag, RawEvent
 
 
 FAILURE_RE = re.compile(r"(Error:|Failed|permission denied|not found)", re.I)
+INTERRUPTED_MARKER = "[Request interrupted by user]"
 
 
-def _raw_text(raw: Any) -> str:
-    if isinstance(raw, str):
-        return raw
-    return json.dumps(raw, ensure_ascii=False, default=str)
+def _any_string_matches(value: Any, predicate) -> bool:
+    if isinstance(value, str):
+        return predicate(value)
+    if isinstance(value, (dict, list)):
+        seen: set = set()
+        stack: list = [value]
+        while stack:
+            current = stack.pop()
+            if isinstance(current, str):
+                if predicate(current):
+                    return True
+            elif isinstance(current, dict):
+                ident = id(current)
+                if ident not in seen:
+                    seen.add(ident)
+                    stack.extend(current.values())
+            elif isinstance(current, list):
+                ident = id(current)
+                if ident not in seen:
+                    seen.add(ident)
+                    stack.extend(current)
+            elif current is not None:
+                if predicate(str(current)):
+                    return True
+    return False
+
+
+def _contains_failure(value: Any) -> bool:
+    return _any_string_matches(value, FAILURE_RE.search)
 
 
 def _flag(kind: str, reason: str, nav: NavAddress, *, path: str | None = None, severity: str = "warning") -> ProblemFlag:
@@ -32,16 +58,39 @@ def _flag(kind: str, reason: str, nav: NavAddress, *, path: str | None = None, s
 def flags_from_raw_event(event: RawEvent) -> list[ProblemFlag]:
     flags: list[ProblemFlag] = []
     raw = event.raw
-    text = _raw_text(raw)
 
     if event.parse_error:
         flags.append(_flag("parser_diagnostic", event.parse_error, event.nav, severity="error"))
         return flags
 
-    if "[Request interrupted by user]" in text:
-        flags.append(_flag("interrupted_request", "Request interrupted by user", event.nav))
+    if isinstance(raw, str):
+        if INTERRUPTED_MARKER in raw:
+            flags.append(_flag("interrupted_request", "Request interrupted by user", event.nav))
+        if FAILURE_RE.search(raw):
+            flags.append(_flag("tool_use_result_error", "raw event text contains failure text", event.nav))
+        return flags
 
     if isinstance(raw, dict):
+        message = raw.get("message")
+        content_items = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content_items, list):
+            content_items = []
+        top_content = raw.get("content")
+        if not isinstance(top_content, str):
+            top_content = ""
+
+        marker_found = False
+        if INTERRUPTED_MARKER in top_content:
+            marker_found = True
+        for item in content_items:
+            if isinstance(item, dict):
+                item_text = item.get("text") if isinstance(item.get("text"), str) else None
+                if item_text and INTERRUPTED_MARKER in item_text:
+                    marker_found = True
+                    break
+        if marker_found:
+            flags.append(_flag("interrupted_request", "Request interrupted by user", event.nav))
+
         if raw.get("table") == "part" and isinstance(raw.get("row"), dict):
             row = raw["row"]
             data = raw.get("data")
@@ -56,11 +105,11 @@ def flags_from_raw_event(event: RawEvent) -> list[ProblemFlag]:
                 if status in {"error", "failed"}:
                     flags.append(_flag("tool_result_error", "OpenCode tool state is failed/error", event.nav, path="/row/data/state/status", severity="error"))
                 for key in ("error", "output"):
-                    if FAILURE_RE.search(_raw_text(state.get(key))):
+                    if _contains_failure(state.get(key)):
                         flags.append(_flag("command_failure", f"OpenCode tool {key} contains failure text", event.nav, path=f"/row/data/state/{key}"))
 
         tool_use_result = raw.get("toolUseResult")
-        if tool_use_result is not None and FAILURE_RE.search(_raw_text(tool_use_result)):
+        if tool_use_result is not None and _contains_failure(tool_use_result):
             flags.append(_flag("tool_use_result_error", "toolUseResult contains failure text", event.nav, path="/toolUseResult"))
 
         attachment = raw.get("attachment")
@@ -74,9 +123,8 @@ def flags_from_raw_event(event: RawEvent) -> list[ProblemFlag]:
         if raw.get("type") == "system" and raw.get("hookErrors"):
             flags.append(_flag("hook_error", "System hook summary contains hookErrors", event.nav, path="/hookErrors", severity="error"))
 
-        message = raw.get("message")
         if isinstance(message, dict):
-            for index, item in enumerate(message.get("content") or []):
+            for index, item in enumerate(content_items):
                 if isinstance(item, dict) and item.get("type") == "tool_result":
                     pointer = f"/message/content/{index}"
                     part_nav = event.nav.model_copy(
@@ -98,7 +146,7 @@ def flags_from_raw_event(event: RawEvent) -> list[ProblemFlag]:
                                 severity="error",
                             )
                         )
-                    if FAILURE_RE.search(_raw_text(item.get("content"))):
+                    if _contains_failure(item.get("content")):
                         flags.append(
                             _flag(
                                 "command_failure",

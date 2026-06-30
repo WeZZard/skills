@@ -193,7 +193,7 @@ def test_dashboard_and_api_routes(populated_projects: Path, opencode_data_dir: P
 
     conversation = client.get(f"/conversation/{session_id}")
     assert conversation.status_code == 200
-    assert "conversation-data" in conversation.text
+    assert "data-testid=\"conversation-workbench\"" in conversation.text
     assert "data-testid=\"transcript-root\"" in conversation.text
     assert 'data-agent="claude"' in conversation.text
     assert 'data-default-layout="graph"' in conversation.text
@@ -206,7 +206,7 @@ def test_dashboard_and_api_routes(populated_projects: Path, opencode_data_dir: P
 
     agent_conversation = client.get(f"/conversation/claude/{session_id}")
     assert agent_conversation.status_code == 200
-    assert "conversation-data" in agent_conversation.text
+    assert "data-testid=\"conversation-workbench\"" in agent_conversation.text
 
     agent_api = client.get(f"/api/conversation/claude/{session_id}")
     assert agent_api.status_code == 200
@@ -237,7 +237,7 @@ def test_dashboard_and_api_routes(populated_projects: Path, opencode_data_dir: P
 
     opencode_conversation = client.get(f"/conversation/opencode/{opencode_session_id}")
     assert opencode_conversation.status_code == 200
-    assert "conversation-data" in opencode_conversation.text
+    assert "data-testid=\"conversation-workbench\"" in opencode_conversation.text
     assert "data-testid=\"transcript-root\"" in opencode_conversation.text
     assert 'data-agent="opencode"' in opencode_conversation.text
     assert 'data-default-layout="reader"' in opencode_conversation.text

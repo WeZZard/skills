@@ -3153,6 +3153,14 @@ article.message.has-problem > .message-card {
   padding: 14px 0 42px;
 }
 
+.reader-virtual-spacer {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .reader-message {
   display: block;
   margin: 0 0 16px;

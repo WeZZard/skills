@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import OrderedDict
 from typing import Any
 from urllib.parse import urlencode
 
@@ -10,14 +11,23 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app import claude_store, opencode_store
+from app import claude_store, opencode_store, slim_export
 from app.config import Config
 from app.models import ConversationExport, ConversationSummary
+
+
+def _get_summary(agent: str, session_id: str, source_path: str | None = None) -> ConversationSummary | None:
+    if agent == "claude":
+        return claude_store.get_summary(session_id, source_path=source_path)
+    return opencode_store.get_summary(session_id, source_path=source_path)
 
 
 app = FastAPI(title="Session Viewer")
 app.mount("/static", StaticFiles(directory=str(Config.STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(Config.TEMPLATES_DIR))
+
+_CONVERSATION_CACHE_MAX = 8
+_conversation_cache: "OrderedDict[tuple[str, str], ConversationExport]" = OrderedDict()
 
 
 AGENTS = {"claude": "Claude Code", "opencode": "Open Code"}
@@ -131,6 +141,21 @@ def _load_conversation(agent: str, session_id: str, source_path: str | None = No
     if agent == "claude":
         return claude_store.load_conversation(session_id, source_path=source_path)
     return opencode_store.load_conversation(session_id, source_path=source_path)
+
+
+def _load_conversation_cached(agent: str, session_id: str) -> ConversationExport | None:
+    cache_key = (agent, session_id)
+    cached = _conversation_cache.get(cache_key)
+    if cached is not None:
+        _conversation_cache.move_to_end(cache_key)
+        return cached
+    data = _load_conversation(agent, session_id)
+    if data is None:
+        return None
+    _conversation_cache[cache_key] = data
+    if len(_conversation_cache) > _CONVERSATION_CACHE_MAX:
+        _conversation_cache.popitem(last=False)
+    return data
 
 
 def _session_items(
@@ -1203,15 +1228,20 @@ async def conversation_agent(request: Request, agent: str, session_id: str):
     agent = _agent_or_404(agent)
     params = _dashboard_params(request)
     source_path = _source_path(agent, params)
-    data = _load_conversation(agent, session_id, source_path=source_path)
-    if data is None:
+    summary = _get_summary(agent, session_id, source_path=source_path)
+    if summary is None:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    class _Shell:
+        def __init__(self, s):
+            self.summary = s
     return templates.TemplateResponse(
         request,
         "conversation.html",
         {
-            "conversation": data,
-            "conversation_json": data.model_dump_json().replace("</", "<\\/"),
+            "conversation": _Shell(summary),
+            "conversation_json": "",
+            "slim_payload": True,
             "source": _source_info(agent, source_path),
             "agent": agent,
             "agent_label": AGENTS[agent],
@@ -1225,21 +1255,80 @@ async def conversation(request: Request, session_id: str):
     return await conversation_agent(request, "claude", session_id)
 
 
+@app.get("/api/conversation/{agent}/{session_id}/boot")
+async def api_conversation_boot(agent: str, session_id: str):
+    agent = _agent_or_404(agent)
+    if agent == "claude":
+        data = claude_store.load_boot_export(session_id)
+    else:
+        data = _load_conversation_cached(agent, session_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return JSONResponse(content=slim_export.slim_export(data))
+
+
 @app.get("/api/conversation/{agent}/{session_id}")
 async def api_conversation_agent(
     agent: str,
     session_id: str,
+    slim: bool = Query(True),
 ):
     agent = _agent_or_404(agent)
-    data = _load_conversation(agent, session_id)
+    data = _load_conversation_cached(agent, session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    if slim:
+        return JSONResponse(content=slim_export.slim_export(data))
     return JSONResponse(content=data.model_dump(mode="json"))
 
 
 @app.get("/api/conversation/{session_id}")
 async def api_conversation(session_id: str):
-    data = _load_conversation("claude", session_id)
+    data = _load_conversation_cached("claude", session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return JSONResponse(content=data.model_dump(mode="json"))
+    return JSONResponse(content=slim_export.slim_export(data))
+
+
+@app.get("/api/conversation/{agent}/{session_id}/track/{track_id:path}")
+async def api_conversation_track(agent: str, session_id: str, track_id: str):
+    agent = _agent_or_404(agent)
+    data = _load_conversation_cached(agent, session_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    payload = slim_export.track_payload(data, track_id)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Track not found")
+    return JSONResponse(content=payload)
+
+
+@app.get("/api/conversation/{agent}/{session_id}/raw_event")
+async def api_conversation_raw_event(
+    agent: str,
+    session_id: str,
+    jsonl_file: str = Query(...),
+    line_number: int = Query(...),
+):
+    agent = _agent_or_404(agent)
+    data = _load_conversation_cached(agent, session_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    payload = slim_export.raw_event_payload(data, jsonl_file, line_number)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Raw event not found")
+    return JSONResponse(content=payload)
+
+
+@app.get("/api/conversation/{agent}/{session_id}/search")
+async def api_conversation_search(
+    agent: str,
+    session_id: str,
+    q: str = Query(...),
+    scope: str = Query("all"),
+):
+    agent = _agent_or_404(agent)
+    data = _load_conversation_cached(agent, session_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    results = slim_export.search_export(data, q, scope=scope)
+    return JSONResponse(content=results)
