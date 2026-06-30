@@ -1,5 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin"
-import { readFileSync, existsSync, writeFileSync, copyFileSync } from "node:fs"
+import { readFileSync, existsSync, writeFileSync, copyFileSync, mkdirSync, cpSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { dirname, join, resolve } from "node:path"
 import { homedir } from "node:os"
@@ -344,6 +344,37 @@ function mimeToExt(mime: string): string {
   return "png"
 }
 
+// Sync SKILL.md into the default-scanned skills directory at module import
+// time. OpenCode's plugin installer suppresses npm postinstall
+// (ignoreScripts:true), so a postinstall hook cannot be relied on. Doing the
+// sync here — at module load, which runs before skill discovery on the same
+// launch — ensures the skill is discoverable on the FIRST launch after
+// install, not just the second.
+//
+// Sync logic (handles upgrades, stale files, and previous-version installs):
+//   1. Read the source SKILL.md bytes from the installed package.
+//   2. If the destination already exists and its bytes are identical, the
+//      skill is already in sync — skip the write (avoids unnecessary disk
+//      I/O and filesystem-watcher churn on every launch).
+//   3. If the destination is missing or its content differs (e.g. the
+//      plugin was upgraded and SKILL.md changed, or a previous version's
+//      file is stale), overwrite it with the current source.
+function ensureSkillInstalled() {
+  const src = join(dataDir, "SKILL.md")
+  if (!existsSync(src)) return
+  const destDir = join(opencodeConfigDir(), "skills", "vision")
+  const dest = join(destDir, "SKILL.md")
+  try {
+    const srcBytes = readFileSync(src)
+    if (existsSync(dest) && srcBytes.equals(readFileSync(dest))) return
+    mkdirSync(destDir, { recursive: true })
+    cpSync(src, dest)
+  } catch {
+    // Non-fatal: the config hook's skills.paths push is a fallback.
+  }
+}
+ensureSkillInstalled()
+
 const plugin: Plugin = async () => ({
   config: async (cfg) => {
     const catalog = readModelsCatalog()
@@ -352,14 +383,29 @@ const plugin: Plugin = async () => ({
       dynamicModels.map((m) => [`${m.provider}/${m.model_id}`, m])
     )
 
-    // Startup gate (B): if the configured default orchestrator model is
-    // itself vision-capable, skip registering the vision-* subagents — they
-    // would be redundant. The skill still loads via skills.paths and self-gates
-    // in its body ("When NOT to invoke").
-    if (configuredModelVisionCapable(cfg.model, catalog, cfg as ConfigLike)) {
-      registeredModels = new Map()
-      return
-    }
+  // Register the skill in-place: push the package data dir (which contains
+  // SKILL.md) onto config.skills.paths. OpenCode scans **/SKILL.md under each
+  // path, so this makes the vision skill discoverable straight out of the
+  // installed npm package — no postinstall copy, no symlink. OpenCode's plugin
+  // installer runs npm with ignoreScripts:true, so a postinstall hook cannot
+  // be relied on (see opencode-vision README "Troubleshooting").
+  const cfgAny = cfg as ConfigLike & {
+    skills?: { paths?: string[] }
+  }
+  cfgAny.skills ??= {}
+  cfgAny.skills.paths ??= []
+  if (!cfgAny.skills.paths.includes(dataDir)) {
+    cfgAny.skills.paths.push(dataDir)
+  }
+
+  // Startup gate (B): if the configured default orchestrator model is
+  // itself vision-capable, skip registering the vision-* subagents — they
+  // would be redundant. The skill still loads via the skills.paths entry
+  // pushed above and self-gates in its body ("When NOT to invoke").
+  if (configuredModelVisionCapable(cfg.model, catalog, cfg as ConfigLike)) {
+    registeredModels = new Map()
+    return
+  }
 
     cfg.agent ??= {}
     for (const e of dynamicModels) {
