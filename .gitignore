@@ -70,8 +70,11 @@ website/screenshots/
 # Handoff (local agent handoff dir)
 .handoff/
 
-# Plans (local planning artifacts)
+# Plans (local planning artifacts; session-viewer etc.)
 .plan/
+
+# Tracked plan sets live under .plans/{plan-name}/
+# (do not add .plans/ here)
 
 .playwright-mcp/
 

@@ -1,6 +1,22 @@
 # CLAUDE.md
 
-When adding a new plugin, remember to also add it to `.claude-plugin/marketplace.json`.
+When adding a new plugin, remember to also add it to `.claude-plugin/marketplace.json` and `catalog/website-registry.json` if it should have website pages.
+
+## Amplify — External Plugin (v1)
+
+`amplify` is **not** in this repo. It lives at [WeZZard/amplify](https://github.com/WeZZard/amplify) and is pinned via `git-subdir` in `.claude-plugin/marketplace.json`. Catalog updates flow through `catalog-sync.yml` and `scripts/sync-plugin.mjs`.
+
+## Catalog scripts
+
+```bash
+node scripts/resolve-plugin.mjs
+node scripts/sync-plugin.mjs --plugin amplify --tag vX.Y.Z --version X.Y.Z --repo WeZZard/amplify
+node scripts/update-plugin-website.mjs --plugin amplify
+node scripts/generate-readme.mjs
+node scripts/validate-pins.mjs
+```
+
+Planning docs: `.plans/plugin-registry-orchestration/`.
 
 ## Zelda Sounds — Generated Distribution
 

@@ -32,8 +32,9 @@ for plugin_dir in "$PLUGIN_BASE"/*/; do
     # version is owned by plugins/zelda-sounds/manifest.json (the generated
     # claude/zelda-sounds/.claude-plugin/plugin.json is emitted from it), so it is
     # excluded from this legacy auto-bump loop and handled by the generated-plugin
-    # step below. amplify and skill-kit keep their hand-edited auto-bump behavior.
-    if [ "$plugin_name" = "zelda-sounds" ]; then
+    # step below. amplify is extracted to WeZZard/amplify (release PR only).
+    # skill-kit keeps hand-edited auto-bump until v2 extract.
+    if [ "$plugin_name" = "zelda-sounds" ] || [ "$plugin_name" = "amplify" ]; then
         continue
     fi
 

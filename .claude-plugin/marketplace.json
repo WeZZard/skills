@@ -1,13 +1,20 @@
 {
   "name": "wezzard-skills",
+  "version": "1.0.0",
   "owner": {
     "name": "WeZZard"
   },
   "plugins": [
     {
       "name": "amplify",
-      "source": "./claude/amplify",
-      "description": "WeZZard's Claude Code skills: brainstorming, planning, execution"
+      "description": "WeZZard's Claude Code skills: brainstorming, planning, execution",
+      "source": {
+        "source": "git-subdir",
+        "url": "WeZZard/amplify",
+        "path": ".",
+        "ref": "v1.2.60",
+        "sha": "6ac51764e095f8c432a71648abea14261932b200"
+      }
     },
     {
       "name": "zelda-sounds",

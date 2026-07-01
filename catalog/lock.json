@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-07-02T00:00:00.000Z",
+  "plugins": {
+    "amplify": {
+      "repo": "WeZZard/amplify",
+      "tag": "v1.2.60",
+      "sha": "6ac51764e095f8c432a71648abea14261932b200",
+      "version": "1.2.60",
+      "resolvedAt": "2026-07-02T00:00:00.000Z"
+    }
+  }
+}

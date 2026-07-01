@@ -1,0 +1,167 @@
+name: Catalog Sync
+
+on:
+  repository_dispatch:
+    types: [sync-plugin]
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: Plugin name (e.g. amplify)
+        required: true
+        type: string
+      tag:
+        description: Git tag (e.g. v1.2.61)
+        required: true
+        type: string
+      version:
+        description: Plugin version without v prefix (optional; derived from tag)
+        required: false
+        type: string
+      repo:
+        description: Source repository (default WeZZard/<plugin>)
+        required: false
+        type: string
+      sha:
+        description: Merge commit SHA (optional)
+        required: false
+        type: string
+      release_id:
+        description: Release correlation ID (optional)
+        required: false
+        type: string
+
+concurrency:
+  group: catalog-sync-${{ github.event.client_payload.plugin || github.event.inputs.plugin }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install website dependencies (for toml via hoisting)
+        working-directory: website
+        run: npm ci
+
+      - name: Resolve sync inputs
+        id: inputs
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CLIENT_PLUGIN: ${{ github.event.client_payload.plugin }}
+          CLIENT_TAG: ${{ github.event.client_payload.tag }}
+          CLIENT_VERSION: ${{ github.event.client_payload.version }}
+          CLIENT_REPO: ${{ github.event.client_payload.repo }}
+          CLIENT_SHA: ${{ github.event.client_payload.sha }}
+          CLIENT_RELEASE_ID: ${{ github.event.client_payload.release_id }}
+          INPUT_PLUGIN: ${{ github.event.inputs.plugin }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          INPUT_REPO: ${{ github.event.inputs.repo }}
+          INPUT_SHA: ${{ github.event.inputs.sha }}
+          INPUT_RELEASE_ID: ${{ github.event.inputs.release_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "repository_dispatch" ]; then
+            PLUGIN="$CLIENT_PLUGIN"
+            TAG="$CLIENT_TAG"
+            VERSION="$CLIENT_VERSION"
+            REPO="$CLIENT_REPO"
+            SHA="$CLIENT_SHA"
+            RELEASE_ID="$CLIENT_RELEASE_ID"
+          else
+            PLUGIN="$INPUT_PLUGIN"
+            TAG="$INPUT_TAG"
+            VERSION="$INPUT_VERSION"
+            REPO="$INPUT_REPO"
+            SHA="$INPUT_SHA"
+            RELEASE_ID="$INPUT_RELEASE_ID"
+          fi
+
+          if [ -z "$PLUGIN" ] || [ -z "$TAG" ]; then
+            echo "plugin and tag are required" >&2
+            exit 1
+          fi
+
+          if [ -z "$VERSION" ]; then
+            VERSION="${TAG#v}"
+          fi
+          if [ -z "$REPO" ]; then
+            REPO="WeZZard/${PLUGIN}"
+          fi
+
+          {
+            echo "plugin=$PLUGIN"
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "repo=$REPO"
+            echo "sha=$SHA"
+            echo "release_id=$RELEASE_ID"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sync marketplace pin
+        run: |
+          set -euo pipefail
+          ARGS=(--plugin "${{ steps.inputs.outputs.plugin }}" --tag "${{ steps.inputs.outputs.tag }}" --version "${{ steps.inputs.outputs.version }}" --repo "${{ steps.inputs.outputs.repo }}")
+          if [ -n "${{ steps.inputs.outputs.sha }}" ]; then
+            ARGS+=(--sha "${{ steps.inputs.outputs.sha }}")
+          fi
+          if [ -n "${{ steps.inputs.outputs.release_id }}" ]; then
+            ARGS+=(--release_id "${{ steps.inputs.outputs.release_id }}")
+          fi
+          node scripts/sync-plugin.mjs "${ARGS[@]}"
+
+      - name: Update website JSON
+        run: node scripts/update-plugin-website.mjs --plugin "${{ steps.inputs.outputs.plugin }}"
+
+      - name: Regenerate README
+        run: node scripts/generate-readme.mjs
+
+      - name: Validate marketplace
+        run: npx --yes @anthropic-ai/claude-code@latest plugin validate . || claude plugin validate .
+
+      - name: Validate git-subdir pins
+        run: node scripts/validate-pins.mjs
+
+      - name: Create catalog sync PR
+        id: cpr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: catalog-sync/${{ steps.inputs.outputs.plugin }}-${{ steps.inputs.outputs.tag }}
+          delete-branch: true
+          commit-message: chore(catalog): sync ${{ steps.inputs.outputs.plugin }} ${{ steps.inputs.outputs.tag }}
+          title: chore(catalog): sync ${{ steps.inputs.outputs.plugin }} ${{ steps.inputs.outputs.tag }}
+          body: |
+            Automated catalog sync for `${{ steps.inputs.outputs.plugin }}` at `${{ steps.inputs.outputs.tag }}`.
+
+            release_id: ${{ steps.inputs.outputs.release_id }}
+
+            ## Files
+            - `.claude-plugin/marketplace.json`
+            - `catalog/lock.json`
+            - `website/src/content/generated/**` (registered plugins)
+            - `README.md`
+
+            Merge to publish pin + deploy website.
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Catalog sync" >> "$GITHUB_STEP_SUMMARY"
+          echo "- plugin: ${{ steps.inputs.outputs.plugin }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- tag: ${{ steps.inputs.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${{ steps.cpr.outputs.pull-request-url }}" ]; then
+            echo "- PR: ${{ steps.cpr.outputs.pull-request-url }}" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -2,9 +2,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "catalog:resolve": "node scripts/resolve-plugin.mjs",
+    "catalog:sync": "node scripts/sync-plugin.mjs",
+    "catalog:website": "node scripts/update-plugin-website.mjs",
+    "catalog:readme": "node scripts/generate-readme.mjs",
+    "catalog:validate-pins": "node scripts/validate-pins.mjs"
   },
   "devDependencies": {
+    "toml": "^3.0.0",
     "@opencode-ai/plugin": "^1.2.24",
     "@types/node": "^22.13.9",
     "esbuild": "0.25.12",

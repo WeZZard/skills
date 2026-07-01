@@ -1,15 +1,16 @@
 {
-  "sourceHash": "1c17d9319b5b68d1",
-  "generatedAt": "2026-06-12T13:55:49.228Z",
+  "sourceHash": "35059eea818739a6",
+  "generatedAt": "2026-07-01T19:07:32.067Z",
   "plugin": {
     "name": "amplify",
     "displayName": "Amplify",
     "tagline": "Scale your AI-driven workflows.",
-    "repo": "WeZZard/skills",
-    "skillCount": 5,
+    "repo": "WeZZard/amplify",
+    "skillCount": 6,
     "skills": [
       "be-thorough",
       "brainstorming",
+      "divide-and-conquer",
       "execute-plan",
       "same-page",
       "write-plan"

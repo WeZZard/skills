@@ -1,140 +1,63 @@
-# Claude Code Skill Marketplace
+# WeZZard Skills
 
-This repository is a standalone Claude Code plugin marketplace containing WeZZard skills collection.
+## Plugins
 
-## Quick start
+This repository ships Claude Code marketplace plugins and an OpenCode plugin distribution. The plugins share a common focus on structured planning, reliable execution, and thoughtful polish in agent-assisted development.
 
-From inside Claude Code:
+## Installation
 
-1. Add this marketplace (local dev):
+### Claude Code
 
-```bash
-/plugin marketplace add ./
-```
-
-If you host on GitHub later:
+Install the marketplace
 
 ```bash
 /plugin marketplace add WeZZard/skills
 ```
 
-2. Install plugins:
+Install the plugins
 
 ```bash
-/plugin install amplify@wezzard-skills
+/plugin install amplify@wezzard-skills # Amplify
+/plugin install zelda-sounds@wezzard-skills # Zelda-Sounds
+/plugin install skill-kit@wezzard-skills # Skill-Kit
 ```
 
-3. Run a skill:
+### OpenCode
 
-```bash
-# wezzard plugin skills
-/amplify:brainstorming
-/amplify:write-plan
-/amplify:execute-plan
-```
+See [opencode/zelda-sounds/README.md](opencode/zelda-sounds/README.md) for the `file://` plugin entry and skill install steps.
 
-## Available Plugins
+## Claude Code Plugins
 
-### wezzard
+### Amplify
 
 Development workflow skills for planning and execution.
 
-| Skill                 | Description                                                        |
-| --------------------- | ------------------------------------------------------------------ |
-| `brainstorming`       | Explore user intent, requirements and design before implementation |
-| `write-plan`          | Create and update plan files with structured templates             |
-| `execute-plan`        | Execute a plan file step by step                                   |
-| `same-page`           | Explain previous message with adaptive layout, evidence, confidence, and ASCII art |
+| Skill | Description |
+| ----- | ----------- |
+| `brainstorming` | Explore ideas, approaches, and requirements before implementation |
+| `write-plan` | Create and update plan files with structured templates |
+| `execute-plan` | Execute a plan file step by step |
+| `same-page` | Explain a previous message with adaptive layout, evidence, and confidence |
+| `be-thorough` | Investigate deeply before concluding when debugging or reviewing uncertain claims |
+| `divide-and-conquer` | Break large jobs into parallel subagent-driven DAG workflows |
 
-## Repo layout
 
-```text
-.claude-plugin/marketplace.json
-claude/amplify/.claude-plugin/plugin.json
-claude/<plugin-name>/skills/<skill-name>/SKILL.md
-plugins/zelda-sounds/          ← canonical source for zelda-sounds
-claude/zelda-sounds/           ← generated (Claude Code distribution)
-opencode/zelda-sounds/         ← generated (OpenCode distribution)
-```
+### Zelda-sounds
 
-Notes:
+Zelda BotW and TotK sound cues for Claude Code lifecycle events, with a GUI configurator. Run `/zelda-sounds:configure-zelda-sounds` to assign sounds to hook events.
 
-- Only `plugin.json` lives inside `.claude-plugin/`. All other folders stay at the plugin root.
-- Skills are namespaced as `/<plugin-name>:<skill-name>`.
-- **`zelda-sounds` is generated.** The canonical source is `plugins/zelda-sounds/`. Run `node build.mjs` from the repo root to regenerate both `claude/zelda-sounds/` and `opencode/zelda-sounds/`. Do not hand-edit those generated trees — the pre-commit hook and CI enforce freshness.
 
-## Add a new skill
+### Skill-kit
 
-1. Create a new skill directory:
+Tools for auditing and improving Claude Code skill definitions. Run `/skill-kit:skill-lint --agent <agent> <path>` to lint skill files for structural and schema issues.
 
-```bash
-mkdir -p claude/<plugin-name>/skills/<skill-name>
-```
 
-2. Create the skill definition:
+## OpenCode Plugins
 
-```text
-claude/<plugin-name>/skills/<skill-name>/SKILL.md
-```
+### Zelda-sounds
 
-Frontmatter should include at least `name` and `description`. You can add `disable-model-invocation: true` to make it manual-only.
+Generated from `plugins/zelda-sounds/`. Plays Zelda BotW and TotK sound cues on OpenCode lifecycle events, with the same GUI configurator as the Claude Code plugin. See [opencode/zelda-sounds/README.md](opencode/zelda-sounds/README.md) for install and configuration.
 
-3. Test locally:
+## License
 
-```bash
-claude --plugin-dir ./claude/<plugin-name>
-```
-
-## Distribution tips
-
-- Relative plugin sources work when the marketplace is added via Git (local path or repo).
-- If you distribute via a direct URL to `marketplace.json`, use Git or GitHub sources instead of relative paths.
-- Plugins are copied to a cache on install, so do not reference files outside the plugin directory.
-
-## Development setup
-
-After cloning, run the setup script to enable automatic plugin version bumping:
-
-```bash
-sh scripts/setup.sh
-```
-
-This configures Git to use tracked hooks from `.githooks/`. When you commit changes to any plugin under `claude/`, the patch version in its `plugin.json` is automatically incremented. To set major or minor versions manually, edit `plugin.json` and stage it before committing — the hook respects manually staged version changes.
-
-> **Note:** `claude/zelda-sounds/` and `opencode/zelda-sounds/` are generated from `plugins/zelda-sounds/` via `node build.mjs`. The pre-commit hook also checks that these trees are up to date; do not hand-edit them.
-
-## Website
-
-The `website/` directory contains a static site that showcases the skills with LLM-generated explanations.
-
-### Setup
-
-```bash
-cd website
-npm install
-```
-
-### Generate skill content
-
-Requires `DEEPSEEK_API_KEY` environment variable:
-
-```bash
-export DEEPSEEK_API_KEY=your-api-key
-npm run generate
-```
-
-This reads each `SKILL.md` and generates user-friendly descriptions with workflow diagrams. Generated content is cached in `src/content/generated/` - only regenerated when source changes.
-
-### Development
-
-```bash
-npm run dev
-```
-
-### Build
-
-```bash
-npm run build
-```
-
-Output goes to `website/dist/`.
+MIT — see [LICENSE](LICENSE).

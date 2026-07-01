@@ -1,0 +1,19 @@
+{
+  "version": "1.0.0",
+  "plugins": {
+    "amplify": {
+      "website": true,
+      "repo": "WeZZard/amplify"
+    },
+    "skill-kit": {
+      "website": true,
+      "repo": "WeZZard/skills",
+      "localPath": "./claude/skill-kit"
+    },
+    "zelda-sounds": {
+      "website": true,
+      "repo": "WeZZard/skills",
+      "localPath": "./claude/zelda-sounds"
+    }
+  }
+}
