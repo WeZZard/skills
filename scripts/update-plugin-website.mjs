@@ -7,7 +7,9 @@ import {
   cleanupDir,
   discoverPluginSkills,
   findMarketplacePlugin,
-  isGitSubdirSource,
+  getRemotePluginRef,
+  getRemotePluginRepo,
+  isRemoteGitSource,
   loadMarketplace,
   loadWebsiteRegistry,
   normalizeLocalSource,
@@ -40,8 +42,11 @@ function resolvePluginPath(pluginName) {
     return { skip: true, reason: "not registered for website" };
   }
 
-  if (isGitSubdirSource(entry.source)) {
-    const cloneDir = shallowClone(entry.source.url, entry.source.ref);
+  if (isRemoteGitSource(entry.source)) {
+    const cloneDir = shallowClone(
+      getRemotePluginRepo(entry.source),
+      getRemotePluginRef(entry.source),
+    );
     return { skip: false, pluginPath: cloneDir, cleanup: cloneDir };
   }
 

@@ -4,7 +4,9 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import {
   cleanupDir,
-  isGitSubdirSource,
+  getRemotePluginRef,
+  getRemotePluginRepo,
+  isRemoteGitSource,
   loadMarketplace,
   parseArgs,
   shallowClone,
@@ -18,14 +20,16 @@ function readPluginVersion(pluginRoot) {
   return pluginJson.version;
 }
 
-function validateGitSubdirPin(pluginName, source) {
-  const cloneDir = shallowClone(source.url, source.ref);
+function validateRemotePin(pluginName, source) {
+  const repo = getRemotePluginRepo(source);
+  const ref = getRemotePluginRef(source);
+  const cloneDir = shallowClone(repo, ref);
   try {
     const version = readPluginVersion(cloneDir);
     if (source.sha) {
       // sha validated at sync time; clone success is sufficient here
     }
-    console.log(`✓ ${pluginName}: ${source.url}@${source.ref} (plugin.json version ${version})`);
+    console.log(`✓ ${pluginName}: ${repo}@${ref} (plugin.json version ${version})`);
   } finally {
     cleanupDir(cloneDir);
   }
@@ -35,12 +39,12 @@ function main() {
   const marketplace = loadMarketplace();
 
   for (const plugin of marketplace.plugins) {
-    if (isGitSubdirSource(plugin.source)) {
+    if (isRemoteGitSource(plugin.source)) {
       if (args.dryRun) {
-        console.log(`Would validate git-subdir pin: ${plugin.name}`);
+        console.log(`Would validate remote pin: ${plugin.name}`);
         continue;
       }
-      validateGitSubdirPin(plugin.name, plugin.source);
+      validateRemotePin(plugin.name, plugin.source);
       continue;
     }
 

@@ -131,7 +131,7 @@ jobs:
       - name: Validate marketplace
         run: npx --yes @anthropic-ai/claude-code@latest plugin validate .
 
-      - name: Validate git-subdir pins
+      - name: Validate remote pins
         run: node scripts/validate-pins.mjs
 
       - name: Create catalog sync PR

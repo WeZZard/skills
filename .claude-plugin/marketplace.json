@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "owner": {
     "name": "WeZZard"
   },
@@ -9,9 +9,8 @@
       "name": "amplify",
       "description": "WeZZard's Claude Code skills: brainstorming, planning, execution",
       "source": {
-        "source": "git-subdir",
-        "url": "WeZZard/amplify",
-        "path": ".",
+        "source": "github",
+        "repo": "WeZZard/amplify",
         "ref": "v1.2.61",
         "sha": "96144d8088cdf8b7900020f7084bed9623e43ead"
       }

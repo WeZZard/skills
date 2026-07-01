@@ -5,7 +5,7 @@ Validate `git-subdir` pins before and after catalog cutover.
 ## Prerequisites
 
 - Claude Code CLI (`claude`) installed
-- Marketplace uses amplify `git-subdir` pin to `WeZZard/amplify@v1.2.60`
+- Marketplace uses amplify **`github`** pin to `WeZZard/amplify@v1.2.61` (standalone repos must not use `git-subdir` with `path: "."` — that sparse-checkout omits `skills/`)
 
 ## Steps
 
@@ -25,7 +25,7 @@ Expect: validation passes (warnings for missing marketplace description are OK).
 node scripts/validate-pins.mjs
 ```
 
-Expect: `✓ amplify: WeZZard/amplify@v1.2.60 (plugin.json version 1.2.60)`.
+Expect: `✓ amplify: WeZZard/amplify@v1.2.61 (plugin.json version 1.2.61)`.
 
 ### 3. Add marketplace in Claude Code
 

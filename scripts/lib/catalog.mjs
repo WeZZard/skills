@@ -76,11 +76,33 @@ export function isGitSubdirSource(source) {
   return typeof source === "object" && source !== null && source.source === "git-subdir";
 }
 
+export function isGithubSource(source) {
+  return typeof source === "object" && source !== null && source.source === "github";
+}
+
+export function isRemoteGitSource(source) {
+  return isGithubSource(source) || isGitSubdirSource(source);
+}
+
+export function getRemotePluginRepo(source) {
+  if (isGithubSource(source)) {
+    return source.repo;
+  }
+  if (isGitSubdirSource(source)) {
+    return source.url;
+  }
+  return null;
+}
+
+export function getRemotePluginRef(source) {
+  return source.ref ?? null;
+}
+
 export function normalizeLocalSource(source) {
   if (typeof source === "string") {
     return join(REPO_ROOT, source.replace(/^\.\//, ""));
   }
-  if (isGitSubdirSource(source)) {
+  if (isRemoteGitSource(source)) {
     return null;
   }
   throw new Error(`Unsupported plugin source: ${JSON.stringify(source)}`);

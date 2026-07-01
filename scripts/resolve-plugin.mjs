@@ -3,7 +3,11 @@
 import {
   REPO_ROOT,
   findMarketplacePlugin,
+  getRemotePluginRef,
+  getRemotePluginRepo,
+  isGithubSource,
   isGitSubdirSource,
+  isRemoteGitSource,
   loadMarketplace,
   loadLock,
   loadWebsiteRegistry,
@@ -25,12 +29,14 @@ function resolveEntry(pluginName) {
   let localPath = null;
   let git = null;
 
-  if (isGitSubdirSource(plugin.source)) {
-    kind = "git-subdir";
+  if (isRemoteGitSource(plugin.source)) {
+    kind = isGithubSource(plugin.source) ? "github" : "git-subdir";
     git = {
-      repo: plugin.source.url,
-      path: plugin.source.path ?? ".",
-      ref: plugin.source.ref,
+      repo: getRemotePluginRepo(plugin.source),
+      ...(isGitSubdirSource(plugin.source)
+        ? { path: plugin.source.path ?? "." }
+        : {}),
+      ref: getRemotePluginRef(plugin.source),
       sha: plugin.source.sha ?? lockEntry?.sha ?? null,
     };
   } else {

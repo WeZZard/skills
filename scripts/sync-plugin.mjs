@@ -62,10 +62,11 @@ function main() {
     }
 
     const entry = findMarketplacePlugin(marketplace, plugin);
+    // Standalone plugin repos must use `github`, not `git-subdir` with path "." —
+    // git-subdir sparse-checkout only materializes root-level files, not skills/.
     entry.source = {
-      source: "git-subdir",
-      url: repo,
-      path: ".",
+      source: "github",
+      repo,
       ref: tag,
       sha,
     };
