@@ -19,6 +19,7 @@ export const LOCK_PATH = join(REPO_ROOT, "catalog/lock.json");
 export const WEBSITE_REGISTRY_PATH = join(REPO_ROOT, "catalog/website-registry.json");
 export const PLUGINS_OUTPUT_DIR = join(REPO_ROOT, "website/src/content/generated/plugins");
 export const SKILLS_OUTPUT_DIR = join(REPO_ROOT, "website/src/content/generated/skills");
+export const WORKFLOW_OUTPUT_DIR = join(REPO_ROOT, "website/src/content/generated/workflow");
 
 export function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));

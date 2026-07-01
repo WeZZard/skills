@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-01T22:02:04.422Z",
+  "generatedAt": "2026-07-01T22:25:41.863Z",
   "plugins": {
     "amplify": {
       "repo": "WeZZard/amplify",
@@ -8,6 +8,14 @@
       "version": "1.2.63",
       "releaseId": "d5ca031c-1523-415b-a7d0-0ec7e81ed9df",
       "resolvedAt": "2026-07-01T22:02:04.422Z"
+    },
+    "zelda-sounds": {
+      "repo": "WeZZard/zelda-sounds",
+      "tag": "v2.0.5",
+      "sha": "f29f91acc1c52110e26178a5b172fb6001ff11b5",
+      "version": "2.0.5",
+      "releaseId": null,
+      "resolvedAt": "2026-07-01T22:25:41.863Z"
     }
   }
 }

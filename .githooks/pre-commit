@@ -28,12 +28,8 @@ for plugin_dir in "$PLUGIN_BASE"/*/; do
 
     plugin_name=$(basename "$plugin_dir")
 
-    # zelda-sounds is now GENERATED from plugins/zelda-sounds/ by build.mjs. Its
-    # version is owned by plugins/zelda-sounds/manifest.json (the generated
-    # claude/zelda-sounds/.claude-plugin/plugin.json is emitted from it), so it is
-    # excluded from this legacy auto-bump loop and handled by the generated-plugin
-    # step below. amplify is extracted to WeZZard/amplify (release PR only).
-    # skill-kit keeps hand-edited auto-bump until v2 extract.
+    # amplify and zelda-sounds are extracted (release PR only). skill-kit keeps
+    # hand-edited auto-bump until v2 extract.
     if [ "$plugin_name" = "zelda-sounds" ] || [ "$plugin_name" = "amplify" ]; then
         continue
     fi
@@ -104,85 +100,3 @@ for plugin_dir in "$PLUGIN_BASE"/*/; do
         echo "[auto-bump] $plugin_name: $current_version -> $new_version"
     fi
 done
-
-# --- Generated plugin: zelda-sounds (single source -> claude + opencode) ---
-#
-# zelda-sounds is compiled from the canonical source plugins/zelda-sounds/ into
-# claude/zelda-sounds/ and opencode/zelda-sounds/ by `node build.mjs`. This step
-# keeps the generated distributions fresh and version-consistent with the source,
-# and blocks hand-edits to generated output. It is a no-op unless a zelda path is
-# staged, so unrelated commits are unaffected.
-zelda_source_staged=false
-zelda_gen_staged=false
-for f in $STAGED_FILES; do
-    case "$f" in
-        plugins/zelda-sounds/*)
-            zelda_source_staged=true
-            ;;
-        claude/zelda-sounds/*|opencode/zelda-sounds/*)
-            zelda_gen_staged=true
-            ;;
-    esac
-done
-
-if [ "$zelda_source_staged" = true ]; then
-    # Canonical source changed: bump the manifest patch (mirroring the legacy
-    # manual-override logic), regenerate the distributions, and stage them so the
-    # commit carries version-consistent output.
-    zelda_manifest="$REPO_ROOT/plugins/zelda-sounds/manifest.json"
-
-    if [ -f "$zelda_manifest" ]; then
-        current_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$zelda_manifest")
-        head_version=$(git show HEAD:plugins/zelda-sounds/manifest.json 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
-
-        if [ -z "$current_version" ]; then
-            echo "[zelda-sounds] WARNING: Could not read version from plugins/zelda-sounds/manifest.json, skipping bump"
-        elif [ -z "$head_version" ]; then
-            # New manifest (no HEAD version) — respect the authored initial version.
-            :
-        elif [ "$head_version" != "$current_version" ]; then
-            # Version was manually changed vs HEAD — respect it.
-            :
-        else
-            major=$(echo "$current_version" | cut -d. -f1)
-            minor=$(echo "$current_version" | cut -d. -f2)
-            patch=$(echo "$current_version" | cut -d. -f3)
-
-            case "$major$minor$patch" in
-                *[!0-9]*)
-                    echo "[zelda-sounds] WARNING: Non-numeric version in $current_version, skipping bump"
-                    ;;
-                *)
-                    new_patch=$((patch + 1))
-                    new_version="$major.$minor.$new_patch"
-                    sed -i '' "s/\"version\"[[:space:]]*:[[:space:]]*\"$current_version\"/\"version\": \"$new_version\"/" "$zelda_manifest"
-                    echo "[zelda-sounds] manifest: $current_version -> $new_version"
-                    ;;
-            esac
-        fi
-    fi
-
-    echo "[zelda-sounds] canonical source changed — running build.mjs"
-    if ! ( cd "$REPO_ROOT" && node build.mjs ); then
-        echo "[zelda-sounds] ERROR: build.mjs failed; aborting commit" >&2
-        exit 1
-    fi
-
-    git -C "$REPO_ROOT" add plugins/zelda-sounds/manifest.json claude/zelda-sounds opencode/zelda-sounds
-elif [ "$zelda_gen_staged" = true ]; then
-    # Generated output staged with NO canonical source change. Rebuild and verify
-    # the staged output matches a fresh build; if it differs, it was hand-edited.
-    echo "[zelda-sounds] generated output staged without a source change — verifying freshness"
-    if ! ( cd "$REPO_ROOT" && node build.mjs ); then
-        echo "[zelda-sounds] ERROR: build.mjs failed; aborting commit" >&2
-        exit 1
-    fi
-
-    if ! git -C "$REPO_ROOT" diff --quiet -- claude/zelda-sounds opencode/zelda-sounds; then
-        echo "[zelda-sounds] ERROR: generated output is stale or hand-edited." >&2
-        echo "  The staged claude/zelda-sounds or opencode/zelda-sounds does not match a fresh" >&2
-        echo "  'node build.mjs'. Edit the canonical source under plugins/zelda-sounds/ and" >&2
-        echo "  rebuild; do not hand-edit generated files." >&2
-        exit 1
-    fi
-fi

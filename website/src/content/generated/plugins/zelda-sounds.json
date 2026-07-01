@@ -1,11 +1,11 @@
 {
-  "sourceHash": "0fa23f6a1149ab24",
-  "generatedAt": "2026-06-02T10:20:53.692Z",
+  "sourceHash": "a9e794d6181dfba1",
+  "generatedAt": "2026-07-01T22:25:46.704Z",
   "plugin": {
     "name": "zelda-sounds",
     "displayName": "Zelda Sounds",
     "tagline": "Breath of the Wild sound cues for Claude Code events.",
-    "repo": "WeZZard/skills",
+    "repo": "WeZZard/zelda-sounds",
     "skillCount": 1,
     "skills": [
       "configure-zelda-sounds"

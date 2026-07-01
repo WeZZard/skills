@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "owner": {
     "name": "WeZZard"
   },
@@ -17,7 +17,12 @@
     },
     {
       "name": "zelda-sounds",
-      "source": "./claude/zelda-sounds",
+      "source": {
+        "source": "github",
+        "repo": "WeZZard/zelda-sounds",
+        "ref": "v2.0.5",
+        "sha": "f29f91acc1c52110e26178a5b172fb6001ff11b5"
+      },
       "description": "Zelda BotW sound effects for Claude Code events"
     },
     {
