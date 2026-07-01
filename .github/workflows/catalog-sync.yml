@@ -141,8 +141,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: catalog-sync/${{ steps.inputs.outputs.plugin }}-${{ steps.inputs.outputs.tag }}
           delete-branch: true
-          commit-message: chore(catalog): sync ${{ steps.inputs.outputs.plugin }} ${{ steps.inputs.outputs.tag }}
-          title: chore(catalog): sync ${{ steps.inputs.outputs.plugin }} ${{ steps.inputs.outputs.tag }}
+          commit-message: "chore(catalog): sync ${{ steps.inputs.outputs.plugin }} ${{ steps.inputs.outputs.tag }}"
+          title: "chore(catalog): sync ${{ steps.inputs.outputs.plugin }} ${{ steps.inputs.outputs.tag }}"
           body: |
             Automated catalog sync for `${{ steps.inputs.outputs.plugin }}` at `${{ steps.inputs.outputs.tag }}`.
 
