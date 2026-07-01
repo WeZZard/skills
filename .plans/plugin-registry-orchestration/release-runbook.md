@@ -6,13 +6,24 @@ Operational steps for the two end-to-end amplify release cycles that gate v2 wor
 
 | Repo | Secret | Purpose |
 |------|--------|---------|
-| `WeZZard/amplify` | `AMPLIFY_RELEASE_TOKEN` | PAT with **Contents: write** on `WeZZard/amplify` — push release tags and create GitHub Releases (`GITHUB_TOKEN` gets 403) |
-| `WeZZard/amplify` | `SKILLS_DISPATCH_TOKEN` | PAT with access to dispatch `sync-plugin` on `WeZZard/skills` |
+| `WeZZard/amplify` | `AMPLIFY_RELEASE_TOKEN` | Classic **`repo`** PAT (recommended) or fine-grained with **Contents: write** on amplify **and** dispatch access on skills — tag push, GitHub Release, and `repository_dispatch` to skills |
 | `WeZZard/skills` | `CATALOG_SYNC_TOKEN` | PAT with **Contents** + **Pull requests** write on `WeZZard/skills` — opens catalog bot PRs |
 
-A single **classic** PAT with `repo` scope can be copied to all three secrets. Fine-grained PATs must grant the scopes above on each repo separately — a skills-only token can dispatch but **cannot** push tags on amplify.
+`SKILLS_DISPATCH_TOKEN` is **deprecated** on amplify (release.yml uses `AMPLIFY_RELEASE_TOKEN` for dispatch). You may remove it after verifying release runs.
+
+A single **classic** PAT with `repo` scope is the simplest setup: set the same value as `AMPLIFY_RELEASE_TOKEN` on amplify and `CATALOG_SYNC_TOKEN` on skills.
 
 `GITHUB_TOKEN` is **not** used for PR creation: GitHub blocks it unless the repo enables [Allow GitHub Actions to create and approve pull requests](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#preventing-github-actions-from-creating-or-approving-pull-requests). A dedicated PAT avoids that setting (and org policy overrides).
+
+Set on amplify (covers tag push, release create, and catalog dispatch):
+
+```bash
+gh secret set AMPLIFY_RELEASE_TOKEN --repo WeZZard/amplify --body 'ghp_...'
+```
+
+**Classic PAT:** scope `repo` (required for `repository_dispatch` to skills).
+
+**Fine-grained:** must include **both** repositories — Contents write on `WeZZard/amplify` and permission to trigger events on `WeZZard/skills` (use classic `repo` if unsure).
 
 ### Create `CATALOG_SYNC_TOKEN`
 
@@ -30,7 +41,7 @@ Set on skills:
 gh secret set CATALOG_SYNC_TOKEN --repo WeZZard/skills --body 'ghp_...'
 ```
 
-The same classic PAT can be used for `AMPLIFY_RELEASE_TOKEN`, `SKILLS_DISPATCH_TOKEN`, and `CATALOG_SYNC_TOKEN` if it has access to both repos.
+The same classic PAT can be used for `AMPLIFY_RELEASE_TOKEN` and `CATALOG_SYNC_TOKEN`.
 
 ### Pin shape (standalone vs monorepo)
 
