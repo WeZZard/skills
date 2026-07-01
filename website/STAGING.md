@@ -31,6 +31,22 @@ To allow another login, add it to the job `if:` in `.github/workflows/preview-we
 
 **Repo setting (recommended):** GitHub → **Settings → Actions → General** → set **Fork pull request workflows** to **Disable** so fork PRs do not run Actions at all.
 
+## Cost and cleanup
+
+Cloudflare Pages **free tier** (typical for this setup):
+
+| Resource | Free tier |
+|----------|-----------|
+| Bandwidth / requests to previews | Unlimited |
+| Extra storage charge | No separate bill — deployments are bundled |
+| Build/deploy quota | **500 builds/deploys per month** per account (shared across all Pages projects) |
+
+Our previews use **Wrangler direct upload** from GitHub Actions (not Cloudflare Git builds), but each preview still creates a **deployment** with stored static assets. Old deployments **accumulate** until deleted ([Cloudflare preview docs](https://developers.cloudflare.com/pages/configuration/preview-deployments/)).
+
+**Cleanup:** [`.github/workflows/preview-website-cleanup.yml`](../.github/workflows/preview-website-cleanup.yml) runs when a PR closes (merged or not) and deletes deployments for branch `pr-<number>` on `skills-website-staging`. That drops the `pr-<n>.skills-website-staging.pages.dev` alias and reclaims deployment storage.
+
+Production (`skills-website` / skills.wezzard.com) is unaffected.
+
 ## One-time Cloudflare setup
 
 1. In the [Cloudflare dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create** → **Pages** → **Direct Upload**.
