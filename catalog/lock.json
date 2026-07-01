@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-01T22:39:59.109Z",
+  "generatedAt": "2026-07-01T22:43:19.292Z",
   "plugins": {
     "amplify": {
       "repo": "WeZZard/amplify",
@@ -19,11 +19,11 @@
     },
     "skill-kit": {
       "repo": "WeZZard/skill-kit",
-      "tag": "v1.0.1",
-      "sha": "3bef07d526369e65785feea34e7b08ce5bb5419a",
-      "version": "1.0.1",
+      "tag": "v1.0.2",
+      "sha": "485ca75e5e7f2a0790234472c2bbbeacf9997baa",
+      "version": "1.0.2",
       "releaseId": null,
-      "resolvedAt": "2026-07-01T22:39:59.109Z"
+      "resolvedAt": "2026-07-01T22:43:19.292Z"
     }
   }
 }

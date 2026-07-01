@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "owner": {
     "name": "WeZZard"
   },
@@ -30,8 +30,8 @@
       "source": {
         "source": "github",
         "repo": "WeZZard/skill-kit",
-        "ref": "v1.0.1",
-        "sha": "3bef07d526369e65785feea34e7b08ce5bb5419a"
+        "ref": "v1.0.2",
+        "sha": "485ca75e5e7f2a0790234472c2bbbeacf9997baa"
       },
       "description": "Tools for auditing and improving Claude Code skill definitions"
     }
