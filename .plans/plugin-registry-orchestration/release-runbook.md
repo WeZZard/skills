@@ -7,9 +7,27 @@ Operational steps for the two end-to-end amplify release cycles that gate v2 wor
 | Repo | Secret | Purpose |
 |------|--------|---------|
 | `WeZZard/amplify` | `SKILLS_DISPATCH_TOKEN` | PAT with `repo` scope to dispatch `sync-plugin` to skills |
-| `WeZZard/skills` | (default `GITHUB_TOKEN`) | Bot PR creation in `catalog-sync.yml` |
+| `WeZZard/skills` | `CATALOG_SYNC_TOKEN` | PAT with **Contents** + **Pull requests** write on `WeZZard/skills` — opens catalog bot PRs |
 
-Create `SKILLS_DISPATCH_TOKEN` as a fine-grained or classic PAT owned by a bot/user with access to both repos.
+`GITHUB_TOKEN` is **not** used for PR creation: GitHub blocks it unless the repo enables [Allow GitHub Actions to create and approve pull requests](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#preventing-github-actions-from-creating-or-approving-pull-requests). A dedicated PAT avoids that setting (and org policy overrides).
+
+### Create `CATALOG_SYNC_TOKEN`
+
+**Classic PAT:** scope `repo` (or `public_repo` if the repo is public).
+
+**Fine-grained PAT** on `WeZZard/skills`:
+
+- Contents: Read and write
+- Pull requests: Read and write
+- Metadata: Read
+
+Set on skills:
+
+```bash
+gh secret set CATALOG_SYNC_TOKEN --repo WeZZard/skills --body 'ghp_...'
+```
+
+The same PAT as `SKILLS_DISPATCH_TOKEN` is fine if it has access to both repos.
 
 ## Release cycle (repeat twice for v1 exit)
 

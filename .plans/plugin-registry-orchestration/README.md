@@ -27,7 +27,8 @@ Planning set for splitting Claude plugins into standalone repos and turning `WeZ
 ## Next actions (human)
 
 1. Set `SKILLS_DISPATCH_TOKEN` on `WeZZard/amplify`
-2. Run two amplify release cycles per [release-runbook.md](./release-runbook.md)
+2. Set `CATALOG_SYNC_TOKEN` on `WeZZard/skills` (PAT for bot PRs — see [release-runbook.md](./release-runbook.md))
+3. Run two amplify release cycles per [release-runbook.md](./release-runbook.md)
 3. Complete [smoke-test.md](./smoke-test.md) after each catalog merge
 
 ## Execution preference

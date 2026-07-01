@@ -138,7 +138,10 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v7
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # GITHUB_TOKEN cannot open PRs unless the repo enables
+          # "Allow GitHub Actions to create and approve pull requests".
+          # Use a PAT with contents + pull-requests write on this repo.
+          token: ${{ secrets.CATALOG_SYNC_TOKEN }}
           branch: catalog-sync/${{ steps.inputs.outputs.plugin }}-${{ steps.inputs.outputs.tag }}
           delete-branch: true
           commit-message: "chore(catalog): sync ${{ steps.inputs.outputs.plugin }} ${{ steps.inputs.outputs.tag }}"
