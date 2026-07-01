@@ -105,6 +105,10 @@ function loadMarketplaceConfig(): MarketplaceConfig {
 function discoverPlugins(): Array<{ name: string; path: string; skillNames: string[] }> {
   const plugins: Array<{ name: string; path: string; skillNames: string[] }> = [];
 
+  if (!existsSync(PLUGINS_DIR)) {
+    return plugins;
+  }
+
   const entries = readdirSync(PLUGINS_DIR, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
