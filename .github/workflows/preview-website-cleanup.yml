@@ -35,7 +35,8 @@ jobs:
             exit 0
           fi
 
-          for DEPLOYMENT_ID in $DEPLOYMENT_IDS; do
+          echo "$DEPLOYMENT_IDS" | while read -r DEPLOYMENT_ID; do
+            [ -z "$DEPLOYMENT_ID" ] && continue
             echo "Deleting deployment ${DEPLOYMENT_ID} (${BRANCH})..."
             curl -sS -X DELETE "${API}/${DEPLOYMENT_ID}?force=true" \
               -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
