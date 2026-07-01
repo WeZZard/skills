@@ -2,7 +2,7 @@
 
 ## Plugins
 
-This repository ships Claude Code marketplace plugins and an OpenCode plugin distribution. The plugins share a common focus on structured planning, reliable execution, and thoughtful polish in agent-assisted development.
+This repository ships Claude Code marketplace plugins. The plugins share a common focus on structured planning, reliable execution, and thoughtful polish in agent-assisted development.
 
 ## Installation
 
@@ -21,10 +21,6 @@ Install the plugins
 /plugin install zelda-sounds@wezzard-skills # Zelda-Sounds
 /plugin install skill-kit@wezzard-skills # Skill-Kit
 ```
-
-### OpenCode
-
-See [opencode/zelda-sounds/README.md](opencode/zelda-sounds/README.md) for the `file://` plugin entry and skill install steps.
 
 ## Claude Code Plugins
 
@@ -51,12 +47,6 @@ Zelda BotW and TotK sound cues for Claude Code lifecycle events, with a GUI conf
 
 Tools for auditing and improving Claude Code skill definitions. Run `/skill-kit:skill-lint --agent <agent> <path>` to lint skill files for structural and schema issues.
 
-
-## OpenCode Plugins
-
-### Zelda-sounds
-
-Generated from `plugins/zelda-sounds/`. Plays Zelda BotW and TotK sound cues on OpenCode lifecycle events, with the same GUI configurator as the Claude Code plugin. See [opencode/zelda-sounds/README.md](opencode/zelda-sounds/README.md) for install and configuration.
 
 ## License
 

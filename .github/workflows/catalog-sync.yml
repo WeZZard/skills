@@ -125,6 +125,9 @@ jobs:
       - name: Update website JSON
         run: node scripts/update-plugin-website.mjs --plugin "${{ steps.inputs.outputs.plugin }}"
 
+      - name: Update workflow JSON
+        run: node scripts/update-plugin-workflow.mjs --plugin "${{ steps.inputs.outputs.plugin }}"
+
       - name: Regenerate README
         run: node scripts/generate-readme.mjs
 

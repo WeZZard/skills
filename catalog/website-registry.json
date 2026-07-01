@@ -12,8 +12,7 @@
     },
     "zelda-sounds": {
       "website": true,
-      "repo": "WeZZard/skills",
-      "localPath": "./claude/zelda-sounds"
+      "repo": "WeZZard/zelda-sounds"
     }
   }
 }
