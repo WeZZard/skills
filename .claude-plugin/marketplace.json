@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "owner": {
     "name": "WeZZard"
   },
@@ -11,8 +11,8 @@
       "source": {
         "source": "github",
         "repo": "WeZZard/amplify",
-        "ref": "v1.2.62",
-        "sha": "2af641e05816b7201f3dc18dc3fabd508b21c05c"
+        "ref": "v1.2.63",
+        "sha": "97b24f6f65bff2b371398a800f6642035095e4aa"
       }
     },
     {
