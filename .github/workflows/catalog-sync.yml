@@ -129,7 +129,7 @@ jobs:
         run: node scripts/generate-readme.mjs
 
       - name: Validate marketplace
-        run: npx --yes @anthropic-ai/claude-code@latest plugin validate . || claude plugin validate .
+        run: npx --yes @anthropic-ai/claude-code@latest plugin validate .
 
       - name: Validate git-subdir pins
         run: node scripts/validate-pins.mjs

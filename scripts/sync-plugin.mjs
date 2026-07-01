@@ -44,8 +44,13 @@ function main() {
 
   const marketplace = loadMarketplace();
   findMarketplacePlugin(marketplace, plugin);
-
-  const sha = expectedSha ?? getRemoteSha(repo, tag);
+  const remoteSha = getRemoteSha(repo, tag);
+  if (expectedSha && remoteSha !== expectedSha && !remoteSha.startsWith(expectedSha)) {
+    throw new Error(
+      `SHA mismatch for ${plugin}: payload=${expectedSha}, remote=${remoteSha}`,
+    );
+  }
+  const sha = remoteSha;
   const cloneDir = shallowClone(repo, tag);
 
   try {
