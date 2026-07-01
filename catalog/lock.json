@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-07-01T20:30:35.262Z",
+  "generatedAt": "2026-07-01T21:02:41.633Z",
   "plugins": {
     "amplify": {
       "repo": "WeZZard/amplify",
-      "tag": "v1.2.60",
-      "sha": "6ac51764e095f8c432a71648abea14261932b200",
-      "version": "1.2.60",
-      "releaseId": null,
-      "resolvedAt": "2026-07-01T20:30:35.262Z"
+      "tag": "v1.2.61",
+      "sha": "96144d8088cdf8b7900020f7084bed9623e43ead",
+      "version": "1.2.61",
+      "releaseId": "manual-recovery-1.2.61-v2",
+      "resolvedAt": "2026-07-01T21:02:41.633Z"
     }
   }
 }
