@@ -18,6 +18,19 @@ Multiple open PRs can be previewed at the same time without overwriting each oth
 
 The workflow posts (and updates) a comment on the PR with the preview URL.
 
+## Who can trigger previews
+
+Preview deploys use Cloudflare secrets and are restricted in the workflow:
+
+| Check | Reason |
+|-------|--------|
+| PR head branch is in **`WeZZard/skills`** (not a fork) | Fork PRs never deploy |
+| PR author is **`WeZZard`** or **`github-actions[bot]`** | Blocks other GitHub users / collaborators |
+
+To allow another login, add it to the job `if:` in `.github/workflows/preview-website.yml`.
+
+**Repo setting (recommended):** GitHub → **Settings → Actions → General** → set **Fork pull request workflows** to **Disable** so fork PRs do not run Actions at all.
+
 ## One-time Cloudflare setup
 
 1. In the [Cloudflare dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create** → **Pages** → **Direct Upload**.

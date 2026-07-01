@@ -26,6 +26,12 @@ env:
 jobs:
   preview:
     runs-on: ubuntu-latest
+    # Only trusted same-repo PRs may deploy to Cloudflare (uses account secrets).
+    # Fork PRs and other GitHub users are skipped entirely.
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.pull_request.user.login == 'WeZZard' ||
+       github.event.pull_request.user.login == 'github-actions[bot]')
     steps:
       - uses: actions/checkout@v4
         with:
