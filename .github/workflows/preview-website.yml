@@ -6,9 +6,6 @@ on:
     paths:
       - "website/**"
       - "catalog/**"
-      - "claude/*/website.*.toml"
-      - "claude/*/skills/*/SKILL.md"
-      - "claude/*/hooks/**"
       - ".claude-plugin/marketplace.json"
 
 # One deploy per PR; cancel stale runs when the PR branch updates.
