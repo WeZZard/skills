@@ -1,11 +1,11 @@
 # Marketplace install smoke test
 
-Validate `git-subdir` pins before and after catalog cutover.
+Validate remote pins before and after catalog cutover.
 
 ## Prerequisites
 
 - Claude Code CLI (`claude`) installed
-- Marketplace uses amplify **`github`** pin to `WeZZard/amplify@v1.2.61` (standalone repos must not use `git-subdir` with `path: "."` — that sparse-checkout omits `skills/`)
+- Marketplace uses amplify **`github`** pin to `WeZZard/amplify@v1.2.62` (standalone repos must not use `git-subdir` with `path: "."` — that sparse-checkout omits `skills/`)
 
 ## Steps
 
@@ -25,7 +25,7 @@ Expect: validation passes (warnings for missing marketplace description are OK).
 node scripts/validate-pins.mjs
 ```
 
-Expect: `✓ amplify: WeZZard/amplify@v1.2.61 (plugin.json version 1.2.61)`.
+Expect: `✓ amplify: WeZZard/amplify@v1.2.62 (plugin.json version 1.2.62)`.
 
 ### 3. Add marketplace in Claude Code
 
@@ -35,26 +35,34 @@ In a Claude Code session:
 /plugin marketplace add WeZZard/skills
 ```
 
-### 4. Install amplify from git-subdir pin
+### 4. Install amplify from github pin
 
 ```text
+/plugin marketplace update wezzard-skills
 /plugin install amplify@wezzard-skills
 ```
 
-Expect: install succeeds and skills load from the pinned tag (not local `./claude/amplify`).
+Expect: install succeeds and skills load from the pinned tag (not local `./claude/amplify`). In **Installed → amplify**, **Installed components** lists 6 skills and 7 agents.
 
 ### 5. Verify installed version
 
-Check the installed plugin reports version `1.2.60` matching [WeZZard/amplify tag v1.2.60](https://github.com/WeZZard/amplify/releases/tag/v1.2.60).
+Check the installed plugin reports version `1.2.62` matching [WeZZard/amplify tag v1.2.62](https://github.com/WeZZard/amplify/releases/tag/v1.2.62).
+
+CLI check:
+
+```bash
+claude plugin details amplify@wezzard-skills
+```
 
 ## Failure modes
 
 | Symptom | Check |
 |---------|--------|
-| Validate fails on git-subdir shape | `source.source`, `url`, `path`, `ref` fields in marketplace.json |
+| Validate fails on pin shape | `source: github` with `repo`, `ref`, full 40-char `sha` |
+| Installed components empty | Pin used `git-subdir` + `path: "."`; switch to `github` |
 | Install cannot fetch tag | Tag exists on GitHub; repo is public |
 | Wrong plugin content | `ref` and `sha` in marketplace match intended release |
-| Stale marketplace | Catalog PR merged to `main`; local test uses updated pin |
+| Stale marketplace | Catalog PR merged to `main`; run `/plugin marketplace update wezzard-skills` |
 
 ## v1 release cycle smoke test
 

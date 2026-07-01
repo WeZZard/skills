@@ -14,9 +14,9 @@ Last updated: 2026-07-02
 | Callback | **None** — deferred to v2 |
 | Semver in CI | Manual release PR bump only |
 | Workflows repo | Inline `release.yml` in amplify; no `WeZZard/workflows` yet |
-| Preview deploy | Deferred |
+| Preview deploy | Staging on catalog PR via `preview-website.yml` |
 | LLM website in CI | Deferred; TOML fast-path in `catalog-sync` |
-| Hybrid marketplace | amplify = `git-subdir`; skill-kit + zelda = `./claude/*` |
+| Hybrid marketplace | amplify = `github` pin (standalone); skill-kit + zelda = `./claude/*`; `git-subdir` for monorepo subpaths only |
 | Rollback / register-website workflows | Deferred |
 
 See [v1-scope.md](./v1-scope.md).

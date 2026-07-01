@@ -20,16 +20,15 @@ Planning set for splitting Claude plugins into standalone repos and turning `WeZ
 | README + LICENSE restructure | Done |
 | opencode-vision extract | Done |
 | v1 skeleton (catalog/, scripts, workflows) | Done |
-| v1 chain (sync → bot PR → deploy path) | Implemented — pending two live release cycles |
-| amplify extract + git-subdir cutover | Done |
+| v1 chain (sync → bot PR → deploy path) | Done — two live release cycles complete |
+| amplify extract + github pin cutover | Done (production pin `v1.2.62`) |
 | v2 intelligence (callbacks, preview, workflows repo) | Not started |
 
 ## Next actions (human)
 
-1. Set `SKILLS_DISPATCH_TOKEN` on `WeZZard/amplify`
-2. Set `CATALOG_SYNC_TOKEN` on `WeZZard/skills` (PAT for bot PRs — see [release-runbook.md](./release-runbook.md))
-3. Run two amplify release cycles per [release-runbook.md](./release-runbook.md)
-3. Complete [smoke-test.md](./smoke-test.md) after each catalog merge
+1. Set `AMPLIFY_RELEASE_TOKEN` + `SKILLS_DISPATCH_TOKEN` on `WeZZard/amplify` (see [release-runbook.md](./release-runbook.md))
+2. Set `CATALOG_SYNC_TOKEN` on `WeZZard/skills`
+3. Proceed to v2 per [v1-scope.md](./v1-scope.md)
 
 ## Execution preference
 

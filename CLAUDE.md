@@ -4,7 +4,7 @@ When adding a new plugin, remember to also add it to `.claude-plugin/marketplace
 
 ## Amplify — External Plugin (v1)
 
-`amplify` is **not** in this repo. It lives at [WeZZard/amplify](https://github.com/WeZZard/amplify) and is pinned via `git-subdir` in `.claude-plugin/marketplace.json`. Catalog updates flow through `catalog-sync.yml` and `scripts/sync-plugin.mjs`.
+`amplify` is **not** in this repo. It lives at [WeZZard/amplify](https://github.com/WeZZard/amplify) and is pinned via **`github`** in `.claude-plugin/marketplace.json`. Catalog updates flow through `catalog-sync.yml` and `scripts/sync-plugin.mjs`.
 
 ## Catalog scripts
 
