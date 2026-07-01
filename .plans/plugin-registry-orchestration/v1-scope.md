@@ -2,12 +2,14 @@
 
 First shippable milestone: **amplify end-to-end** via deterministic catalog sync. Full target architecture lives in [plan.md](./plan.md).
 
+**Status: complete** (2026-07-02). Production pin: `WeZZard/amplify@v1.2.63`.
+
 ## Success criteria
 
-Two manual amplify release cycles:
+Two amplify release cycles (both met):
 
 1. Release PR on `WeZZard/amplify` → tag → dispatch → catalog PR → merge → deploy
-2. `/plugin install` smoke test passes with `git-subdir` pin
+2. `/plugin install` smoke test passes with **`github`** pin (standalone repo)
 3. Website reflects generated JSON from pinned tag
 
 See [release-runbook.md](./release-runbook.md) and [smoke-test.md](./smoke-test.md).
@@ -17,13 +19,14 @@ See [release-runbook.md](./release-runbook.md) and [smoke-test.md](./smoke-test.
 | Item | Status |
 |------|--------|
 | `WeZZard/amplify` standalone repo + inline `release.yml` | Done |
-| `git-subdir` marketplace pin for amplify | Done |
+| **`github`** marketplace pin for amplify (standalone repo) | Done |
 | Hybrid marketplace (skill-kit, zelda in-tree) | Done |
 | `catalog-sync.yml` bot PR workflow | Done |
 | Scripts: sync, website fast-path, readme, validate-pins | Done |
 | Pre-commit excludes amplify | Done |
 | `claude/amplify/` removed from skills | Done |
 | `preview-website.yml` → `skills-website-staging` (one URL per PR) | Done |
+| Classic PAT release automation (`AMPLIFY_RELEASE_TOKEN`) | Done |
 
 ## Deferred to v2+
 
@@ -43,7 +46,7 @@ See [release-runbook.md](./release-runbook.md) and [smoke-test.md](./smoke-test.
 | Semver | Manual bump in release PR only |
 | Workflows repo | Inline `release.yml` in amplify |
 | Website sync | TOML fast-path only in catalog-sync |
-| Marketplace | amplify = `git-subdir`; others = `./claude/*` |
+| Marketplace | amplify = **`github`** pin; skill-kit + zelda = `./claude/*`; `git-subdir` for monorepo subpaths only |
 
 ## Flow
 

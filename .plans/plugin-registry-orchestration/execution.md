@@ -10,9 +10,9 @@ See [v1-scope.md](./v1-scope.md) for current milestone.
 
 Goal: every repo and file exists; workflows parse; scripts exit 0 with `--dry-run`.
 
-### 1a. Spike — prove `git-subdir` works
+### 1a. Spike — prove remote pin works
 
-- [x] `git-subdir` entry for amplify → `WeZZard/amplify@v1.2.60`
+- [x] `github` entry for amplify → `WeZZard/amplify@v1.2.60+`
 - [x] `claude plugin validate .`
 - [x] [smoke-test.md](./smoke-test.md)
 

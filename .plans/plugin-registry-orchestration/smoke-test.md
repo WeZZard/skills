@@ -5,7 +5,7 @@ Validate remote pins before and after catalog cutover.
 ## Prerequisites
 
 - Claude Code CLI (`claude`) installed
-- Marketplace uses amplify **`github`** pin to `WeZZard/amplify@v1.2.62` (standalone repos must not use `git-subdir` with `path: "."` — that sparse-checkout omits `skills/`)
+- Marketplace uses amplify **`github`** pin to `WeZZard/amplify@v1.2.63` (standalone repos must not use `git-subdir` with `path: "."` — that sparse-checkout omits `skills/`)
 
 ## Steps
 
@@ -25,7 +25,7 @@ Expect: validation passes (warnings for missing marketplace description are OK).
 node scripts/validate-pins.mjs
 ```
 
-Expect: `✓ amplify: WeZZard/amplify@v1.2.62 (plugin.json version 1.2.62)`.
+Expect: `✓ amplify: WeZZard/amplify@v1.2.63 (plugin.json version 1.2.63)`.
 
 ### 3. Add marketplace in Claude Code
 
@@ -46,7 +46,7 @@ Expect: install succeeds and skills load from the pinned tag (not local `./claud
 
 ### 5. Verify installed version
 
-Check the installed plugin reports version `1.2.62` matching [WeZZard/amplify tag v1.2.62](https://github.com/WeZZard/amplify/releases/tag/v1.2.62).
+Check the installed plugin reports version `1.2.63` matching [WeZZard/amplify tag v1.2.63](https://github.com/WeZZard/amplify/releases/tag/v1.2.63).
 
 CLI check:
 
