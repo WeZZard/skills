@@ -157,7 +157,10 @@ jobs:
             - `website/src/content/generated/**` (registered plugins)
             - `README.md`
 
-            Merge to publish pin + deploy website.
+            Merge to publish pin + deploy production website.
+
+            A **staging preview** will appear on this PR via the Preview Website workflow
+            (`https://pr-<number>.skills-website-staging.pages.dev`).
 
       - name: Summary
         if: always()

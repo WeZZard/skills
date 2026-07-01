@@ -25,7 +25,7 @@ Goal: every repo and file exists; workflows parse; scripts exit 0 with `--dry-ru
 - [x] `website/prompts/update-plugin-website.md`
 - [x] Marketplace `version` field
 
-**Not in v1:** `preview-website.yml`, `rollback-catalog.yml`, `register-plugin-website.yml`
+**Not in v1:** `rollback-catalog.yml`, `register-plugin-website.yml`
 
 ### 1c. Workflows repo skeleton
 

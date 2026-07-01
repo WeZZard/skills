@@ -43,12 +43,13 @@ The same PAT as `SKILLS_DISPATCH_TOKEN` is fine if it has access to both repos.
 
 1. [`catalog-sync.yml`](../../.github/workflows/catalog-sync.yml) runs on dispatch (or manual recovery below).
 2. Bot opens PR: `chore(catalog): sync amplify vX.Y.Z`
-3. Review diff:
+3. [`preview-website.yml`](../../.github/workflows/preview-website.yml) deploys to **https://pr-&lt;number&gt;.skills-website-staging.pages.dev** (one URL per open PR).
+4. Review diff:
    - `.claude-plugin/marketplace.json` pin + marketplace patch bump
    - `catalog/lock.json`
    - `website/src/content/generated/**` for amplify
    - `README.md`
-4. Merge PR → [`deploy-website.yml`](../../.github/workflows/deploy-website.yml) deploys production site.
+5. Merge PR → [`deploy-website.yml`](../../.github/workflows/deploy-website.yml) deploys **production** (https://skills.wezzard.com).
 
 ### C. Verification
 

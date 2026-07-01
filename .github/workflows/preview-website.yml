@@ -1,0 +1,107 @@
+name: Preview Website
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "website/**"
+      - "catalog/**"
+      - "claude/*/website.*.toml"
+      - "claude/*/skills/*/SKILL.md"
+      - "claude/*/hooks/**"
+      - ".claude-plugin/marketplace.json"
+
+# One deploy per PR; cancel stale runs when the PR branch updates.
+concurrency:
+  group: preview-website-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CF_PAGES_PROJECT: skills-website-staging
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Generate content and build
+        working-directory: website
+        run: npm run build
+
+      - name: Deploy preview to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist/ --project-name skills-website-staging --branch pr-${{ github.event.pull_request.number }}
+          workingDirectory: website
+
+      - name: Post preview URL on PR
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: https://pr-${{ github.event.pull_request.number }}.skills-website-staging.pages.dev
+        with:
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const previewUrl = process.env.PREVIEW_URL;
+            const sha = context.payload.pull_request.head.sha.slice(0, 7);
+            const marker = "<!-- website-preview -->";
+            const body = [
+              marker,
+              "## Website preview",
+              "",
+              "| | |",
+              "|---|---|",
+              `| **URL** | ${previewUrl} |`,
+              `| **Commit** | \`${sha}\` |`,
+              "",
+              "Each open PR gets its own staging URL (`pr-<number>.skills-website-staging.pages.dev`).",
+              "Example plugin page: " + previewUrl + "/claude/amplify/",
+            ].join("\n");
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
+
+      - name: Summary
+        run: |
+          echo "### Website preview" >> "$GITHUB_STEP_SUMMARY"
+          echo "- PR: #${{ github.event.pull_request.number }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- URL: https://pr-${{ github.event.pull_request.number }}.skills-website-staging.pages.dev" >> "$GITHUB_STEP_SUMMARY"

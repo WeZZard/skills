@@ -23,12 +23,12 @@ See [release-runbook.md](./release-runbook.md) and [smoke-test.md](./smoke-test.
 | Scripts: sync, website fast-path, readme, validate-pins | Done |
 | Pre-commit excludes amplify | Done |
 | `claude/amplify/` removed from skills | Done |
+| `preview-website.yml` → `skills-website-staging` (one URL per PR) | Done |
 
 ## Deferred to v2+
 
 - `WeZZard/workflows` repo + `@v1.0.0` reusable workflow pins
 - `release-complete.yml` callbacks
-- `preview-website.yml` on catalog PRs
 - OpenCode / `suggest-version.mjs` in CI
 - LLM website generation in CI
 - `rollback-catalog.yml`, `register-plugin-website.yml`
