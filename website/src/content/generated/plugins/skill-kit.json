@@ -1,11 +1,11 @@
 {
-  "sourceHash": "3160c8ab180b0f09",
-  "generatedAt": "2026-06-02T10:20:48.765Z",
+  "sourceHash": "8b33696a644f5c09",
+  "generatedAt": "2026-07-01T22:40:00.768Z",
   "plugin": {
     "name": "skill-kit",
     "displayName": "Skill Kit",
     "tagline": "Audit and improve your skill definitions.",
-    "repo": "WeZZard/skills",
+    "repo": "WeZZard/skill-kit",
     "skillCount": 1,
     "skills": [
       "skill-lint"
