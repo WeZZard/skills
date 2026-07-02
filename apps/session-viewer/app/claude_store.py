@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 
 from dataclasses import dataclass
@@ -49,6 +50,36 @@ def _project_directory(projects_dir: Path, project_key: str) -> Path:
 
 def _session_file(projects_dir: Path, ref: SessionRef) -> Path:
     return _project_directory(projects_dir, ref.project_key) / f"{ref.session_id}.jsonl"
+
+
+def _subagent_paths(main_path: Path, session_id: str) -> list[Path]:
+    root = main_path.parent / session_id / "subagents"
+    if not root.exists():
+        return []
+    return sorted(root.glob("agent-*.jsonl")) + sorted(root.glob("workflows/*/agent-*.jsonl"))
+
+
+def session_fingerprint(opaque_id: str, source_path: str | Path | None = None) -> str | None:
+    """Cheap change-detection fingerprint over main + subagent file stats."""
+    projects_dir = resolve_projects_dir(source_path)
+    try:
+        ref = decode_session_ref(opaque_id)
+    except Exception:
+        return None
+    main_path = _session_file(projects_dir, ref)
+    try:
+        stat = main_path.stat()
+    except OSError:
+        return None
+    digest = hashlib.sha1()
+    digest.update(f"{stat.st_mtime_ns}:{stat.st_size}".encode())
+    for path in _subagent_paths(main_path, ref.session_id):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        digest.update(f"{path.name}:{stat.st_mtime_ns}:{stat.st_size}".encode())
+    return digest.hexdigest()
 
 
 def _read_first_json(path: Path, max_lines: int = 240) -> list[dict[str, Any]]:

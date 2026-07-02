@@ -39,6 +39,7 @@ See [README.md](./README.md) for current status.
 |------|--------|---------|
 | `WeZZard/skills` | `PLUGIN_CALLBACK_TOKEN` | Dispatch `catalog-sync-complete` to plugin repos |
 | `WeZZard/skills` | `OPENCODE_AUTH_JSON` | OpenCode provider auth for website/semver LLM paths |
+| `WeZZard/skills` | `OPENCODE_MODEL` | OpenCode model in CI (e.g. `ollama-cloud/deepseek-v4-flash`) |
 
 Plugin repos keep existing `*_RELEASE_TOKEN` secrets.
 

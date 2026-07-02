@@ -23,6 +23,8 @@ permissions:
 jobs:
   register:
     runs-on: ubuntu-latest
+    env:
+      OPENCODE_MODEL: ${{ secrets.OPENCODE_MODEL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,6 +43,7 @@ jobs:
         uses: ./.github/actions/setup-opencode
         env:
           OPENCODE_AUTH_JSON: ${{ secrets.OPENCODE_AUTH_JSON }}
+          OPENCODE_MODEL: ${{ secrets.OPENCODE_MODEL }}
 
       - name: Resolve inputs
         id: inputs

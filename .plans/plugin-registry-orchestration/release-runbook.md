@@ -12,6 +12,7 @@ Operational steps for plugin releases, catalog sync, rollback, and recovery.
 | `WeZZard/skills` | `CATALOG_SYNC_TOKEN` | Opens catalog / rollback / register bot PRs |
 | `WeZZard/skills` | `PLUGIN_CALLBACK_TOKEN` | Dispatches `catalog-sync-complete` to plugin repos |
 | `WeZZard/skills` | `OPENCODE_AUTH_JSON` | OpenCode provider auth for website LLM fallback + semver (optional) |
+| `WeZZard/skills` | `OPENCODE_MODEL` | Model for OpenCode in CI (e.g. `ollama-cloud/deepseek-v4-flash`) |
 
 Classic **`repo`** PAT is recommended for release and catalog tokens.
 
@@ -24,7 +25,9 @@ gh secret set PLUGIN_CALLBACK_TOKEN --repo WeZZard/skills --body 'ghp_...'
 Set OpenCode auth for CI (contents of `~/.local/share/opencode/auth.json`):
 
 ```bash
-gh secret set OPENCODE_AUTH_JSON --repo WeZZard/skills --body "$(cat ~/.local/share/opencode/auth.json)"
+gh secret set OPENCODE_AUTH_JSON --repo WeZZard/skills --body "$(cat /tmp/opencode-ci-auth.json)"
+
+gh secret set OPENCODE_MODEL --repo WeZZard/skills --body 'ollama-cloud/deepseek-v4-flash'
 ```
 
 Repeat on plugin repos if using `propose-release.yml` with OpenCode semver.

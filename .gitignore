@@ -81,3 +81,4 @@ website/screenshots/
 # Session-viewer scan reports (may capture secrets from scanned transcripts; never track)
 apps/session-viewer/reports/
 
+.opencode-auth.json

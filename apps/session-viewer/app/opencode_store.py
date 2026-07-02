@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 
@@ -24,6 +25,16 @@ from app.problem_detector import attach_problem_flags
 
 def _db_path(source_path: str | Path | None = None) -> Path:
     return resolve_opencode_data_dir(source_path) / "opencode.db"
+
+
+def session_fingerprint(session_id: str, source_path: str | Path | None = None) -> str | None:
+    """Cheap change-detection fingerprint: the OpenCode database file stats."""
+    try:
+        stat = _db_path(source_path).stat()
+    except OSError:
+        return None
+    digest = hashlib.sha1(f"{session_id}:{stat.st_mtime_ns}:{stat.st_size}".encode())
+    return digest.hexdigest()
 
 
 def _connect_readonly(db_path: Path) -> sqlite3.Connection:

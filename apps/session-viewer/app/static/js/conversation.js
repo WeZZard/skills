@@ -3898,6 +3898,7 @@ function renderTimelineHeader() {
   if (state.timelineHeaderKey === key) return;
   state.timelineHeaderKey = key;
   state.timelineHeaderRenderCount += 1;
+  timelineHeaderMeasureEpoch += 1;
   els.timelineHeader.innerHTML = compactHtml(renderTracks
     .map((track) => {
       const selected = track.id === state.timelineSelectedTrackId;
@@ -4093,6 +4094,9 @@ function timelineDetailWindows(capsule) {
   return windows;
 }
 
+let timelineHeaderMeasureEpoch = 0;
+const timelineHeaderMeasureCache = { epoch: -1, beforeHeight: 0, maxLabelOffset: null };
+
 function timelineDetailWindowLayoutArea() {
   const viewportRect = els.graphViewport?.getBoundingClientRect() || {
     left: 0,
@@ -4100,13 +4104,33 @@ function timelineDetailWindowLayoutArea() {
     right: window.innerWidth,
     width: window.innerWidth,
   };
-  const headerBeforeHeight = els.timelineHeader
-    ? Number.parseFloat(window.getComputedStyle(els.timelineHeader, "::before").height) || 0
-    : 0;
-  const labelBottoms = [...document.querySelectorAll("[data-testid='timeline-track-label']")]
-    .map((label) => label.getBoundingClientRect().bottom)
-    .filter((value) => Number.isFinite(value));
-  const agentListBottom = Math.max(viewportRect.top + headerBeforeHeight, ...labelBottoms);
+  // Label bottoms are re-measured only when the header content changes
+  // (timelineHeaderMeasureEpoch); per-tick reads are two rects, not a
+  // full-DOM label sweep interleaved with writes.
+  const cache = timelineHeaderMeasureCache;
+  if (cache.epoch !== timelineHeaderMeasureEpoch) {
+    cache.epoch = timelineHeaderMeasureEpoch;
+    cache.beforeHeight = els.timelineHeader
+      ? Number.parseFloat(window.getComputedStyle(els.timelineHeader, "::before").height) || 0
+      : 0;
+    cache.maxLabelOffset = null;
+    if (els.timelineHeader) {
+      const headerTop = els.timelineHeader.getBoundingClientRect().top;
+      const labels = document.querySelectorAll("[data-testid='timeline-track-label']");
+      for (let i = 0; i < labels.length; i += 1) {
+        const bottom = labels[i].getBoundingClientRect().bottom;
+        if (!Number.isFinite(bottom)) continue;
+        const offset = bottom - headerTop;
+        if (cache.maxLabelOffset === null || offset > cache.maxLabelOffset) cache.maxLabelOffset = offset;
+      }
+    }
+  }
+  const headerBeforeHeight = cache.beforeHeight;
+  let agentListBottom = viewportRect.top + headerBeforeHeight;
+  if (cache.maxLabelOffset !== null && els.timelineHeader) {
+    const headerTop = els.timelineHeader.getBoundingClientRect().top;
+    agentListBottom = Math.max(agentListBottom, headerTop + cache.maxLabelOffset);
+  }
   const gapBelowAgentList = 12;
   const viewportInset = 24;
   const left = Math.max(0, viewportRect.left);
@@ -5194,6 +5218,7 @@ function flushPopulateBatch() {
   layoutGraph(els.graphViewport?.clientWidth || 0);
   scheduleGraphRender();
   renderLeftNavigation();
+  if (window.SESSION_VIEWER) window.SESSION_VIEWER.recomputeCounts();
 }
 
 function schedulePopulateFlush() {
@@ -5217,7 +5242,6 @@ function populateTrack(track, payload) {
   track.problemCount = laneProblems.size;
   buildTrackCapsules(track);
   if (searchIndexBuilt) buildSearchIndexForTrack(track);
-  if (window.SESSION_VIEWER) window.SESSION_VIEWER.recomputeCounts();
   populatedTrackIdsThisBatch.add(track.id);
   if (state.openPanelIds.has(track.id)) renderPanels({ pinTrackId: track.id });
   if (state.layout === "reader" && state.readerSelectedTrackId === track.id) renderMessageIndex();
@@ -5359,7 +5383,7 @@ function initialize() {
   renderSessionSummary();
   renderLegend();
   renderLeftNavigation();
-  renderReader();
+  if (state.layout === "reader") renderReader();
   bindTimelineDetailLayoutObservers();
   setLayout(state.layout, { history: false });
   setLeftNavTab("messages");
@@ -5371,6 +5395,7 @@ function initialize() {
 }
 
 function showLoadingShell() {
+  if (document.getElementById("sessionLoadingSkeleton")) return;
   const graphLayout = document.getElementById("graphLayout");
   if (graphLayout) {
     const loader = document.createElement("div");
@@ -5383,6 +5408,8 @@ function showLoadingShell() {
 }
 
 function hideLoadingShell() {
+  const skeleton = document.getElementById("sessionLoadingSkeleton");
+  if (skeleton) skeleton.remove();
   const loader = document.getElementById("sessionLoadingMessage");
   if (loader) loader.remove();
 }
@@ -5424,6 +5451,7 @@ els.graphViewport.addEventListener("scroll", scheduleGraphRender, { passive: tru
 els.mainContent?.addEventListener("scroll", scheduleReaderVirtualRender, { passive: true });
 window.addEventListener("resize", () => {
   updateCommandBarHeight();
+  timelineHeaderMeasureEpoch += 1;
   scheduleGraphRender();
   scheduleTimelineDetailDockLayout({ frames: 2 });
   updateSubagentPanelOverlayWidth();

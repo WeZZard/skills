@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import asyncio
+import functools
 import json
 import re
+import threading
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.gzip import GZipMiddleware
 
 from app import claude_store, opencode_store, slim_export
 from app.config import Config
@@ -22,12 +27,50 @@ def _get_summary(agent: str, session_id: str, source_path: str | None = None) ->
     return opencode_store.get_summary(session_id, source_path=source_path)
 
 
+class _CachedStaticFiles(StaticFiles):
+    def file_response(self, *args: Any, **kwargs: Any):
+        response = super().file_response(*args, **kwargs)
+        response.headers.setdefault("Cache-Control", "public, max-age=86400")
+        return response
+
+
 app = FastAPI(title="Session Viewer")
-app.mount("/static", StaticFiles(directory=str(Config.STATIC_DIR)), name="static")
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+app.mount("/static", _CachedStaticFiles(directory=str(Config.STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(Config.TEMPLATES_DIR))
 
+# Parsing is synchronous and CPU/IO heavy; it must never run on the event loop.
+_PARSE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="parse")
+
 _CONVERSATION_CACHE_MAX = 8
-_conversation_cache: "OrderedDict[tuple[str, str], ConversationExport]" = OrderedDict()
+_conversation_cache: "OrderedDict[tuple[str, str], tuple[str | None, ConversationExport]]" = OrderedDict()
+_conversation_cache_lock = threading.Lock()
+
+
+async def _run_parse(fn, *args, **kwargs):
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_PARSE_EXECUTOR, functools.partial(fn, *args, **kwargs))
+
+
+def _session_fingerprint(agent: str, session_id: str) -> str | None:
+    if agent == "claude":
+        return claude_store.session_fingerprint(session_id)
+    return opencode_store.session_fingerprint(session_id)
+
+
+def _etag_headers(fingerprint: str | None) -> dict[str, str]:
+    headers = {"Cache-Control": "private, no-cache"}
+    if fingerprint:
+        headers["ETag"] = f'W/"{fingerprint}"'
+    return headers
+
+
+def _not_modified(request: Request, fingerprint: str | None) -> bool:
+    if not fingerprint:
+        return False
+    candidates = (f'W/"{fingerprint}"', f'"{fingerprint}"')
+    if_none_match = request.headers.get("if-none-match", "")
+    return any(candidate in if_none_match for candidate in candidates)
 
 
 AGENTS = {"claude": "Claude Code", "opencode": "Open Code"}
@@ -145,17 +188,21 @@ def _load_conversation(agent: str, session_id: str, source_path: str | None = No
 
 def _load_conversation_cached(agent: str, session_id: str) -> ConversationExport | None:
     cache_key = (agent, session_id)
-    cached = _conversation_cache.get(cache_key)
-    if cached is not None:
-        _conversation_cache.move_to_end(cache_key)
-        return cached
-    data = _load_conversation(agent, session_id)
-    if data is None:
-        return None
-    _conversation_cache[cache_key] = data
-    if len(_conversation_cache) > _CONVERSATION_CACHE_MAX:
-        _conversation_cache.popitem(last=False)
-    return data
+    fingerprint = _session_fingerprint(agent, session_id)
+    # The lock is held across the parse so a burst of concurrent requests for
+    # the same cold session parses once instead of once per worker.
+    with _conversation_cache_lock:
+        cached = _conversation_cache.get(cache_key)
+        if cached is not None and fingerprint is not None and cached[0] == fingerprint:
+            _conversation_cache.move_to_end(cache_key)
+            return cached[1]
+        data = _load_conversation(agent, session_id)
+        if data is None:
+            return None
+        _conversation_cache[cache_key] = (fingerprint, data)
+        if len(_conversation_cache) > _CONVERSATION_CACHE_MAX:
+            _conversation_cache.popitem(last=False)
+        return data
 
 
 def _session_items(
@@ -207,7 +254,8 @@ def _conversation_back_href(agent: str, request: Request) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    return templates.TemplateResponse(request, "dashboard.html", _dashboard_context(request))
+    context = await _run_parse(_dashboard_context, request)
+    return templates.TemplateResponse(request, "dashboard.html", context)
 
 
 def _human_label(value: str | None) -> str:
@@ -1212,7 +1260,8 @@ async def api_sessions(
         "opencode_q": q if agent == "opencode" else "",
         "opencode_directory": directory if agent == "opencode" else "",
     }
-    return JSONResponse(content=[s.model_dump(by_alias=True) for s in _list_sessions(agent, params)])
+    sessions = await _run_parse(_list_sessions, agent, params)
+    return JSONResponse(content=[s.model_dump(by_alias=True) for s in sessions])
 
 
 @app.get("/api/directories")
@@ -1223,12 +1272,22 @@ async def api_directories(
     return JSONResponse(content=_list_directories(agent))
 
 
+def _initial_layout(agent: str, request: Request) -> str:
+    """Server-side mirror of the client's getLayoutFromUrl()."""
+    layout = request.query_params.get("layout")
+    if layout in ("waterfall", "focus", "reader"):
+        return "reader"
+    if layout in ("timeline", "graph"):
+        return "graph"
+    return "reader" if agent == "opencode" else "graph"
+
+
 @app.get("/conversation/{agent}/{session_id}", response_class=HTMLResponse)
 async def conversation_agent(request: Request, agent: str, session_id: str):
     agent = _agent_or_404(agent)
     params = _dashboard_params(request)
     source_path = _source_path(agent, params)
-    summary = _get_summary(agent, session_id, source_path=source_path)
+    summary = await _run_parse(_get_summary, agent, session_id, source_path=source_path)
     if summary is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
@@ -1242,6 +1301,7 @@ async def conversation_agent(request: Request, agent: str, session_id: str):
             "conversation": _Shell(summary),
             "conversation_json": "",
             "slim_payload": True,
+            "initial_layout": _initial_layout(agent, request),
             "source": _source_info(agent, source_path),
             "agent": agent,
             "agent_label": AGENTS[agent],
@@ -1255,16 +1315,26 @@ async def conversation(request: Request, session_id: str):
     return await conversation_agent(request, "claude", session_id)
 
 
-@app.get("/api/conversation/{agent}/{session_id}/boot")
-async def api_conversation_boot(agent: str, session_id: str):
-    agent = _agent_or_404(agent)
+def _build_boot_payload(agent: str, session_id: str) -> str | None:
     if agent == "claude":
         data = claude_store.load_boot_export(session_id)
     else:
         data = _load_conversation_cached(agent, session_id)
     if data is None:
+        return None
+    return json.dumps(slim_export.slim_export(data), separators=(",", ":"))
+
+
+@app.get("/api/conversation/{agent}/{session_id}/boot")
+async def api_conversation_boot(request: Request, agent: str, session_id: str):
+    agent = _agent_or_404(agent)
+    fingerprint = await _run_parse(_session_fingerprint, agent, session_id)
+    if _not_modified(request, fingerprint):
+        return Response(status_code=304, headers=_etag_headers(fingerprint))
+    body = await _run_parse(_build_boot_payload, agent, session_id)
+    if body is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return JSONResponse(content=slim_export.slim_export(data))
+    return Response(content=body, media_type="application/json", headers=_etag_headers(fingerprint))
 
 
 @app.get("/api/conversation/{agent}/{session_id}")
@@ -1274,32 +1344,38 @@ async def api_conversation_agent(
     slim: bool = Query(True),
 ):
     agent = _agent_or_404(agent)
-    data = _load_conversation_cached(agent, session_id)
+    data = await _run_parse(_load_conversation_cached, agent, session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")
     if slim:
-        return JSONResponse(content=slim_export.slim_export(data))
-    return JSONResponse(content=data.model_dump(mode="json"))
+        payload = await _run_parse(slim_export.slim_export, data)
+        return JSONResponse(content=payload)
+    payload = await _run_parse(data.model_dump, mode="json")
+    return JSONResponse(content=payload)
 
 
 @app.get("/api/conversation/{session_id}")
 async def api_conversation(session_id: str):
-    data = _load_conversation_cached("claude", session_id)
+    data = await _run_parse(_load_conversation_cached, "claude", session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return JSONResponse(content=slim_export.slim_export(data))
+    payload = await _run_parse(slim_export.slim_export, data)
+    return JSONResponse(content=payload)
 
 
 @app.get("/api/conversation/{agent}/{session_id}/track/{track_id:path}")
-async def api_conversation_track(agent: str, session_id: str, track_id: str):
+async def api_conversation_track(request: Request, agent: str, session_id: str, track_id: str):
     agent = _agent_or_404(agent)
-    data = _load_conversation_cached(agent, session_id)
+    fingerprint = await _run_parse(_session_fingerprint, agent, session_id)
+    if _not_modified(request, fingerprint):
+        return Response(status_code=304, headers=_etag_headers(fingerprint))
+    data = await _run_parse(_load_conversation_cached, agent, session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    payload = slim_export.track_payload(data, track_id)
+    payload = await _run_parse(slim_export.track_payload, data, track_id)
     if payload is None:
         raise HTTPException(status_code=404, detail="Track not found")
-    return JSONResponse(content=payload)
+    return JSONResponse(content=payload, headers=_etag_headers(fingerprint))
 
 
 @app.get("/api/conversation/{agent}/{session_id}/raw_event")
@@ -1310,10 +1386,10 @@ async def api_conversation_raw_event(
     line_number: int = Query(...),
 ):
     agent = _agent_or_404(agent)
-    data = _load_conversation_cached(agent, session_id)
+    data = await _run_parse(_load_conversation_cached, agent, session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    payload = slim_export.raw_event_payload(data, jsonl_file, line_number)
+    payload = await _run_parse(slim_export.raw_event_payload, data, jsonl_file, line_number)
     if payload is None:
         raise HTTPException(status_code=404, detail="Raw event not found")
     return JSONResponse(content=payload)
@@ -1327,8 +1403,8 @@ async def api_conversation_search(
     scope: str = Query("all"),
 ):
     agent = _agent_or_404(agent)
-    data = _load_conversation_cached(agent, session_id)
+    data = await _run_parse(_load_conversation_cached, agent, session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    results = slim_export.search_export(data, q, scope=scope)
+    results = await _run_parse(slim_export.search_export, data, q, scope=scope)
     return JSONResponse(content=results)
