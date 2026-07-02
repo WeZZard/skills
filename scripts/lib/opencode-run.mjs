@@ -7,9 +7,9 @@
  */
 
 import { spawnSync } from "child_process";
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { basename, join } from "path";
 
 const DEFAULT_MODEL = process.env.OPENCODE_MODEL ?? "deepseek/deepseek-chat";
 
@@ -90,6 +90,22 @@ function parseOpenCodeOutput(stdout) {
   return extractJson(textParts.join("") || trimmed);
 }
 
+function buildPromptText({ prompt, promptFile, files, cwd }) {
+  const parts = [];
+  if (promptFile) {
+    parts.push(readFileSync(promptFile, "utf8"));
+  }
+  parts.push(
+    prompt ??
+      "Follow the attached prompt files. Return ONLY valid JSON with no markdown fences.",
+  );
+  for (const file of files) {
+    const path = join(cwd, file);
+    parts.push(`## ${basename(file)}\n\n${readFileSync(path, "utf8")}`);
+  }
+  return parts.join("\n\n");
+}
+
 export function runOpenCodePrompt({
   prompt,
   promptFile,
@@ -103,17 +119,10 @@ export function runOpenCodePrompt({
 
   ensureOpenCodeAuth();
 
-  const args = ["run", "--pure", "--auto", "-m", model];
-  for (const file of files) {
-    args.push("-f", file);
-  }
-  if (promptFile) {
-    args.push("-f", promptFile);
-  }
-  args.push(
-    prompt ??
-      "Follow the attached prompt files. Return ONLY valid JSON with no markdown fences.",
-  );
+  // OpenCode 1.17+ treats every positional arg as a file path when -f is used.
+  // Inline prompt files into the message and pass a single positional prompt.
+  const fullPrompt = buildPromptText({ prompt, promptFile, files, cwd });
+  const args = ["run", "--pure", "--auto", "-m", model, fullPrompt];
 
   const env = {
     ...process.env,
