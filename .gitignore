@@ -71,7 +71,7 @@ website/screenshots/
 .handoff/
 
 # Plans (local planning artifacts; session-viewer etc.)
-.plan/
+.plans/
 
 # Tracked plan sets live under .plans/{plan-name}/
 # (do not add .plans/ here)
@@ -82,3 +82,4 @@ website/screenshots/
 apps/session-viewer/reports/
 
 .opencode-auth.json
+.probe-token-impact-runs.json

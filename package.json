@@ -8,7 +8,8 @@
     "catalog:workflow": "node scripts/update-plugin-workflow.mjs",
     "catalog:readme": "node scripts/generate-readme.mjs",
     "catalog:validate-pins": "node scripts/validate-pins.mjs",
-    "catalog:register-website": "node scripts/register-plugin-website.mjs"
+    "catalog:register-website": "node scripts/register-plugin-website.mjs",
+    "secrets:probe": "node scripts/probe-token-impact.mjs"
   },
   "devDependencies": {
     "toml": "^3.0.0"
