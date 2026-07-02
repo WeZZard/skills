@@ -12,8 +12,5 @@
   },
   "devDependencies": {
     "toml": "^3.0.0"
-  },
-  "optionalDependencies": {
-    "openai": "^4.0.0"
   }
 }

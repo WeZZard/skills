@@ -69,9 +69,9 @@ async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
   const skillMdPath = join(pluginPath, "skills", skillName, "SKILL.md");
   const skillMdContent = readFileSync(skillMdPath, "utf8");
 
-  if (!process.env.DEEPSEEK_API_KEY) {
+  if (!isWebsiteLlmAvailable()) {
     console.warn(
-      `Skipping ${skillName}: missing website.skills.toml entry (set DEEPSEEK_API_KEY for LLM fallback)`,
+      `Skipping ${skillName}: missing website.skills.toml entry (install OpenCode + provider auth for LLM fallback)`,
     );
     return null;
   }

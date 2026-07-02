@@ -2,14 +2,11 @@ import { createHash } from "crypto";
 import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, appendFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { config } from "dotenv";
-import OpenAI from "openai";
+import { execSync } from "child_process";
 import TOML from "toml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// Load .env from project root
-config({ path: join(__dirname, "../../.env") });
+const REPO_ROOT = join(__dirname, "../..");
 
 const PLUGINS_DIR = join(__dirname, "../../claude");
 const MARKETPLACE_JSON = join(__dirname, "../../.claude-plugin/marketplace.json");
@@ -147,66 +144,15 @@ function discoverPlugins(): Array<{ name: string; path: string; skillNames: stri
 // --- AI generation for skill website content ---
 
 /**
- * Generates website content for a skill using the DeepSeek API.
- * The prompt is plugin-agnostic — it uses only the skill name and its SKILL.md.
+ * Generates website content for a skill using OpenCode.
  */
-async function generateSkillContent(
-  client: OpenAI,
-  skillName: string,
-  skillMdContent: string,
-): Promise<SkillTomlEntry> {
-  const prompt = `You are generating website content for a Claude Code plugin skill.
-
-## Context
-
-### Skill (SKILL.md for "${skillName}")
-${skillMdContent}
-
-## Task
-
-Generate website content for this skill as a JSON object with these fields:
-
-{
-  "display_name": "Human-readable skill name (title case, 2-4 words)",
-  "tagline": "A compelling one-line tagline (max 80 chars) that captures the skill's value proposition",
-  "short_summary": "A concise one-sentence summary (max 150 chars) of what the skill does",
-  "full_summary": "A detailed 2-3 sentence summary explaining the skill's purpose, how it works, and its benefits (max 500 chars)",
-  "highlights": [
-    {
-      "title": "Highlight Title (2-4 words)",
-      "description": "A 2-3 sentence description of this key feature or benefit (max 300 chars)"
-    }
-  ],
-  "workflow": [
-    {
-      "name": "Step Name (2-4 words)",
-      "description": "Brief description of this step (max 100 chars)",
-      "details": "Detailed explanation of what happens in this step (max 200 chars)"
-    }
-  ]
-}
-
-Requirements:
-- Generate exactly 3-4 highlights
-- Generate 3-5 workflow steps that reflect the actual process described in SKILL.md
-- Use clear, professional language
-- Be specific to what this skill actually does (don't be generic)
-- The tagline should be compelling and action-oriented
-- Workflow steps should follow the actual process described in the SKILL.md`;
-
-  const response = await client.chat.completions.create({
-    model: "deepseek-chat",
-    messages: [{ role: "user", content: prompt }],
-    response_format: { type: "json_object" },
-    temperature: 0,
-    seed: 42,
-  });
-
-  const content = response.choices[0]?.message?.content;
-  if (!content) throw new Error("No response from LLM");
-
-  const result = JSON.parse(content);
-
+function generateSkillContent(skillName: string, skillMdPath: string): SkillTomlEntry {
+  const script = join(REPO_ROOT, "scripts/opencode-generate-skill.mjs");
+  const output = execSync(
+    `node "${script}" --skill "${skillName}" --skill-md-file "${skillMdPath}"`,
+    { encoding: "utf-8", cwd: REPO_ROOT },
+  );
+  const result = JSON.parse(output.trim());
   return {
     display_name: result.display_name,
     tagline: result.tagline,
@@ -247,7 +193,7 @@ function appendSkillToToml(skillsTomlPath: string, skillName: string, entry: Ski
 
 /**
  * Checks for skills that exist on disk but are missing from website.skills.toml,
- * and generates content for them via the DeepSeek API.
+ * and generates content for them via OpenCode.
  * Returns true if any new content was generated (so the caller can re-read the TOML).
  */
 async function generateMissingSkillContent(
@@ -269,20 +215,16 @@ async function generateMissingSkillContent(
 
   console.log(`  ⚡ Found ${missingSkills.length} skill(s) missing from website.skills.toml: ${missingSkills.join(", ")}`);
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
+  try {
+    execSync("opencode --version", { stdio: "ignore" });
+  } catch {
     console.log(
-      "  ℹ DEEPSEEK_API_KEY not set — skipping LLM content generation.\n" +
-      "    To generate content locally, set DEEPSEEK_API_KEY in .env\n" +
-      "    Skills without content will be omitted from the website: " + missingSkills.join(", ")
+      "  ℹ OpenCode CLI not available — skipping LLM content generation.\n" +
+      "    Install OpenCode and configure provider auth to generate missing entries.\n" +
+      "    Skills without content will be omitted from the website: " + missingSkills.join(", "),
     );
     return false;
   }
-
-  const client = new OpenAI({
-    apiKey,
-    baseURL: "https://api.deepseek.com/v1",
-  });
 
   let generated = false;
 
@@ -293,11 +235,9 @@ async function generateMissingSkillContent(
       continue;
     }
 
-    const skillMdContent = readFileSync(skillMdPath, "utf-8");
-
-    console.log(`  ⟳ ${skillName}: generating content via DeepSeek API...`);
+    console.log(`  ⟳ ${skillName}: generating content via OpenCode...`);
     try {
-      const entry = await generateSkillContent(client, skillName, skillMdContent);
+      const entry = generateSkillContent(skillName, skillMdPath);
       appendSkillToToml(skillsTomlPath, skillName, entry);
       console.log(`  ✓ ${skillName}: generated and appended to website.skills.toml`);
       generated = true;

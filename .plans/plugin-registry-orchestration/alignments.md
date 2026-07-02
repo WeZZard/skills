@@ -69,7 +69,7 @@ See [v1-scope.md](./v1-scope.md).
 |-------|----------|
 | Unified prompt | Single [`website/prompts/update-plugin-website.md`](../../website/prompts/update-plugin-website.md) for bootstrap + release update |
 | Fast path | TOML → JSON when skill hashes unchanged (skip LLM) |
-| LLM path | When TOML stale or skills changed (`DEEPSEEK_API_KEY` in skills secrets) |
+| LLM path | When TOML stale or skills changed — **OpenCode** via `OPENCODE_AUTH_JSON` / local auth |
 | README | Skills-local `prompts/readme-update.md` + deterministic `generate-readme.mjs` — **not** in workflows repo |
 | TOML ownership post-split | TOML updated in **plugin release PR** before tag; catalog-sync fetches tag and generates JSON — **not** LLM patching TOML into skills-only PRs |
 

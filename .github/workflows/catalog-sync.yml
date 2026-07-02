@@ -55,6 +55,11 @@ jobs:
         working-directory: website
         run: npm ci
 
+      - name: Setup OpenCode
+        uses: ./.github/actions/setup-opencode
+        env:
+          OPENCODE_AUTH_JSON: ${{ secrets.OPENCODE_AUTH_JSON }}
+
       - name: Resolve sync inputs
         id: inputs
         env:

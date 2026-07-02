@@ -11,7 +11,7 @@ Operational steps for plugin releases, catalog sync, rollback, and recovery.
 | `WeZZard/skill-kit` | `SKILL_KIT_RELEASE_TOKEN` | Same for skill-kit |
 | `WeZZard/skills` | `CATALOG_SYNC_TOKEN` | Opens catalog / rollback / register bot PRs |
 | `WeZZard/skills` | `PLUGIN_CALLBACK_TOKEN` | Dispatches `catalog-sync-complete` to plugin repos |
-| `WeZZard/skills` | `DEEPSEEK_API_KEY` | Optional LLM website JSON fallback in catalog-sync |
+| `WeZZard/skills` | `OPENCODE_AUTH_JSON` | OpenCode provider auth for website LLM fallback + semver (optional) |
 
 Classic **`repo`** PAT is recommended for release and catalog tokens.
 
@@ -20,6 +20,14 @@ Set callback token on skills:
 ```bash
 gh secret set PLUGIN_CALLBACK_TOKEN --repo WeZZard/skills --body 'ghp_...'
 ```
+
+Set OpenCode auth for CI (contents of `~/.local/share/opencode/auth.json`):
+
+```bash
+gh secret set OPENCODE_AUTH_JSON --repo WeZZard/skills --body "$(cat ~/.local/share/opencode/auth.json)"
+```
+
+Repeat on plugin repos if using `propose-release.yml` with OpenCode semver.
 
 ## Shared release workflow
 

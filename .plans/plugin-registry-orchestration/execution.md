@@ -31,14 +31,14 @@ See [README.md](./README.md) for current status.
 - [x] `register-plugin-website.yml` on skills
 - [x] Dual-status callbacks (`pr_opened` + `merged`) via `catalog-sync-notify.yml` + `release-complete.yml`
 - [x] `suggest-version.mjs` + `propose-release.yml` on plugin repos
-- [x] LLM path in `update-plugin-website.mjs` (JSON-only fallback; `DEEPSEEK_API_KEY` on skills)
+- [x] LLM path via **OpenCode** in `update-plugin-website.mjs` (JSON-only fallback)
 
 ### Human setup (Layer 3 secrets)
 
 | Repo | Secret | Purpose |
 |------|--------|---------|
 | `WeZZard/skills` | `PLUGIN_CALLBACK_TOKEN` | Dispatch `catalog-sync-complete` to plugin repos |
-| `WeZZard/skills` | `DEEPSEEK_API_KEY` | LLM website JSON fallback when TOML incomplete |
+| `WeZZard/skills` | `OPENCODE_AUTH_JSON` | OpenCode provider auth for website/semver LLM paths |
 
 Plugin repos keep existing `*_RELEASE_TOKEN` secrets.
 

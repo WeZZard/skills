@@ -1,0 +1,22 @@
+name: Setup OpenCode
+description: Install OpenCode CLI and optional auth.json for CI
+
+runs:
+  using: composite
+  steps:
+    - name: Install OpenCode CLI
+      shell: bash
+      run: curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path
+
+    - name: Configure OpenCode auth
+      shell: bash
+      env:
+        OPENCODE_AUTH_JSON: ${{ env.OPENCODE_AUTH_JSON }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/.local/share/opencode"
+        if [ -n "${OPENCODE_AUTH_JSON:-}" ]; then
+          echo "$OPENCODE_AUTH_JSON" > "$HOME/.local/share/opencode/auth.json"
+          chmod 600 "$HOME/.local/share/opencode/auth.json"
+        fi
+        echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
