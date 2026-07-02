@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-07-01T22:47:19.352Z",
+  "generatedAt": "2026-07-02T07:40:19.385Z",
   "plugins": {
     "amplify": {
       "repo": "WeZZard/amplify",
       "tag": "v1.2.63",
       "sha": "97b24f6f65bff2b371398a800f6642035095e4aa",
       "version": "1.2.63",
-      "releaseId": "d5ca031c-1523-415b-a7d0-0ec7e81ed9df",
-      "resolvedAt": "2026-07-01T22:02:04.422Z"
+      "releaseId": null,
+      "resolvedAt": "2026-07-02T07:40:19.385Z"
     },
     "zelda-sounds": {
       "repo": "WeZZard/zelda-sounds",
