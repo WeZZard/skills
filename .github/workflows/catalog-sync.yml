@@ -167,10 +167,15 @@ jobs:
 
       - name: Dispatch pr_opened callback
         if: steps.cpr.outputs.pull-request-url != ''
+        continue-on-error: true
         env:
           PLUGIN_CALLBACK_TOKEN: ${{ secrets.PLUGIN_CALLBACK_TOKEN }}
         run: |
           set -euo pipefail
+          if [ -z "${PLUGIN_CALLBACK_TOKEN:-}" ]; then
+            echo "PLUGIN_CALLBACK_TOKEN not configured — skipping callback"
+            exit 0
+          fi
           PR_URL="${{ steps.cpr.outputs.pull-request-url }}"
           PR_NUMBER=$(echo "$PR_URL" | sed -E 's#.*/pull/([0-9]+).*#\1#')
           PREVIEW_URL="https://pr-${PR_NUMBER}.skills-website-staging.pages.dev"

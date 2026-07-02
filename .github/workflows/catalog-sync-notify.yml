@@ -49,10 +49,15 @@ jobs:
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch merged callback
+        continue-on-error: true
         env:
           PLUGIN_CALLBACK_TOKEN: ${{ secrets.PLUGIN_CALLBACK_TOKEN }}
         run: |
           set -euo pipefail
+          if [ -z "${PLUGIN_CALLBACK_TOKEN:-}" ]; then
+            echo "PLUGIN_CALLBACK_TOKEN not configured — skipping callback"
+            exit 0
+          fi
           node scripts/dispatch-plugin-callback.mjs \
             --repo "${{ steps.meta.outputs.repo }}" \
             --plugin "${{ steps.meta.outputs.plugin }}" \

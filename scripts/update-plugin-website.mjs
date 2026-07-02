@@ -21,7 +21,7 @@ import {
 } from "./lib/catalog.mjs";
 import {
   generateSkillContentWithLlm,
-  skillTomlComplete,
+  skillTomlHasBasics,
 } from "./lib/website-llm.mjs";
 import TOML from "toml";
 
@@ -62,14 +62,14 @@ function resolvePluginPath(pluginName) {
 
 async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
   const skillToml = skillsToml.skills?.[skillName];
-  if (skillTomlComplete(skillToml)) {
+  if (skillTomlHasBasics(skillToml)) {
     return skillToml;
   }
 
   const skillMdPath = join(pluginPath, "skills", skillName, "SKILL.md");
   const skillMdContent = readFileSync(skillMdPath, "utf8");
   console.warn(
-    `Skill ${skillName}: incomplete website.skills.toml — using LLM JSON fallback`,
+    `Skill ${skillName}: missing website.skills.toml entry — using LLM JSON fallback`,
   );
   return generateSkillContentWithLlm(skillName, skillMdContent);
 }

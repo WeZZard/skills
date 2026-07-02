@@ -53,15 +53,15 @@ function skillTomlComplete(entry) {
     entry?.display_name &&
       entry?.tagline &&
       entry?.short_summary &&
-      entry?.full_summary &&
-      Array.isArray(entry?.highlights) &&
-      entry.highlights.length > 0 &&
-      Array.isArray(entry?.workflow) &&
-      entry.workflow.length > 0,
+      entry?.full_summary,
   );
 }
 
-export { buildPrompt, skillTomlComplete };
+function skillTomlHasBasics(entry) {
+  return Boolean(entry?.display_name);
+}
+
+export { buildPrompt, skillTomlComplete, skillTomlHasBasics };
 
 export async function generateSkillContentWithLlm(skillName, skillMdContent, options = {}) {
   const apiKey = options.apiKey ?? process.env.DEEPSEEK_API_KEY;
