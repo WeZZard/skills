@@ -21,6 +21,7 @@ import {
 } from "./lib/catalog.mjs";
 import {
   generateSkillContentWithLlm,
+  isWebsiteLlmAvailable,
   skillTomlHasBasics,
 } from "./lib/website-llm.mjs";
 import TOML from "toml";
