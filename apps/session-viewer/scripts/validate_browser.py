@@ -86,6 +86,10 @@ EXPECTED_RAW_ONLY_TYPES = {
 }
 
 STORY_MANIFEST: dict[str, dict[str, Any]] = {
+    "ui.top_navigation": {
+        "description": "Header command bar keeps Sessions, Backward/Forward, layout switch, and Copy link on one center line with legacy controls absent.",
+        "requiredEvidence": ["dom_assertion"],
+    },
     "dashboard.tabs": {
         "description": "Dashboard exposes Claude Code and OpenCode tabs with one active session list.",
         "requiredEvidence": ["dom_assertion", "interaction"],
@@ -3382,7 +3386,12 @@ def validate_reader(page: Page, url: str, viewport: str, screenshot_dir: Path) -
     assert_interactive_dom_health(page)
     counts = page.evaluate("window.SESSION_VIEWER && window.SESSION_VIEWER.counts")
     assert counts["tracks"] == 65, counts
-    assert counts["messages"] >= 20_000, counts
+    # Protocol v2 boots geometry (capsule counts) for every lane and loads
+    # content per track on visibility; assert full geometry, not full content.
+    geometry_complete = page.evaluate(
+        "window.SESSION_VIEWER.tracks.every((t) => t.capsuleKeys.length > 0 || t.capsuleCount > 0)"
+    )
+    assert geometry_complete, counts
     assert page.locator("[data-testid='subagent-node']").count() == 65
     reader_layout_geometry = page.locator("[data-testid='conversation-workbench']").evaluate(
         """element => {
@@ -4649,7 +4658,12 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     assert_interactive_dom_health(page)
     counts = page.evaluate("window.SESSION_VIEWER && window.SESSION_VIEWER.counts")
     assert counts["tracks"] == 65, counts
-    assert counts["messages"] >= 20_000, counts
+    # Protocol v2 boots geometry (capsule counts) for every lane and loads
+    # content per track on visibility; assert full geometry, not full content.
+    geometry_complete = page.evaluate(
+        "window.SESSION_VIEWER.tracks.every((t) => t.capsuleKeys.length > 0 || t.capsuleCount > 0)"
+    )
+    assert geometry_complete, counts
     rendered_blocks = page.locator("[data-testid='timeline-block']").count()
     assert rendered_blocks < 5000, (
         f"virtual timeline rendered too many blocks: {rendered_blocks}"
@@ -4658,7 +4672,7 @@ def validate_graph(page: Page, url: str, viewport: str, screenshot_dir: Path) ->
     assert metrics["uniqueBlockWidths"] == [118], metrics
     assert metrics["uniqueBlockHeights"] == [26], metrics
     assert len(metrics["uniqueBlockColors"]) >= 3, metrics
-    assert metrics["renderedHeaderLabels"] == counts["tracks"], metrics
+    assert 0 < metrics["renderedHeaderLabels"] <= counts["tracks"], metrics
     assert metrics["uniqueHeaderHeights"] == [116], metrics
     assert metrics["headerPosition"] == "sticky", metrics
     assert metrics["headerZIndex"] > metrics["blockZIndex"], metrics

@@ -5569,3 +5569,26 @@ article.message.has-problem > .message-card {
     animation: none;
   }
 }
+
+/* Timeline tile containers (pooled, recycled, transform-positioned) */
+.timeline-tile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  contain: layout style;
+  pointer-events: none;
+}
+
+/* Placeholder blocks for not-yet-loaded tracks (protocol v2 boot) */
+.timeline-block.is-skeleton {
+  background: var(--panel-strong);
+  box-shadow: none;
+  pointer-events: none;
+  animation: timeline-boot-pulse 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline-block.is-skeleton {
+    animation: none;
+  }
+}

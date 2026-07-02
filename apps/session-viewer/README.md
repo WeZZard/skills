@@ -48,6 +48,39 @@ subagent toggles, independent subagent scrolling, timeline spawn edges,
 large-session DOM budgets, OpenCode transcript readability, and
 Studio/desktop/mobile overflow.
 
+## Timeline performance architecture
+
+Timeline boot uses protocol v2 (`GET /api/conversation/{agent}/{id}/timeline`):
+
+- Block geometry is purely ordinal (`y = ordinal x 40`, `x = lane x 208`) and
+  one capsule equals one non-blank JSONL line, so the boot payload ships only
+  **capsule seeds** for the main track (kind ingredients, nav-key fields, a
+  140-char preview) plus per-subagent **capsule counts** — never message
+  bodies. A 500-subagent session boots in a few hundred gzipped KB instead of
+  tens of MB.
+- A persistent per-session SQLite index (`~/.cache/session-viewer`, override
+  with `SESSION_VIEWER_CACHE_DIR`) caches newline counts per transcript file
+  (keyed by mtime+size) and the built boot payload (keyed by the session
+  fingerprint), so warm boots are single-digit milliseconds. Deleting the
+  cache only costs a rebuild.
+- Track content loads per file on visibility (`/track/{id}` parses one JSONL,
+  not the session tree); the detail popup upgrades seed capsules via
+  `/message`; `/raw_event` reads its line directly (with path containment).
+  Waterfall lazily loads the full main track on first entry.
+- The client renders blocks in pooled, recycled, `translate3d`-positioned
+  tiles (`timeline_renderer.js`, one tile per lane x 16-row chunk, UIKit
+  UICollectionView-style). Scroll frames inside the same tile window do zero
+  DOM work; geometry recomputes only per epoch (resize, data arrival, search
+  visibility), never per frame. Not-yet-loaded rows render as fixed-geometry
+  skeleton blocks that swap in place when data arrives.
+- Parsing runs in a thread pool off the event loop; responses are gzipped and
+  ETagged (`If-None-Match` revalidation returns 304).
+
+Live sessions: any file append changes the fingerprint, which rebuilds the
+boot payload on the next load (only changed files are re-scanned). In-place
+incremental append indexing and client-side live polling are possible future
+extensions on the same fingerprint scheme.
+
 ## Utilities
 
 Scan Claude Code JSONL transcripts for message kinds and structural shapes:

@@ -79,6 +79,83 @@ def slim_export(export: ConversationExport) -> dict[str, Any]:
     }
 
 
+def timeline_export(
+    export: ConversationExport,
+    *,
+    jsonl_file: str,
+    capsule_counts: list[int],
+    seeds: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Protocol v2 boot payload: capsule seeds instead of message bodies.
+
+    Timeline geometry is fully determined by the seed list (main track) and
+    per-child capsule counts; content loads on demand via /track and /message.
+    """
+    children = []
+    for index, child in enumerate(export.subagent_transcripts):
+        skeleton = _track_skeleton(child)
+        if index < len(capsule_counts) and capsule_counts[index]:
+            skeleton["capsule_count"] = capsule_counts[index]
+        children.append(skeleton)
+    return {
+        "protocol": 2,
+        "jsonl_file": jsonl_file,
+        "summary": export.summary.model_dump(mode="json"),
+        "messages": [],
+        "raw_events": [],
+        "capsule_seeds": seeds,
+        "message_count": len(export.messages),
+        "raw_event_count": len(export.raw_events),
+        "problem_flags": [flag.model_dump(mode="json") for flag in export.problem_flags],
+        "parser_diagnostics": [d.model_dump(mode="json") for d in export.parser_diagnostics],
+        "task_part_id": export.task_part_id,
+        "task_message_id": export.task_message_id,
+        "parent_task_nav": export.parent_task_nav.model_dump(mode="json") if export.parent_task_nav else None,
+        "parent_result_nav": export.parent_result_nav.model_dump(mode="json") if export.parent_result_nav else None,
+        "previous_sibling_nav": export.previous_sibling_nav.model_dump(mode="json") if export.previous_sibling_nav else None,
+        "next_sibling_nav": export.next_sibling_nav.model_dump(mode="json") if export.next_sibling_nav else None,
+        "relationship_hint": export.relationship_hint,
+        "relationship_basis": export.relationship_basis,
+        "agent_type": export.agent_type,
+        "agent_description": export.agent_description,
+        "subagent_transcripts": children,
+    }
+
+
+def single_track_payload(track: ConversationExport, agent_path: str) -> dict[str, Any]:
+    """Track payload from a per-file parse (no verbatim raw in raw_events)."""
+    return {
+        "summary": track.summary.model_dump(mode="json"),
+        "agentPath": agent_path,
+        "messages": [message.model_dump(mode="json") for message in track.messages],
+        "raw_events": _slim_raw_events(track.raw_events),
+        "problem_flags": [flag.model_dump(mode="json") for flag in track.problem_flags],
+        "parser_diagnostics": [d.model_dump(mode="json") for d in track.parser_diagnostics],
+        "agent_type": track.agent_type,
+        "agent_description": track.agent_description,
+    }
+
+
+def message_payload(track: ConversationExport, line_number: int) -> dict[str, Any] | None:
+    """One full message (all parts) plus its raw event, by line number."""
+    raw_event = None
+    for event in track.raw_events:
+        if event.nav and event.nav.lineNumber == line_number:
+            raw_event = {
+                "id": event.id,
+                "nav": event.nav.model_dump(mode="json"),
+                "raw": event.raw,
+                "parse_error": event.parse_error,
+            }
+            break
+    for message in track.messages:
+        if message.nav and message.nav.lineNumber == line_number:
+            return {"message": message.model_dump(mode="json"), "raw_event": raw_event}
+    if raw_event is not None:
+        return {"raw_event": raw_event}
+    return None
+
+
 def _find_track_by_agent_path(export: ConversationExport, agent_path: str) -> ConversationExport | None:
     if _track_agent_path(export) == agent_path:
         return export

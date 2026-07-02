@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import gzip
 import json
 import re
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
@@ -16,8 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.gzip import GZipMiddleware
 
-from app import claude_store, opencode_store, slim_export
-from app.config import Config
+from app import claude_store, opencode_store, session_index, slim_export
+from app.config import Config, resolve_projects_dir
 from app.models import ConversationExport, ConversationSummary
 
 
@@ -1315,6 +1317,51 @@ async def conversation(request: Request, session_id: str):
     return await conversation_agent(request, "claude", session_id)
 
 
+_TRACK_CACHE_MAX = 16
+_track_cache: "OrderedDict[tuple[str, str], tuple[str, ConversationExport]]" = OrderedDict()
+_track_cache_lock = threading.Lock()
+
+
+def _load_track_cached(session_id: str, track_id: str) -> ConversationExport | None:
+    stat_key = claude_store.track_file_stat_key(session_id, track_id)
+    if stat_key is None:
+        return None
+    cache_key = (session_id, track_id)
+    with _track_cache_lock:
+        cached = _track_cache.get(cache_key)
+        if cached is not None and cached[0] == stat_key:
+            _track_cache.move_to_end(cache_key)
+            return cached[1]
+        export = claude_store.load_track(session_id, track_id)
+        if export is None:
+            return None
+        _track_cache[cache_key] = (stat_key, export)
+        if len(_track_cache) > _TRACK_CACHE_MAX:
+            _track_cache.popitem(last=False)
+        return export
+
+
+def _timeline_body_gzip(session_id: str, fingerprint: str | None) -> bytes | None:
+    """Gzip-compressed protocol v2 boot payload, served from the persistent
+    per-session index when the session is unchanged."""
+    index = session_index.SessionIndex.open(session_id)
+    try:
+        if index is not None and fingerprint:
+            cached = index.cached_boot(fingerprint)
+            if cached is not None:
+                return cached
+        line_counter = index.line_count if index is not None else None
+        payload = claude_store.build_timeline_payload(session_id, line_counter=line_counter)
+        if payload is None:
+            return None
+        if index is not None and fingerprint:
+            return index.store_boot(fingerprint, payload)
+        return gzip.compress(json.dumps(payload, separators=(",", ":")).encode("utf-8"), compresslevel=6)
+    finally:
+        if index is not None:
+            index.close()
+
+
 def _build_boot_payload(agent: str, session_id: str) -> str | None:
     if agent == "claude":
         data = claude_store.load_boot_export(session_id)
@@ -1323,6 +1370,50 @@ def _build_boot_payload(agent: str, session_id: str) -> str | None:
     if data is None:
         return None
     return json.dumps(slim_export.slim_export(data), separators=(",", ":"))
+
+
+@app.get("/api/conversation/{agent}/{session_id}/timeline")
+async def api_conversation_timeline(request: Request, agent: str, session_id: str):
+    agent = _agent_or_404(agent)
+    if agent != "claude":
+        # OpenCode sessions are small single-database reads; serve the
+        # existing slim export (the client falls back to the messages path).
+        data = await _run_parse(_load_conversation_cached, agent, session_id)
+        if data is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        payload = await _run_parse(slim_export.slim_export, data)
+        return JSONResponse(content=payload)
+    fingerprint = await _run_parse(_session_fingerprint, agent, session_id)
+    if _not_modified(request, fingerprint):
+        return Response(status_code=304, headers=_etag_headers(fingerprint))
+    body = await _run_parse(_timeline_body_gzip, session_id, fingerprint)
+    if body is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    headers = _etag_headers(fingerprint)
+    headers["Vary"] = "Accept-Encoding"
+    if "gzip" in request.headers.get("accept-encoding", "").lower():
+        headers["Content-Encoding"] = "gzip"
+        return Response(content=body, media_type="application/json", headers=headers)
+    return Response(content=gzip.decompress(body), media_type="application/json", headers=headers)
+
+
+@app.get("/api/conversation/{agent}/{session_id}/message")
+async def api_conversation_message(
+    agent: str,
+    session_id: str,
+    track_id: str = Query(...),
+    line_number: int = Query(...),
+):
+    agent = _agent_or_404(agent)
+    if agent != "claude":
+        raise HTTPException(status_code=404, detail="Message lookup is Claude-only")
+    export = await _run_parse(_load_track_cached, session_id, track_id)
+    if export is None:
+        raise HTTPException(status_code=404, detail="Track not found")
+    payload = await _run_parse(slim_export.message_payload, export, line_number)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return JSONResponse(content=payload)
 
 
 @app.get("/api/conversation/{agent}/{session_id}/boot")
@@ -1366,6 +1457,13 @@ async def api_conversation(session_id: str):
 @app.get("/api/conversation/{agent}/{session_id}/track/{track_id:path}")
 async def api_conversation_track(request: Request, agent: str, session_id: str, track_id: str):
     agent = _agent_or_404(agent)
+    if agent == "claude":
+        # Per-file parse: one track's JSONL only, never the whole session.
+        export = await _run_parse(_load_track_cached, session_id, track_id)
+        if export is None:
+            raise HTTPException(status_code=404, detail="Track not found")
+        payload = await _run_parse(slim_export.single_track_payload, export, track_id)
+        return JSONResponse(content=payload)
     fingerprint = await _run_parse(_session_fingerprint, agent, session_id)
     if _not_modified(request, fingerprint):
         return Response(status_code=304, headers=_etag_headers(fingerprint))
@@ -1386,6 +1484,20 @@ async def api_conversation_raw_event(
     line_number: int = Query(...),
 ):
     agent = _agent_or_404(agent)
+    if agent == "claude":
+        # Direct file/line read with containment: no session parse, and no
+        # reads outside the projects directory.
+        try:
+            requested = Path(jsonl_file).resolve()
+            projects = resolve_projects_dir().resolve()
+        except OSError:
+            raise HTTPException(status_code=400, detail="Invalid path")
+        if not requested.is_relative_to(projects):
+            raise HTTPException(status_code=403, detail="Path outside projects directory")
+        payload = await _run_parse(claude_store.read_raw_event, session_id, str(requested), line_number)
+        if payload is None:
+            raise HTTPException(status_code=404, detail="Raw event not found")
+        return JSONResponse(content=payload)
     data = await _run_parse(_load_conversation_cached, agent, session_id)
     if data is None:
         raise HTTPException(status_code=404, detail="Session not found")

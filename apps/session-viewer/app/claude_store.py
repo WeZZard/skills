@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -513,6 +514,173 @@ def get_source_info(source_path: str | Path | None = None) -> dict[str, Any]:
     return source_info(source_path)
 
 
+_TRACK_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _track_source_for_id(
+    main_path: Path, session_id: str, track_id: str
+) -> tuple[Path, str, str | None, str | None] | None:
+    """Resolve a track id (agentPath) to its JSONL file without globbing."""
+    if track_id == "main":
+        return main_path, "main", None, None
+    root = main_path.parent / session_id / "subagents"
+    if track_id.startswith("main/workflow:"):
+        rest = track_id[len("main/workflow:"):]
+        workflow_id, _, agent_id = rest.partition("/")
+        if not _TRACK_SEGMENT_RE.match(workflow_id or "") or not _TRACK_SEGMENT_RE.match(agent_id or ""):
+            return None
+        path = root / "workflows" / workflow_id / f"agent-{agent_id}.jsonl"
+    elif track_id.startswith("main/"):
+        agent_id = track_id[len("main/"):]
+        if not _TRACK_SEGMENT_RE.match(agent_id or ""):
+            return None
+        path = root / f"agent-{agent_id}.jsonl"
+    else:
+        return None
+    if not path.exists():
+        return None
+    meta = _load_meta(path)
+    return path, track_id, meta.get("agentType"), meta.get("description")
+
+
+def load_track(
+    opaque_id: str, track_id: str, source_path: str | Path | None = None
+) -> ConversationExport | None:
+    """Parse ONE track's file — never the whole session tree."""
+    projects_dir = resolve_projects_dir(source_path)
+    try:
+        ref = decode_session_ref(opaque_id)
+    except Exception:
+        return None
+    main_path = _session_file(projects_dir, ref)
+    if not main_path.exists():
+        return None
+    source = _track_source_for_id(main_path, ref.session_id, track_id)
+    if source is None:
+        return None
+    path, agent_path, agent_type, agent_description = source
+    parsed = parse_jsonl_file(
+        path,
+        session_id=opaque_id,
+        scope="main" if track_id == "main" else "subagent",
+        agent_path=agent_path,
+        agent_type=agent_type,
+    )
+    export = _make_export(parsed, opaque_id=opaque_id)
+    if track_id != "main":
+        export.agent_type = agent_type or export.agent_type or "subagent"
+        export.agent_description = agent_description or ""
+    attach_problem_flags(export)
+    return export
+
+
+def track_file_stat_key(
+    opaque_id: str, track_id: str, source_path: str | Path | None = None
+) -> str | None:
+    """Cheap cache-validation key for one track's file."""
+    projects_dir = resolve_projects_dir(source_path)
+    try:
+        ref = decode_session_ref(opaque_id)
+    except Exception:
+        return None
+    main_path = _session_file(projects_dir, ref)
+    source = _track_source_for_id(main_path, ref.session_id, track_id)
+    if source is None:
+        return None
+    try:
+        stat = source[0].stat()
+    except OSError:
+        return None
+    return f"{source[0]}:{stat.st_mtime_ns}:{stat.st_size}"
+
+
+def read_raw_event(
+    opaque_id: str, jsonl_file: str, line_number: int
+) -> dict[str, Any] | None:
+    """Read one raw event by direct file/line access — no session parse."""
+    path = Path(jsonl_file)
+    if not path.exists() or line_number < 1:
+        return None
+    target = None
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            for index, line in enumerate(fh):
+                if index + 1 == line_number:
+                    target = line.strip()
+                    break
+    except OSError:
+        return None
+    if target is None:
+        return None
+    parse_error = None
+    raw: Any
+    try:
+        raw = json.loads(target)
+    except json.JSONDecodeError as exc:
+        raw = target
+        parse_error = str(exc)
+    subagents_root = path.parent
+    if subagents_root.name == "subagents":
+        agent_path = f"main/{path.stem.removeprefix('agent-')}"
+        scope = "subagent"
+    elif subagents_root.parent.name == "workflows":
+        agent_path = f"main/workflow:{subagents_root.name}/{path.stem.removeprefix('agent-')}"
+        scope = "subagent"
+    else:
+        agent_path = "main"
+        scope = "main"
+    nav = NavAddress(
+        sessionId=opaque_id,
+        jsonlFile=str(path),
+        lineNumber=line_number,
+        eventIndex=line_number - 1,
+        scope=scope,
+        agentPath=agent_path,
+        elementType="event",
+        view="raw",
+    )
+    return {
+        "id": f"{path}:{line_number}",
+        "nav": nav.model_dump(mode="json"),
+        "raw": raw,
+        "parse_error": parse_error,
+    }
+
+
+def build_timeline_payload(
+    opaque_id: str,
+    source_path: str | Path | None = None,
+    line_counter=None,
+) -> dict[str, Any] | None:
+    """Protocol v2 boot payload: geometry-complete, no message bodies."""
+    from app import slim_export
+    from app.capsules import capsule_seeds
+
+    projects_dir = resolve_projects_dir(source_path)
+    try:
+        ref = decode_session_ref(opaque_id)
+    except Exception:
+        return None
+    main_path = _session_file(projects_dir, ref)
+    if not main_path.exists():
+        return None
+    root = load_boot_export(opaque_id, source_path)
+    if root is None:
+        return None
+    # load_boot_export appends one skeleton child per discovered subagent, in
+    # discovery order — counts align by position.
+    discovered = _discover_subagents(main_path.parent, ref.session_id)
+    counter = line_counter or (lambda _path: 0)
+    counts = [counter(path) for _, path, _, _, _ in discovered]
+    seeds = capsule_seeds(root)
+    return slim_export.timeline_export(
+        root,
+        jsonl_file=str(main_path),
+        capsule_counts=counts,
+        seeds=seeds,
+    )
+
+
 def _read_first_event_nav(path: Path, session_id: str, agent_path: str) -> tuple[NavAddress | None, str, str | None, str | None]:
     """Read the first valid JSON line to get nav address + title + model. Returns (nav, title, model, agent_id)."""
     try:
@@ -532,7 +700,7 @@ def _read_first_event_nav(path: Path, session_id: str, agent_path: str) -> tuple
                 message = raw.get("message") if isinstance(raw.get("message"), dict) else None
                 if isinstance(message, dict) and isinstance(message.get("model"), str):
                     model = message["model"]
-                title = explicit_title_from_event(raw) or raw.get("cwd") or path.stem
+                title = explicit_title_from_event(raw)
                 nav = NavAddress(
                     sessionId=session_id,
                     jsonlFile=str(path),
@@ -584,7 +752,7 @@ def load_boot_export(
         nav, title, model, _ = _read_first_event_nav(path, opaque_id, agent_path)
         child_summary = ConversationSummary(
             id=f"{opaque_id}:{agent_path}",
-            title=title or agent_id,
+            title=title or agent_description or agent_type or agent_id,
             directory=main.cwd,
             gitBranch=main.git_branch,
             version=None,

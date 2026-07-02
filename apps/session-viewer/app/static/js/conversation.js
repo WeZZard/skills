@@ -19,6 +19,11 @@ const state = {
   timelineTrackKey: "",
   timelineBlockKey: "",
   timelineDetailKey: "",
+  timelineEdgeKey: "",
+  timelineSizerLayoutVersion: -1,
+  timelineDetailWindowCount: -1,
+  timelineBlockStateKey: "",
+  timelineHeaderWidth: -1,
   pinnedTimelineDetailKeys: [],
   timelineDetailWindowLayout: null,
   timelineDetailLayoutFrame: null,
@@ -72,6 +77,10 @@ const model = {
   timelineLayoutViewportWidth: 0,
   timelineTrackGroupLeft: 36,
   timelineTrackSpan: 0,
+  capsulesVersion: 0,
+  searchIndexVersion: 0,
+  timelineGeometryKey: "",
+  timelineEdgeBoxes: [],
 };
 
 const GOLDEN_SECTION = 0.61803398875;
@@ -1780,6 +1789,7 @@ function collectTranscripts(transcript = SESSION_DATA, depth = 0, parentTrackId 
     relationship: transcript.relationship_hint || "",
     relationshipBasis: transcript.relationship_basis || "",
     problemCount: laneProblems.size,
+    capsuleCount: Number(transcript.capsule_count) || 0,
     firstCapsuleKey: "",
     lastCapsuleKey: "",
     capsuleKeys: [],
@@ -1788,6 +1798,153 @@ function collectTranscripts(transcript = SESSION_DATA, depth = 0, parentTrackId 
   model.tracks.push(track);
   trackById.set(id, track);
   (transcript.subagent_transcripts || []).forEach((child) => collectTranscripts(child, depth + 1, id));
+}
+
+function seedPartState(type, subtype, error) {
+  if (type === "attachment") return { kind: "attachment_event", attachmentType: subtype || "unknown" };
+  if (type === "system") return { kind: "system_event", subtype: subtype || "system" };
+  if (type === "tool_result") return error ? { is_error: true } : {};
+  if (type === "tool") return error ? { status: "error" } : {};
+  return {};
+}
+
+// Protocol v2 boot ships capsule seeds (kind ingredients + preview) instead of
+// message bodies. Seed navs mirror the parser's navs exactly so capsule keys
+// are identical before and after the full track payload loads.
+function buildCapsulesFromSeeds(track, laneIndex) {
+  const jsonlFile = track.transcript.jsonl_file || "";
+  const sessionId = track.transcript.summary?.id || sessionApiBase().sessionId;
+  // Problem flags attach to part/event navs whose keys never match a seed's
+  // message nav; group them by line so seed capsules still count problems.
+  const problemsByLine = new Map();
+  (track.transcript.problem_flags || []).forEach((problem) => {
+    const lineNumber = problem?.nav?.lineNumber;
+    if (!lineNumber) return;
+    const list = problemsByLine.get(lineNumber) || [];
+    list.push(problem);
+    problemsByLine.set(lineNumber, list);
+  });
+  (track.transcript.capsule_seeds || []).forEach((seed) => {
+    const isMessage = seed.k === "m";
+    const nav = {
+      sessionId,
+      jsonlFile,
+      lineNumber: seed.ln,
+      eventIndex: seed.ei,
+      scope: track.id === "main" ? "main" : "subagent",
+      agentPath: track.id,
+      elementType: isMessage ? "message" : "event",
+      view: isMessage ? "rendered" : "raw",
+      messageId: isMessage ? seed.mid || null : null,
+    };
+    const key = rememberNav(nav);
+    if (!key || capsuleByKey.has(key)) return;
+    const pseudoRaw = { type: seed.rt || undefined, subtype: seed.rs || undefined };
+    const rawNav = { ...nav, elementType: "event", view: "raw", messageId: null };
+    const pseudoRawEvent = { id: `${jsonlFile}:${seed.ln}`, nav: rawNav, raw: pseudoRaw, parse_error: seed.pe ? "parse error" : null };
+    if (!rawEventByAddress.has(eventAddress(rawNav))) rawEventByAddress.set(eventAddress(rawNav), pseudoRawEvent);
+    let capsule;
+    if (isMessage) {
+      const parts = (seed.parts || []).map((part, partIndex) => {
+        const partNav = {
+          sessionId,
+          jsonlFile,
+          lineNumber: seed.ln,
+          eventIndex: seed.ei,
+          scope: nav.scope,
+          agentPath: track.id,
+          elementType: part[4] || "part",
+          view: "rendered",
+          messageId: seed.mid || null,
+          contentIndex: part[5] != null ? part[5] : null,
+          toolUseId: part[6] || null,
+          jsonPointer: part[7] || null,
+        };
+        const partKey = rememberNav(partNav);
+        if (partKey) navKeyToCapsuleKey.set(partKey, key);
+        const toolId = partNav.toolUseId || "";
+        const scoped = scopedToolKey(partNav, toolId);
+        if (part[0] === "tool" && scoped) toolCallByScopedId.set(scoped, partNav);
+        if (part[0] === "tool_result" && scoped) toolResultByScopedId.set(scoped, partNav);
+        return {
+          id: part[6] || `${seed.mid || key}:${partIndex}`,
+          type: part[0],
+          tool: part[1] || undefined,
+          state: seedPartState(part[0], part[2], part[3]),
+          nav: partNav,
+        };
+      });
+      const message = {
+        id: seed.mid || key,
+        role: seed.role || "system",
+        parts,
+        nav,
+        time_created: seed.ts || null,
+      };
+      const problems = problemsByLine.get(seed.ln) || [];
+      const kindModel = messageKindModel(message);
+      capsule = {
+        key,
+        trackId: track.id,
+        laneIndex,
+        message,
+        nav,
+        role: message.role,
+        type: kindModel.primaryKey,
+        label: `${kindModel.fullLabel} ${track.capsuleKeys.length + 1}`,
+        kindModel,
+        lineType: kindModel.line.label,
+        contentTypes: kindModel.contentKinds.map((kind) => kind.label),
+        summary: seed.pv || message.role || "message",
+        timestamp: seed.ts || 0,
+        lineNumber: seed.ln || 0,
+        messageIndex: track.capsuleKeys.length,
+        partTypes: parts.map((part) => part.type),
+        problems,
+        problemCount: problems.length,
+        rawEvent: null,
+        rawOnly: false,
+        seedOnly: true,
+        x: 0,
+        y: 0,
+        width: model.blockWidth,
+        height: model.blockHeight,
+      };
+    } else {
+      const kindModel = rawEventKindModel(pseudoRawEvent);
+      capsule = {
+        key,
+        trackId: track.id,
+        laneIndex,
+        message: null,
+        nav,
+        role: "raw",
+        type: kindModel.primaryKey,
+        label: kindModel.fullLabel,
+        kindModel,
+        lineType: kindModel.line.label,
+        contentTypes: kindModel.contentKinds.map((kind) => kind.label),
+        summary: seed.pv || "",
+        timestamp: seed.ts || 0,
+        lineNumber: seed.ln || 0,
+        messageIndex: track.capsuleKeys.length,
+        partTypes: ["raw_event"],
+        problems: problemsByLine.get(seed.ln) || [],
+        problemCount: (problemsByLine.get(seed.ln) || []).length,
+        rawEvent: pseudoRawEvent,
+        rawOnly: true,
+        seedOnly: true,
+        x: 0,
+        y: 0,
+        width: model.blockWidth,
+        height: model.blockHeight,
+      };
+    }
+    capsuleByKey.set(key, capsule);
+    model.capsules.push(capsule);
+    track.capsuleKeys.push(key);
+    navKeyToCapsuleKey.set(key, key);
+  });
 }
 
 function buildModels() {
@@ -1803,6 +1960,16 @@ function buildModels() {
   });
 
   model.tracks.forEach((track, laneIndex) => {
+    if ((track.transcript.capsule_seeds || []).length && !(track.messages || []).length) {
+      buildCapsulesFromSeeds(track, laneIndex);
+      track.firstCapsuleKey = track.capsuleKeys[0] || "";
+      track.lastCapsuleKey = track.capsuleKeys[track.capsuleKeys.length - 1] || "";
+      track.capsuleKeys.forEach((key, index) => {
+        const next = track.capsuleKeys[index + 1];
+        if (next) addBidirectionalEdge(key, next, "sequence", "Next message", "Previous message");
+      });
+      return;
+    }
     const renderedAddresses = new Set();
     track.messages.forEach((message, messageIndex) => {
       const key = rememberNav(message.nav) || `${track.id}:message:${messageIndex}`;
@@ -1906,6 +2073,7 @@ function buildModels() {
   model.tracks.forEach((track) => buildSpawnEdgesForTrack(track));
   buildSkeletonSearchIndex();
 
+  model.capsulesVersion += 1;
   layoutGraph();
 }
 
@@ -1964,6 +2132,7 @@ function buildSpawnEdgesForTrack(track) {
     trackId: track.id,
   };
   model.spawnEdges.push(edge);
+  model.capsulesVersion += 1;
   addBidirectionalEdge(parentKey, track.firstCapsuleKey, "spawn", "Spawned subagent", "Parent spawn", edge.basis);
   const resultKey = navKeyToCapsuleKey.get(navKey(track.parentResultNav));
   if (resultKey) addBidirectionalEdge(track.lastCapsuleKey, resultKey, "parent_result", "Parent result", "Child completion", track.id);
@@ -1987,6 +2156,7 @@ function ensureSearchIndex() {
 }
 
 function buildSearchIndexForTrack(track) {
+  model.searchIndexVersion += 1;
   if (track.nav) clearSkeletonSearchEntry(navKey(track.nav));
   track.capsuleKeys.forEach((key) => {
     const capsule = capsuleByKey.get(key);
@@ -2025,6 +2195,11 @@ function timelineTrackGroupLeftForViewport(viewportWidth, trackSpan) {
 function layoutGraph(viewportWidth = 0) {
   const layoutViewportWidth = Math.max(0, Math.floor(viewportWidth || 0));
   const searchPresentation = timelineSearchPresentation();
+  // Geometry is a pure function of (viewport width, capsule population,
+  // search visibility); skip the O(all capsules) relayout when none changed.
+  const geometryKey = `${layoutViewportWidth}:${model.capsulesVersion}:${searchPresentation.signature}`;
+  if (model.timelineGeometryKey === geometryKey) return;
+  model.timelineGeometryKey = geometryKey;
   const layoutTracks = timelineLayoutTracks(searchPresentation);
   const layoutTrackIds = new Set(layoutTracks.map((track) => track.id));
   const trackSpan = layoutTracks.length * model.trackWidth;
@@ -2051,11 +2226,19 @@ function layoutGraph(viewportWidth = 0) {
       : model.timelinePadTop;
     const trackLeft = trackGroupLeft + laneIndex * model.trackWidth;
     const layoutKeys = track.timelineLayoutCapsuleKeys || [];
+    // Unloaded lanes get their full height from the boot capsule count so
+    // geometry is complete (and stable) before any track data arrives.
+    const skeletonRows = !searchPresentation.active && track.depth > 0 && !loadedTrackIds.has(track.id)
+      ? Math.max(0, (track.capsuleCount || 0) - layoutKeys.length)
+      : 0;
+    const totalRows = Math.max(1, layoutKeys.length + skeletonRows);
     track.x = trackLeft;
     track.y = startY;
     track.width = model.trackWidth;
     track.timelineStartY = startY;
-    track.timelineEndY = startY + Math.max(1, layoutKeys.length) * model.blockStepY;
+    track.timelineEndY = startY + totalRows * model.blockStepY;
+    track.timelineSkeletonRows = skeletonRows;
+    maxBottom = Math.max(maxBottom, track.timelineEndY - model.blockStepY + model.blockHeight);
     layoutKeys.forEach((key, index) => {
       const capsule = capsuleByKey.get(key);
       if (!capsule) return;
@@ -2084,6 +2267,49 @@ function layoutGraph(viewportWidth = 0) {
   model.timelineTrackGroupLeft = trackGroupLeft;
   model.timelineTrackSpan = trackSpan;
   if (layoutChanged) model.timelineLayoutVersion += 1;
+  rebuildTimelineEdgeBoxes();
+}
+
+function rebuildTimelineEdgeBoxes() {
+  const boxes = [];
+  const edgedTrackIds = new Set();
+  const pushBox = (edge, sx, sy, cx, ty) => {
+    boxes.push({
+      edge,
+      sx,
+      sy,
+      cx,
+      ty,
+      left: Math.min(sx, cx),
+      right: Math.max(sx, cx),
+      top: Math.min(sy, ty),
+      bottom: Math.max(sy, ty),
+    });
+  };
+  model.spawnEdges.forEach((edge) => {
+    edgedTrackIds.add(edge.trackId);
+    const source = capsuleByKey.get(edge.sourceKey);
+    const target = capsuleByKey.get(edge.targetKey);
+    if (!source || !target) return;
+    const targetTrack = trackById.get(edge.trackId || target.trackId);
+    const sx = source.x + source.width;
+    const sy = source.y + source.height / 2;
+    const cx = targetTrack ? targetTrack.x + targetTrack.width / 2 : target.x + target.width / 2;
+    pushBox(edge, sx, sy, cx, target.y);
+  });
+  // Unloaded lanes have no first capsule yet; synthesize their spawn edge
+  // from the parent Task capsule to the lane top so the graph is complete
+  // from boot geometry alone.
+  model.tracks.forEach((track) => {
+    if (track.depth === 0 || track.timelineSearchHidden || edgedTrackIds.has(track.id)) return;
+    if (!track.parentTaskNav) return;
+    const parentKey = navKeyToCapsuleKey.get(navKey(track.parentTaskNav));
+    const source = parentKey ? capsuleByKey.get(parentKey) : null;
+    if (!source) return;
+    const edge = { type: "spawn", label: "Spawned subagent", basis: track.relationshipBasis || "", sourceKey: parentKey, targetKey: "", trackId: track.id };
+    pushBox(edge, source.x + source.width, source.y + source.height / 2, track.x + track.width / 2, track.timelineStartY);
+  });
+  model.timelineEdgeBoxes = boxes;
 }
 
 function getLayoutFromUrl() {
@@ -2340,6 +2566,8 @@ function invalidateTimelineRender() {
   state.timelineTrackKey = "";
   state.timelineBlockKey = "";
   state.timelineDetailKey = "";
+  state.timelineEdgeKey = "";
+  state.timelineBlockStateKey = "";
   scheduleGraphRender();
   scheduleTimelineDetailDockLayout({ frames: 2 });
 }
@@ -3367,10 +3595,22 @@ function setLayout(layout, options = {}) {
     renderMessageIndex();
     scheduleGraphRender();
   } else if (!els.readerMainStream.children.length) {
-    renderReader();
-    renderMessageIndex();
-    renderReaderActiveState();
-    renderGraphStatus();
+    const mainTrack = trackById.get("main");
+    if (trackNeedsLoad(mainTrack)) {
+      els.readerMainStream.innerHTML = '<div class="reader-track-body" style="padding:24px;color:var(--muted,#6b7280);font-size:13px">Loading transcript…</div>';
+      ensureTrackLoaded("main").then(() => {
+        if (state.layout !== "reader") return;
+        renderReader();
+        renderMessageIndex();
+        renderReaderActiveState();
+        renderGraphStatus();
+      });
+    } else {
+      renderReader();
+      renderMessageIndex();
+      renderReaderActiveState();
+      renderGraphStatus();
+    }
   } else if (state.layout === "reader") {
     updateSubagentPanelOverlayWidth();
     renderMessageIndex();
@@ -3683,6 +3923,7 @@ function capsuleSearchText(capsule, track) {
 function buildSearchIndex() {
   searchIndexByKey.clear();
   skeletonSearchKeys.clear();
+  model.searchIndexVersion += 1;
   model.capsules.forEach((capsule) => {
     const track = trackById.get(capsule.trackId);
     const kind = capsule.kindModel || (capsule.rawOnly ? rawEventKindModel(capsule.rawEvent) : messageKindModel(capsule.message));
@@ -3755,6 +3996,7 @@ function fetchServerSearch(query, scope) {
       .then((results) => {
         if (myId !== serverSearchQueryId) return;
         serverSearchResults = results || [];
+        model.searchIndexVersion += 1;
         scheduleGraphRender();
         renderTimelineSearchShelf();
       })
@@ -3763,7 +4005,7 @@ function fetchServerSearch(query, scope) {
 }
 
 function hasUnloadedSubagentTracks() {
-  return model.tracks.some((track) => track.depth > 0 && !loadedTrackIds.has(track.id));
+  return model.tracks.some((track) => trackNeedsLoad(track));
 }
 
 function searchResultSnippet(record, maxLength) {
@@ -3788,7 +4030,33 @@ function timelineSearchActive() {
   return state.searchByLayout.graph.open && isSearchQueryActive("graph");
 }
 
+let timelineSearchPresentationCache = { key: "", value: null };
+
 function timelineSearchPresentation() {
+  // Memoized: recomputed only when search inputs or the capsule/search-index
+  // population change. renderGraphVirtual and its helpers call this several
+  // times per frame; without the cache each call is O(all capsules).
+  const ss = state.searchByLayout.graph;
+  const cacheKey = [
+    timelineSearchActive() ? "1" : "0",
+    ss.queryText || "",
+    ss.stagingText || "",
+    ss.pendingOperator || "",
+    JSON.stringify(ss.categories || null),
+    state.timelineSearchMode,
+    state.timelineSearchScope,
+    model.capsulesVersion,
+    model.searchIndexVersion,
+  ].join("\u0001");
+  if (timelineSearchPresentationCache.value && timelineSearchPresentationCache.key === cacheKey) {
+    return timelineSearchPresentationCache.value;
+  }
+  const value = computeTimelineSearchPresentation();
+  timelineSearchPresentationCache = { key: cacheKey, value };
+  return value;
+}
+
+function computeTimelineSearchPresentation() {
   const active = timelineSearchActive();
   if (!active) {
     return {
@@ -3889,59 +4157,151 @@ function timelineTrackBounds(track) {
   };
 }
 
-function renderTimelineHeader() {
+function timelineHeaderCellHtml(track) {
+  const selected = track.id === state.timelineSelectedTrackId;
+  const isMainTrack = track.depth === 0;
+  const label = timelineTrackLabel(track, track.index || 0);
+  const description = timelineTrackDescription(track);
+  const modelLabel = timelineTrackModel(track);
+  const problemLabel = timelineTrackProblemLabel(track);
+  const titleParts = [label, description, modelLabel, problemLabel].filter(Boolean);
+  return `
+    <button class="timeline-track-label ${isMainTrack ? "is-main" : ""} ${track.problemCount ? "has-problem" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}" data-testid="timeline-track-label" aria-selected="${selected ? "true" : "false"}" title="${escAttr(titleParts.join(" · "))}">
+      <span class="timeline-track-kicker">${esc(isMainTrack ? "MAIN" : "SUBAGENT")}</span>
+      ${isMainTrack ? "" : `<strong>${hl(label)}</strong>
+      <span class="timeline-track-description">${hl(description || "No description")}</span>`}
+      <span class="timeline-track-model">${hl(modelLabel)}</span>
+      <small>${esc(timelineTrackMeta(track))}</small>
+      ${problemLabel ? `<span class="timeline-track-error-icon" aria-label="${escAttr(problemLabel)}" title="${escAttr(problemLabel)}">
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="6" />
+          <path d="M8 4.5v4" />
+          <path d="M8 11.5h.01" />
+        </svg>
+      </span>` : ""}
+    </button>`;
+}
+
+function renderTimelineHeader(visibleTracks = null) {
   if (!els.timelineHeader) return;
-  const renderTracks = model.tracks.filter((track) => !track.timelineSearchHidden);
+  // Header cells share the horizontal window with lanes/blocks and are
+  // recycled through a pool: only tracks near the viewport hold DOM.
+  const renderTracks = visibleTracks || model.tracks.filter((track) => !track.timelineSearchHidden);
   const searchPresentation = timelineSearchPresentation();
-  const key = `${model.timelineLayoutVersion}:${model.width}:${renderTracks.map((track) => track.id).join("|")}:${state.timelineSelectedTrackId}:${searchPresentation.signature}:${model.tracks.map((track) => track.problemCount).join(",")}`;
-  els.timelineHeader.style.width = `${model.width}px`;
-  if (state.timelineHeaderKey === key) return;
-  state.timelineHeaderKey = key;
-  state.timelineHeaderRenderCount += 1;
-  timelineHeaderMeasureEpoch += 1;
-  els.timelineHeader.innerHTML = compactHtml(renderTracks
-    .map((track) => {
-      const selected = track.id === state.timelineSelectedTrackId;
-      const isMainTrack = track.depth === 0;
-      const label = timelineTrackLabel(track, track.index || 0);
-      const description = timelineTrackDescription(track);
-      const modelLabel = timelineTrackModel(track);
-      const problemLabel = timelineTrackProblemLabel(track);
-      const titleParts = [label, description, modelLabel, problemLabel].filter(Boolean);
-      return `
-        <div class="timeline-header-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}" style="left:${track.x}px;width:${model.trackWidth}px">
-          <button class="timeline-track-label ${isMainTrack ? "is-main" : ""} ${track.problemCount ? "has-problem" : ""}" data-action="select-track" data-track-id="${escAttr(track.id)}" data-testid="timeline-track-label" aria-selected="${selected ? "true" : "false"}" title="${escAttr(titleParts.join(" · "))}">
-            <span class="timeline-track-kicker">${esc(isMainTrack ? "MAIN" : "SUBAGENT")}</span>
-            ${isMainTrack ? "" : `<strong>${hl(label)}</strong>
-            <span class="timeline-track-description">${hl(description || "No description")}</span>`}
-            <span class="timeline-track-model">${hl(modelLabel)}</span>
-            <small>${esc(timelineTrackMeta(track))}</small>
-            ${problemLabel ? `<span class="timeline-track-error-icon" aria-label="${escAttr(problemLabel)}" title="${escAttr(problemLabel)}">
-              <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                <circle cx="8" cy="8" r="6" />
-                <path d="M8 4.5v4" />
-                <path d="M8 11.5h.01" />
-              </svg>
-            </span>` : ""}
-          </button>
-        </div>`;
-    })
-    .join(""));
+  if (!timelineHeaderPool && window.TimelineRenderer) {
+    timelineHeaderPool = window.TimelineRenderer.createTilePool(els.timelineHeader, {
+      tileClassName: "timeline-header-track",
+      clearOnRelease: true,
+      poolLimit: 40,
+    });
+  }
+  if (!timelineHeaderPool) return;
+  if (state.timelineHeaderWidth !== model.width) {
+    state.timelineHeaderWidth = model.width;
+    els.timelineHeader.style.width = `${model.width}px`;
+  }
+  let filled = false;
+  const specs = renderTracks.map((track) => {
+    const selected = track.id === state.timelineSelectedTrackId;
+    return {
+      key: track.id,
+      x: track.x,
+      y: 0,
+      width: model.trackWidth,
+      height: null,
+      contentKey: [track.id, selected ? 1 : 0, track.problemCount || 0, track.capsuleVersion || 0, searchPresentation.signature].join("\u0001"),
+      fill(el) {
+        filled = true;
+        el.className = `timeline-header-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}`;
+        el.innerHTML = compactHtml(timelineHeaderCellHtml(track));
+      },
+    };
+  });
+  timelineHeaderPool.sync(specs);
+  if (filled) {
+    state.timelineHeaderRenderCount += 1;
+    timelineHeaderMeasureEpoch += 1;
+  }
 }
 
 function renderTimelineTracks(visibleTracks) {
-  const searchPresentation = timelineSearchPresentation();
-  const key = `${model.timelineLayoutVersion}:${model.width}:${model.height}:${state.timelineSelectedTrackId}:${searchPresentation.signature}:${visibleTracks.map((track) => track.id).join("|")}`;
-  if (state.timelineTrackKey === key) return;
-  state.timelineTrackKey = key;
-  state.timelineTrackRenderCount += 1;
-  els.graphLanes.innerHTML = compactHtml(visibleTracks
-    .map((track) => {
-      const selected = track.id === state.timelineSelectedTrackId;
-      return `
-      <div class="timeline-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}" data-track-id="${escAttr(track.id)}" style="left:${track.x}px;top:0px;width:${model.trackWidth}px;height:${model.height}px"></div>`;
-    })
-    .join(""));
+  if (!timelineLanePool && window.TimelineRenderer) {
+    timelineLanePool = window.TimelineRenderer.createTilePool(els.graphLanes, {
+      tileClassName: "timeline-track",
+      poolLimit: 40,
+    });
+  }
+  if (!timelineLanePool) return;
+  let filled = false;
+  const specs = visibleTracks.map((track) => {
+    const selected = track.id === state.timelineSelectedTrackId;
+    return {
+      key: track.id,
+      x: track.x,
+      y: 0,
+      width: model.trackWidth,
+      height: model.height,
+      contentKey: [track.id, timelineTrackKind(track), selected ? 1 : 0].join("\u0001"),
+      fill(el) {
+        filled = true;
+        el.className = `timeline-track ${timelineTrackKind(track)} ${selected ? "selected" : ""}`;
+        el.dataset.trackId = track.id;
+      },
+    };
+  });
+  timelineLanePool.sync(specs);
+  if (filled) state.timelineTrackRenderCount += 1;
+}
+
+const TIMELINE_TILE_ROWS = 16;
+let timelineTilePool = null;
+let timelineLanePool = null;
+let timelineHeaderPool = null;
+
+function timelineTileBlocksHtml(track, layoutKeys, rowStart, rowEnd, tileTop, searchPresentation) {
+  const parts = [];
+  const skeletonLeft = (model.trackWidth - model.blockWidth) / 2;
+  for (let layoutIndex = rowStart; layoutIndex <= rowEnd; layoutIndex += 1) {
+    if (layoutIndex >= layoutKeys.length) {
+      // Placeholder for a not-yet-loaded capsule; identical geometry, no
+      // interaction. Swapped for real blocks when the track payload arrives.
+      const top = layoutIndex * model.blockStepY + track.timelineStartY - tileTop;
+      parts.push(`<div class="timeline-block is-skeleton" style="left:${skeletonLeft}px;top:${top}px;width:${model.blockWidth}px;height:${model.blockHeight}px" aria-hidden="true"></div>`);
+      continue;
+    }
+    const key = layoutKeys[layoutIndex];
+    const capsule = capsuleByKey.get(key);
+    if (!capsule) continue;
+    if (searchPresentation.active && !searchPresentation.visibleKeys.has(key)) continue;
+    const searchHit = searchPresentation.hitKeys.has(key);
+    const searchContext = searchPresentation.contextKeys.has(key);
+    const style = typeStyle(capsule.type);
+    const kind = capsule.kindModel || rawEventKindModel(capsule.rawEvent);
+    const noSubtype = kind.contentKinds.length ? "" : "no-subtype";
+    const blockNumber = capsule.messageIndex + 1;
+    // active/selected classes are applied by applyTimelineBlockStates so a
+    // selection change never rebuilds tile content.
+    parts.push(`
+      <button class="portfolio-timeline-block timeline-block ${style.className} ${noSubtype} ${searchHit ? "timeline-search-hit" : ""} ${searchContext ? "timeline-search-context" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-track-id="${escAttr(track.id)}" data-message-index="${capsule.messageIndex}" data-layout-index="${layoutIndex}" data-testid="timeline-block" data-search-role="${searchHit ? "hit" : searchContext ? "context" : ""}" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" style="left:${capsule.x - track.x}px;top:${capsule.y - tileTop}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${kind.fullLabel}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${blockNumber}, ${kind.fullLabel}${searchContext ? ", search context" : ""}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
+        <span class="portfolio-timeline-block-label timeline-block-label" data-full-label="${escAttr(timelineBlockKindLabel(capsule, layoutIndex))}">${hl(timelineBlockKindLabel(capsule, layoutIndex), "value")}</span>
+      </button>`);
+  }
+  return parts.join("");
+}
+
+function applyTimelineBlockStates(selectionKey = null) {
+  if (!timelineTilePool) return;
+  const key = selectionKey || `${state.currentCapsuleKey}:${[...state.selectedGraphKeys].sort().join(",")}`;
+  if (state.timelineBlockStateKey === key) return;
+  state.timelineBlockStateKey = key;
+  timelineTilePool.forEachMounted((el) => {
+    for (let i = 0; i < el.children.length; i += 1) {
+      const button = el.children[i];
+      const capsuleKey = button.getAttribute("data-capsule-key");
+      button.classList.toggle("active", capsuleKey === state.currentCapsuleKey);
+      button.classList.toggle("selected", state.selectedGraphKeys.has(capsuleKey));
+    }
+  });
 }
 
 function renderGraphVirtual() {
@@ -3955,7 +4315,6 @@ function renderGraphVirtual() {
   const viewBottom = viewTop + viewport.clientHeight;
   const overscanX = 320;
   const overscanY = Math.max(360, Math.min(640, viewport.clientHeight * 0.22));
-  const verticalChunkHeight = model.blockStepY * 96;
   const visibleTracks = model.tracks.filter((track) => {
     if (track.timelineSearchHidden) return false;
     const bounds = timelineTrackBounds(track);
@@ -3967,58 +4326,85 @@ function renderGraphVirtual() {
     }
   });
 
-  els.graphSizer.style.width = `${model.width}px`;
-  els.graphSizer.style.height = `${model.height}px`;
-  els.graphLayer.style.width = `${model.width}px`;
-  els.graphLayer.style.height = `${model.height}px`;
-  els.graphEdges.setAttribute("width", String(model.width));
-  els.graphEdges.setAttribute("height", String(model.height));
-  els.graphEdges.setAttribute("viewBox", `0 0 ${model.width} ${model.height}`);
+  if (state.timelineSizerLayoutVersion !== model.timelineLayoutVersion) {
+    state.timelineSizerLayoutVersion = model.timelineLayoutVersion;
+    els.graphSizer.style.width = `${model.width}px`;
+    els.graphSizer.style.height = `${model.height}px`;
+    els.graphLayer.style.width = `${model.width}px`;
+    els.graphLayer.style.height = `${model.height}px`;
+    els.graphEdges.setAttribute("width", String(model.width));
+    els.graphEdges.setAttribute("height", String(model.height));
+    els.graphEdges.setAttribute("viewBox", `0 0 ${model.width} ${model.height}`);
+  }
 
-  renderTimelineHeader();
+  renderTimelineHeader(visibleTracks);
   renderTimelineTracks(visibleTracks);
 
-  const windowTop = Math.max(0, Math.floor((viewTop - overscanY) / verticalChunkHeight) * verticalChunkHeight);
-  const windowBottom = Math.ceil((viewBottom + overscanY) / verticalChunkHeight) * verticalChunkHeight;
+  const windowTop = Math.max(0, viewTop - overscanY);
+  const windowBottom = viewBottom + overscanY;
   const selectionKey = `${state.currentCapsuleKey}:${[...state.selectedGraphKeys].sort().join(",")}`;
   const searchPresentation = timelineSearchPresentation();
   const rangeByTrack = visibleTracks.map((track) => {
     const layoutKeys = track.timelineLayoutCapsuleKeys || timelineTrackLayoutKeys(track, searchPresentation);
+    const totalRows = layoutKeys.length + (track.timelineSkeletonRows || 0);
     return {
       track,
       layoutKeys,
+      totalRows,
       start: Math.max(0, Math.floor((windowTop - track.timelineStartY) / model.blockStepY)),
-      end: Math.min(layoutKeys.length - 1, Math.ceil((windowBottom - track.timelineStartY) / model.blockStepY)),
+      end: Math.min(totalRows - 1, Math.ceil((windowBottom - track.timelineStartY) / model.blockStepY)),
     };
   });
-  const blockKey = `${model.timelineLayoutVersion}:${selectionKey}:${searchPresentation.signature}:${windowTop}:${windowBottom}:${visibleTracks.map((track) => track.id).join("|")}`;
-  if (state.timelineBlockKey !== blockKey) {
-    state.timelineBlockKey = blockKey;
-    state.timelineBlockRenderCount += 1;
-    const blockHtml = [];
-    rangeByTrack.forEach(({ track, layoutKeys, start, end }) => {
-      for (let layoutIndex = start; layoutIndex <= end; layoutIndex += 1) {
-        const key = layoutKeys[layoutIndex];
-        const capsule = capsuleByKey.get(key);
-        if (!capsule) continue;
-        if (searchPresentation.active && !searchPresentation.visibleKeys.has(key)) continue;
-        const active = key === state.currentCapsuleKey;
-        const selected = state.selectedGraphKeys.has(key);
-        const searchHit = searchPresentation.hitKeys.has(key);
-        const searchContext = searchPresentation.contextKeys.has(key);
-        const style = typeStyle(capsule.type);
-        const kind = capsule.kindModel || rawEventKindModel(capsule.rawEvent);
-        const noSubtype = kind.contentKinds.length ? "" : "no-subtype";
-        const blockNumber = capsule.messageIndex + 1;
-        blockHtml.push(`
-          <button class="portfolio-timeline-block timeline-block ${style.className} ${noSubtype} ${active ? "active" : ""} ${selected ? "selected" : ""} ${searchHit ? "timeline-search-hit" : ""} ${searchContext ? "timeline-search-context" : ""} ${capsule.problemCount ? "has-problem" : ""}" data-action="timeline-block" data-capsule-key="${escAttr(key)}" data-track-id="${escAttr(track.id)}" data-message-index="${capsule.messageIndex}" data-layout-index="${layoutIndex}" data-testid="timeline-block" data-search-role="${searchHit ? "hit" : searchContext ? "context" : ""}" data-line-kind="${escAttr(kind.line.key)}" data-content-kinds="${escAttr(kind.contentKinds.map((item) => item.label).join(","))}" style="left:${capsule.x}px;top:${capsule.y}px;width:${capsule.width}px;height:${capsule.height}px" title="${escAttr(`${kind.fullLabel}: ${capsule.summary}`)}" aria-label="${escAttr(`${timelineTrackLabel(track)} ${blockNumber}, ${kind.fullLabel}${searchContext ? ", search context" : ""}${capsule.problemCount ? `, ${capsule.problemCount} problems` : ""}`)}">
-            <span class="portfolio-timeline-block-label timeline-block-label" data-full-label="${escAttr(timelineBlockKindLabel(capsule, layoutIndex))}">${hl(timelineBlockKindLabel(capsule, layoutIndex), "value")}</span>
-          </button>`);
+  if (!timelineTilePool && window.TimelineRenderer) {
+    timelineTilePool = window.TimelineRenderer.createTilePool(els.graphCapsules, {
+      tileClassName: "timeline-tile",
+      clearOnRelease: true,
+      poolLimit: 150,
+    });
+  }
+  if (timelineTilePool) {
+    // Blocks live in fixed-size tiles keyed (track, row chunk), recycled
+    // through a pool. Frames inside the same tile window do zero DOM work;
+    // crossing a boundary mounts/recycles a handful of 16-block tiles.
+    let tilesFilled = false;
+    const tileHeight = TIMELINE_TILE_ROWS * model.blockStepY;
+    const tileSpecs = [];
+    rangeByTrack.forEach(({ track, layoutKeys, totalRows, start, end }) => {
+      if (!totalRows || end < start) return;
+      const firstChunk = Math.floor(start / TIMELINE_TILE_ROWS);
+      const lastChunk = Math.floor(end / TIMELINE_TILE_ROWS);
+      for (let chunk = firstChunk; chunk <= lastChunk; chunk += 1) {
+        const rowStart = chunk * TIMELINE_TILE_ROWS;
+        const rowEnd = Math.min(totalRows - 1, rowStart + TIMELINE_TILE_ROWS - 1);
+        if (rowEnd < rowStart) continue;
+        const tileTop = track.timelineStartY + rowStart * model.blockStepY;
+        tileSpecs.push({
+          key: `${track.id}#${chunk}`,
+          x: track.x,
+          y: tileTop,
+          width: model.trackWidth,
+          height: tileHeight,
+          contentKey: [model.timelineLayoutVersion, track.capsuleVersion || 0, searchPresentation.signature, rowStart].join(""),
+          fill(el) {
+            tilesFilled = true;
+            el.innerHTML = compactHtml(timelineTileBlocksHtml(track, layoutKeys, rowStart, rowEnd, tileTop, searchPresentation));
+          },
+        });
       }
     });
-    els.graphCapsules.innerHTML = compactHtml(blockHtml.join(""));
+    timelineTilePool.sync(tileSpecs);
+    if (tilesFilled) {
+      state.timelineBlockStateKey = "";
+      state.timelineBlockRenderCount += 1;
+    }
+    applyTimelineBlockStates(selectionKey);
   }
-  els.graphEdges.innerHTML = renderVisibleEdges(viewLeft - overscanX, viewTop - overscanY, viewRight + overscanX, viewBottom + overscanY, searchPresentation);
+  const edgeSet = collectVisibleEdges(viewLeft - overscanX, viewTop - overscanY, viewRight + overscanX, viewBottom + overscanY, searchPresentation);
+  const edgeKey = `${model.timelineLayoutVersion}:${edgeSet.key}`;
+  if (state.timelineEdgeKey !== edgeKey) {
+    state.timelineEdgeKey = edgeKey;
+    els.graphEdges.innerHTML = buildEdgesSvg(edgeSet.items);
+  }
   renderGraphStatus();
 }
 
@@ -4027,7 +4413,35 @@ function capsuleInView(capsule, left, top, right, bottom) {
   return capsule.x + capsule.width >= left && capsule.x <= right && capsule.y + capsule.height >= top && capsule.y <= bottom;
 }
 
-function renderVisibleEdges(left, top, right, bottom, searchPresentation = timelineSearchPresentation()) {
+function collectVisibleEdges(left, top, right, bottom, searchPresentation = timelineSearchPresentation()) {
+  // Boxes are precomputed per geometry epoch (rebuildTimelineEdgeBoxes); the
+  // per-frame work is a bounding-box scan plus set lookups, with no capsule
+  // lookups and no string building.
+  const items = [];
+  const keyParts = [];
+  const boxes = model.timelineEdgeBoxes;
+  for (let i = 0; i < boxes.length; i += 1) {
+    const box = boxes[i];
+    const edge = box.edge;
+    if (searchPresentation.active
+      && (!searchPresentation.visibleKeys.has(edge.sourceKey)
+        || !edge.targetKey
+        || !searchPresentation.visibleKeys.has(edge.targetKey))) continue;
+    const selected = edge.sourceKey === state.currentCapsuleKey
+      || (Boolean(edge.targetKey) && edge.targetKey === state.currentCapsuleKey)
+      || state.selectedGraphKeys.has(edge.sourceKey)
+      || (Boolean(edge.targetKey) && state.selectedGraphKeys.has(edge.targetKey));
+    const inView = box.right >= left && box.left <= right && box.bottom >= top && box.top <= bottom;
+    if (!selected && !inView) continue;
+    const searchContext = searchPresentation.contextKeys.has(edge.sourceKey)
+      || searchPresentation.contextKeys.has(edge.targetKey);
+    items.push({ box, selected, searchContext });
+    keyParts.push(`${edge.trackId}${selected ? "+s" : ""}${searchContext ? "+c" : ""}`);
+  }
+  return { key: keyParts.join("|"), items };
+}
+
+function buildEdgesSvg(items) {
   const defs = `
     <defs>
       <marker id="timelineArrow" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
@@ -4037,28 +4451,10 @@ function renderVisibleEdges(left, top, right, bottom, searchPresentation = timel
         <path d="M0,0 L0,6 L8,3 z" class="timeline-arrow-head selected"></path>
       </marker>
     </defs>`;
-  const paths = model.spawnEdges
-    .map((edge) => {
-      const source = capsuleByKey.get(edge.sourceKey);
-      const target = capsuleByKey.get(edge.targetKey);
-      if (!source || !target) return "";
-      if (searchPresentation.active && (!searchPresentation.visibleKeys.has(edge.sourceKey) || !searchPresentation.visibleKeys.has(edge.targetKey))) return "";
-      const selected = edge.sourceKey === state.currentCapsuleKey || edge.targetKey === state.currentCapsuleKey || state.selectedGraphKeys.has(edge.sourceKey) || state.selectedGraphKeys.has(edge.targetKey);
-      const searchContext = searchPresentation.contextKeys.has(edge.sourceKey) || searchPresentation.contextKeys.has(edge.targetKey);
-      const targetTrack = trackById.get(edge.trackId || target.trackId);
-      const sx = source.x + source.width;
-      const sy = source.y + source.height / 2;
-      const columnCenterX = targetTrack
-        ? targetTrack.x + targetTrack.width / 2
-        : target.x + target.width / 2;
-      const targetTopCenterY = target.y;
-      const edgeLeft = Math.min(sx, columnCenterX);
-      const edgeRight = Math.max(sx, columnCenterX);
-      const edgeTop = Math.min(sy, targetTopCenterY);
-      const edgeBottom = Math.max(sy, targetTopCenterY);
-      const edgeVisible = edgeRight >= left && edgeLeft <= right && edgeBottom >= top && edgeTop <= bottom;
-      if (!selected && !edgeVisible) return "";
-      const d = `M ${sx} ${sy} L ${columnCenterX} ${sy} L ${columnCenterX} ${targetTopCenterY}`;
+  const paths = items
+    .map(({ box, selected, searchContext }) => {
+      const edge = box.edge;
+      const d = `M ${box.sx} ${box.sy} L ${box.cx} ${box.sy} L ${box.cx} ${box.ty}`;
       return `<path class="timeline-connector ${escAttr(edge.type)} ${selected ? "selected" : ""} ${searchContext ? "timeline-search-context" : ""}" data-testid="timeline-spawn-connector" data-source-key="${escAttr(edge.sourceKey)}" data-target-key="${escAttr(edge.targetKey)}" d="${escAttr(d)}" marker-end="url(#${selected ? "timelineArrowSelected" : "timelineArrow"})" />`;
     })
     .join("");
@@ -4435,6 +4831,40 @@ function renderTimelineDetailWindow(item, index) {
   return html;
 }
 
+function upgradeSeedCapsule(capsule) {
+  if (!capsule || !capsule.seedOnly || capsule.upgradePending) return;
+  capsule.upgradePending = true;
+  const { base } = sessionApiBase();
+  const lineNumber = capsule.nav?.lineNumber;
+  if (!lineNumber) return;
+  fetch(`${base}/message?track_id=${encodeURIComponent(capsule.trackId)}&line_number=${lineNumber}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .then((payload) => {
+      capsule.upgradePending = false;
+      if (!payload) return;
+      if (payload.raw_event) {
+        capsule.rawEvent = capsule.rawOnly ? payload.raw_event : capsule.rawEvent;
+        rawEventByAddress.set(eventAddress(payload.raw_event.nav), payload.raw_event);
+        rawEventByAddress.set(eventAddress(capsule.nav), payload.raw_event);
+      }
+      if (payload.message) {
+        capsule.message = payload.message;
+        capsule.kindModel = messageKindModel(payload.message);
+        capsule.summary = compact(messageText(payload.message) || capsule.summary);
+        capsule.partTypes = (payload.message.parts || []).map((part) => part.type);
+      } else if (payload.raw_event && capsule.rawOnly) {
+        capsule.kindModel = rawEventKindModel(payload.raw_event);
+        capsule.summary = compact(rawText(payload.raw_event) || capsule.summary);
+      }
+      capsule.seedOnly = false;
+      state.timelineDetailKey = "";
+      scheduleGraphRender();
+    })
+    .catch(() => {
+      capsule.upgradePending = false;
+    });
+}
+
 function renderTimelineDetailPanel(capsule) {
   updateTextUtilsState();
   if (!els.timelineDetailPanel) {
@@ -4450,7 +4880,14 @@ function renderTimelineDetailPanel(capsule) {
     : readerRawCapsule
       ? [{ capsule: readerRawCapsule, mode: "reader-raw", initialTab: "raw", title: "Raw JSON" }]
       : [];
-  updateTimelineDetailDockLayout(windows.length);
+  // Dock geometry depends only on the window count and viewport area; the
+  // ResizeObserver/transition hooks handle area changes, so re-laying out on
+  // every render (each scroll frame reaches here via renderGraphStatus) is a
+  // forced-reflow source with no visual effect.
+  if (state.timelineDetailWindowCount !== windows.length) {
+    state.timelineDetailWindowCount = windows.length;
+    updateTimelineDetailDockLayout(windows.length);
+  }
   if (!windows.length) {
     if (state.timelineDetailKey !== "" || !els.timelineDetailPanel.classList.contains("hidden")) {
       state.timelineDetailKey = "";
@@ -4461,7 +4898,8 @@ function renderTimelineDetailPanel(capsule) {
     }
     return;
   }
-  const detailKey = windows.map((item) => `${item.mode}:${item.capsule.key}:${item.capsule.problemCount}`).join("|")
+  windows.forEach((item) => upgradeSeedCapsule(item.capsule));
+  const detailKey = windows.map((item) => `${item.mode}:${item.capsule.key}:${item.capsule.problemCount}:${item.capsule.seedOnly ? "seed" : "full"}`).join("|")
     + "::" + (state.searchByLayout[state.layout === "graph" ? "graph" : "reader"].queryText || "")
     + "::" + (state.searchByLayout[state.layout === "graph" ? "graph" : "reader"].stagingText || "")
     + "::" + JSON.stringify(state.searchByLayout[state.layout === "graph" ? "graph" : "reader"].categories);
@@ -4838,9 +5276,33 @@ function restoreHashTarget() {
     return true;
   }
   const capsuleKey = navKeyToCapsuleKey.get(decoded) || decoded;
-  if (capsuleByKey.has(capsuleKey)) focusCapsule(capsuleKey, { push: false, history: false, instant: true });
-  else setLinkStatus("Linked transcript target is no longer available for this session.");
+  if (capsuleByKey.has(capsuleKey)) {
+    focusCapsule(capsuleKey, { push: false, history: false, instant: true });
+    return true;
+  }
+  // The target may live in a not-yet-loaded track (viewport-driven loading);
+  // recover the track id from the linked file path and load it first.
+  const linkedTrackId = trackIdFromLinkedKey(decoded);
+  if (linkedTrackId && trackById.has(linkedTrackId) && trackNeedsLoad(trackById.get(linkedTrackId))) {
+    ensureTrackLoaded(linkedTrackId).then(() => {
+      const resolvedKey = navKeyToCapsuleKey.get(decoded) || decoded;
+      if (capsuleByKey.has(resolvedKey)) focusCapsule(resolvedKey, { push: false, history: false, instant: true });
+      else setLinkStatus("Linked transcript target is no longer available for this session.");
+    });
+    return true;
+  }
+  setLinkStatus("Linked transcript target is no longer available for this session.");
   return true;
+}
+
+function trackIdFromLinkedKey(decoded) {
+  const workflow = decoded.match(/workflows_([A-Za-z0-9.-]+)_agent-([A-Za-z0-9]+)\.jsonl/);
+  if (workflow && trackById.has(`main/workflow:${workflow[1]}/${workflow[2]}`)) {
+    return `main/workflow:${workflow[1]}/${workflow[2]}`;
+  }
+  const subagent = decoded.match(/agent-([A-Za-z0-9]+)\.jsonl/);
+  if (subagent && trackById.has(`main/${subagent[1]}`)) return `main/${subagent[1]}`;
+  return "";
 }
 
 function copyText(value, message = "Copied link") {
@@ -5184,11 +5646,18 @@ function sessionApiBase() {
   return { agent, sessionId, base: `/api/conversation/${agent}/${sessionId}` };
 }
 
+function trackNeedsLoad(track) {
+  if (!track || loadedTrackIds.has(track.id)) return false;
+  if (track.depth > 0) return true;
+  // Protocol v2 boots the main track as capsule seeds; full messages load on
+  // demand (Waterfall, detail contents).
+  return Boolean((track.transcript?.capsule_seeds || []).length);
+}
+
 function ensureTrackLoaded(trackId) {
-  if (loadedTrackIds.has(trackId) || trackId === "main") return Promise.resolve();
-  if (pendingTrackLoads.has(trackId)) return pendingTrackLoads.get(trackId);
   const track = trackById.get(trackId);
-  if (!track || track.depth === 0) return Promise.resolve();
+  if (!trackNeedsLoad(track)) return Promise.resolve();
+  if (pendingTrackLoads.has(trackId)) return pendingTrackLoads.get(trackId);
   const { base } = sessionApiBase();
   const encodedId = encodeURIComponent(trackId);
   const promise = fetch(`${base}/track/${encodedId}`)
@@ -5232,6 +5701,21 @@ function populateTrack(track, payload) {
   track.transcript.raw_events = payload.raw_events || [];
   track.transcript.problem_flags = payload.problem_flags || [];
   track.transcript.parser_diagnostics = payload.parser_diagnostics || [];
+  // Boot skeletons only know a first-line guess for title/model; the parsed
+  // payload has the real values — refresh so header labels correct themselves
+  // as tracks load.
+  if (payload.summary) {
+    if (payload.summary.title) {
+      track.title = payload.summary.title;
+      if (track.transcript.summary) track.transcript.summary.title = payload.summary.title;
+    }
+    if (payload.summary.model && payload.summary.model !== "Unknown") {
+      track.modelName = payload.summary.model;
+      if (track.transcript.summary) track.transcript.summary.model = payload.summary.model;
+    }
+  }
+  if (payload.agent_type) track.agentType = payload.agent_type;
+  if (payload.agent_description) track.agentDescription = payload.agent_description;
   track.messages = track.transcript.messages;
   track.capsuleKeys = [];
   track._resolvedCapsules = null;
@@ -5343,6 +5827,7 @@ function buildTrackCapsules(track) {
   track.firstCapsuleKey = track.capsuleKeys[0] || "";
   track.lastCapsuleKey = track.capsuleKeys[track.capsuleKeys.length - 1] || "";
   track.capsuleVersion = (track.capsuleVersion || 0) + 1;
+  model.capsulesVersion += 1;
   track.capsuleKeys.forEach((key, index) => {
     const next = track.capsuleKeys[index + 1];
     if (next) addBidirectionalEdge(key, next, "sequence", "Next message", "Previous message");
@@ -5350,27 +5835,10 @@ function buildTrackCapsules(track) {
   buildSpawnEdgesForTrack(track);
 }
 
-function backgroundLoadSubagentTracks() {
-  const viewport = els.graphViewport;
-  const viewLeft = viewport?.scrollLeft || 0;
-  const viewRight = viewLeft + (viewport?.clientWidth || 0);
-  const subagentTracks = model.tracks.filter((track) => track.depth > 0 && !loadedTrackIds.has(track.id));
-  subagentTracks.sort((a, b) => {
-    const aVisible = (a.x || 0) >= viewLeft - 400 && (a.x || 0) <= viewRight + 400;
-    const bVisible = (b.x || 0) >= viewLeft - 400 && (b.x || 0) <= viewRight + 400;
-    if (aVisible !== bVisible) return aVisible ? -1 : 1;
-    return (a.x || 0) - (b.x || 0);
-  });
-  const concurrency = 8;
-  let index = 0;
-  function loadNext() {
-    if (index >= subagentTracks.length) return;
-    const track = subagentTracks[index];
-    index += 1;
-    ensureTrackLoaded(track.id).then(loadNext);
-  }
-  for (let i = 0; i < concurrency; i += 1) loadNext();
-}
+// Track data loads on visibility (renderGraphVirtual calls ensureTrackLoaded
+// for lanes entering the viewport window) instead of a boot-time fetch of
+// every subagent; boot geometry comes from capsule counts, and search over
+// unloaded content falls back to the server /search endpoint.
 
 function initialize() {
   buildModels();
@@ -5383,7 +5851,7 @@ function initialize() {
   renderSessionSummary();
   renderLegend();
   renderLeftNavigation();
-  if (state.layout === "reader") renderReader();
+  if (state.layout === "reader" && !trackNeedsLoad(trackById.get("main"))) renderReader();
   bindTimelineDetailLayoutObservers();
   setLayout(state.layout, { history: false });
   setLeftNavTab("messages");
@@ -5391,7 +5859,6 @@ function initialize() {
   if (!restored && model.capsules.length) focusCapsule(model.capsules[0].key, { push: false, history: false, instant: true });
   exposeDebugState();
   replaceCurrentHistoryState();
-  backgroundLoadSubagentTracks();
 }
 
 function showLoadingShell() {
@@ -5416,9 +5883,13 @@ function hideLoadingShell() {
 
 function bootstrapConversation() {
   showLoadingShell();
-  const { agent, sessionId, base } = sessionApiBase();
-  fetch(base + "/boot")
+  const { base } = sessionApiBase();
+  fetch(base + "/timeline")
     .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      if (data) return data;
+      return fetch(base + "/boot").then((r) => (r.ok ? r.json() : null));
+    })
     .then((data) => {
       if (!data) {
         const loader = document.getElementById("sessionLoadingMessage");
