@@ -1,0 +1,63 @@
+name: Catalog Sync Notify
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  merged:
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'catalog-sync/')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Parse catalog sync branch
+        id: meta
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          REST="${HEAD_REF#catalog-sync/}"
+          TAG="v${REST##*-v}"
+          PLUGIN="${REST%-${TAG}}"
+          if [ -z "$PLUGIN" ] || [ -z "$TAG" ]; then
+            echo "Could not parse plugin/tag from $HEAD_REF" >&2
+            exit 1
+          fi
+          echo "plugin=$PLUGIN" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "repo=WeZZard/${PLUGIN}" >> "$GITHUB_OUTPUT"
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Read lock metadata
+        id: lock
+        run: |
+          set -euo pipefail
+          PLUGIN="${{ steps.meta.outputs.plugin }}"
+          SHA=$(jq -r --arg p "$PLUGIN" '.plugins[$p].sha // ""' catalog/lock.json)
+          RELEASE_ID=$(jq -r --arg p "$PLUGIN" '.plugins[$p].releaseId // ""' catalog/lock.json)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch merged callback
+        env:
+          PLUGIN_CALLBACK_TOKEN: ${{ secrets.PLUGIN_CALLBACK_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/dispatch-plugin-callback.mjs \
+            --repo "${{ steps.meta.outputs.repo }}" \
+            --plugin "${{ steps.meta.outputs.plugin }}" \
+            --tag "${{ steps.meta.outputs.tag }}" \
+            --status merged \
+            --release_id "${{ steps.lock.outputs.release_id }}" \
+            --sha "${{ steps.lock.outputs.sha }}" \
+            --pr_url "${{ steps.meta.outputs.pr_url }}"

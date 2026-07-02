@@ -7,9 +7,13 @@
     "catalog:website": "node scripts/update-plugin-website.mjs",
     "catalog:workflow": "node scripts/update-plugin-workflow.mjs",
     "catalog:readme": "node scripts/generate-readme.mjs",
-    "catalog:validate-pins": "node scripts/validate-pins.mjs"
+    "catalog:validate-pins": "node scripts/validate-pins.mjs",
+    "catalog:register-website": "node scripts/register-plugin-website.mjs"
   },
   "devDependencies": {
     "toml": "^3.0.0"
+  },
+  "optionalDependencies": {
+    "openai": "^4.0.0"
   }
 }

@@ -1,0 +1,110 @@
+name: Rollback Catalog
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: Plugin name (e.g. amplify)
+        required: true
+        type: string
+      tag:
+        description: Git tag to repin (e.g. v1.2.63)
+        required: true
+        type: string
+      version:
+        description: Plugin version without v prefix (optional; derived from tag)
+        required: false
+        type: string
+      repo:
+        description: Source repository (default WeZZard/<plugin>)
+        required: false
+        type: string
+
+concurrency:
+  group: rollback-catalog-${{ github.event.inputs.plugin }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install website dependencies (for toml via hoisting)
+        working-directory: website
+        run: npm ci
+
+      - name: Resolve rollback inputs
+        id: inputs
+        env:
+          PLUGIN: ${{ github.event.inputs.plugin }}
+          TAG: ${{ github.event.inputs.tag }}
+          VERSION: ${{ github.event.inputs.version }}
+          REPO: ${{ github.event.inputs.repo }}
+        run: |
+          set -euo pipefail
+          if [ -z "$PLUGIN" ] || [ -z "$TAG" ]; then
+            echo "plugin and tag are required" >&2
+            exit 1
+          fi
+          if [ -z "$VERSION" ]; then
+            VERSION="${TAG#v}"
+          fi
+          if [ -z "$REPO" ]; then
+            REPO="WeZZard/${PLUGIN}"
+          fi
+          {
+            echo "plugin=$PLUGIN"
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "repo=$REPO"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Repin marketplace entry
+        run: |
+          node scripts/sync-plugin.mjs \
+            --plugin "${{ steps.inputs.outputs.plugin }}" \
+            --tag "${{ steps.inputs.outputs.tag }}" \
+            --version "${{ steps.inputs.outputs.version }}" \
+            --repo "${{ steps.inputs.outputs.repo }}"
+
+      - name: Update website JSON
+        run: node scripts/update-plugin-website.mjs --plugin "${{ steps.inputs.outputs.plugin }}"
+
+      - name: Update workflow JSON
+        run: node scripts/update-plugin-workflow.mjs --plugin "${{ steps.inputs.outputs.plugin }}"
+
+      - name: Regenerate README
+        run: node scripts/generate-readme.mjs
+
+      - name: Validate marketplace
+        run: npx --yes @anthropic-ai/claude-code@latest plugin validate .
+
+      - name: Validate remote pins
+        run: node scripts/validate-pins.mjs
+
+      - name: Create rollback PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.CATALOG_SYNC_TOKEN }}
+          branch: catalog-rollback/${{ steps.inputs.outputs.plugin }}-${{ steps.inputs.outputs.tag }}
+          delete-branch: true
+          commit-message: "chore(catalog): rollback ${{ steps.inputs.outputs.plugin }} to ${{ steps.inputs.outputs.tag }}"
+          title: "chore(catalog): rollback ${{ steps.inputs.outputs.plugin }} to ${{ steps.inputs.outputs.tag }}"
+          body: |
+            Repins `${{ steps.inputs.outputs.plugin }}` to `${{ steps.inputs.outputs.tag }}`.
+
+            Does **not** delete the newer plugin tag on the source repository.
+
+            Merge to publish the rollback pin + deploy production website.

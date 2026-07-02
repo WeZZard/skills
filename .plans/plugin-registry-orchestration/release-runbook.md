@@ -1,82 +1,60 @@
-# v1 release runbook
+# Release runbook
 
-Operational steps for the two end-to-end amplify release cycles that gate v2 work.
+Operational steps for plugin releases, catalog sync, rollback, and recovery.
 
 ## Secrets
 
 | Repo | Secret | Purpose |
 |------|--------|---------|
-| `WeZZard/amplify` | `AMPLIFY_RELEASE_TOKEN` | Classic **`repo`** PAT (recommended) or fine-grained with **Contents: write** on amplify **and** dispatch access on skills — tag push, GitHub Release, and `repository_dispatch` to skills |
-| `WeZZard/skills` | `CATALOG_SYNC_TOKEN` | PAT with **Contents** + **Pull requests** write on `WeZZard/skills` — opens catalog bot PRs |
+| `WeZZard/amplify` | `AMPLIFY_RELEASE_TOKEN` | Tag push, GitHub Release, dispatch to skills, commit statuses |
+| `WeZZard/zelda-sounds` | `ZELDA_SOUNDS_RELEASE_TOKEN` | Same for zelda-sounds |
+| `WeZZard/skill-kit` | `SKILL_KIT_RELEASE_TOKEN` | Same for skill-kit |
+| `WeZZard/skills` | `CATALOG_SYNC_TOKEN` | Opens catalog / rollback / register bot PRs |
+| `WeZZard/skills` | `PLUGIN_CALLBACK_TOKEN` | Dispatches `catalog-sync-complete` to plugin repos |
+| `WeZZard/skills` | `DEEPSEEK_API_KEY` | Optional LLM website JSON fallback in catalog-sync |
 
-`SKILLS_DISPATCH_TOKEN` is **deprecated** on amplify (release.yml uses `AMPLIFY_RELEASE_TOKEN` for dispatch). You may remove it after verifying release runs.
+Classic **`repo`** PAT is recommended for release and catalog tokens.
 
-A single **classic** PAT with `repo` scope is the simplest setup: set the same value as `AMPLIFY_RELEASE_TOKEN` on amplify and `CATALOG_SYNC_TOKEN` on skills.
-
-`GITHUB_TOKEN` is **not** used for PR creation: GitHub blocks it unless the repo enables [Allow GitHub Actions to create and approve pull requests](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#preventing-github-actions-from-creating-or-approving-pull-requests). A dedicated PAT avoids that setting (and org policy overrides).
-
-Set on amplify (covers tag push, release create, and catalog dispatch):
-
-```bash
-gh secret set AMPLIFY_RELEASE_TOKEN --repo WeZZard/amplify --body 'ghp_...'
-```
-
-**Classic PAT:** scope `repo` (required for `repository_dispatch` to skills).
-
-**Fine-grained:** must include **both** repositories — Contents write on `WeZZard/amplify` and permission to trigger events on `WeZZard/skills` (use classic `repo` if unsure).
-
-### Create `CATALOG_SYNC_TOKEN`
-
-**Classic PAT:** scope `repo` (or `public_repo` if the repo is public).
-
-**Fine-grained PAT** on `WeZZard/skills`:
-
-- Contents: Read and write
-- Pull requests: Read and write
-- Metadata: Read
-
-Set on skills:
+Set callback token on skills:
 
 ```bash
-gh secret set CATALOG_SYNC_TOKEN --repo WeZZard/skills --body 'ghp_...'
+gh secret set PLUGIN_CALLBACK_TOKEN --repo WeZZard/skills --body 'ghp_...'
 ```
 
-The same classic PAT can be used for `AMPLIFY_RELEASE_TOKEN` and `CATALOG_SYNC_TOKEN`.
+## Shared release workflow
 
-### Pin shape (standalone vs monorepo)
+Plugin repos call [`WeZZard/workflows/.github/workflows/release-plugin.yml@v1.0.0`](https://github.com/WeZZard/workflows/blob/v1.0.0/.github/workflows/release-plugin.yml).
 
-| Plugin location | Marketplace `source` | Notes |
-|-----------------|---------------------|-------|
-| Whole repo is the plugin (`WeZZard/amplify`) | `github` with `repo`, `ref`, `sha` | Correct install — full tree including `skills/` |
-| Plugin in monorepo subpath | `git-subdir` with `url`, `path`, `ref`, `sha` | Never use `path: "."` — sparse-checkout omits directories |
+Pin policy: **always `@v1.0.0`** (or newer tagged release), never `@main`.
 
-## Release cycle (repeat twice for v1 exit)
+## Release cycle
 
-### A. Plugin release (`WeZZard/amplify`)
+### A. Propose release (optional)
 
-1. Open a release PR bumping `.claude-plugin/plugin.json` `version` (e.g. `1.2.60` → `1.2.61`).
-2. Merge to `main`.
-3. [`.github/workflows/release.yml`](https://github.com/WeZZard/amplify/blob/main/.github/workflows/release.yml) runs:
-   - Creates tag `vX.Y.Z` and GitHub Release
-   - Dispatches `sync-plugin` to `WeZZard/skills`
+```bash
+gh workflow run propose-release.yml --repo WeZZard/amplify
+```
 
-### B. Catalog sync (`WeZZard/skills`)
+Opens a release PR with a conventional-commit semver bump.
 
-1. [`catalog-sync.yml`](../../.github/workflows/catalog-sync.yml) runs on dispatch (or manual recovery below).
-2. Bot opens PR: `chore(catalog): sync amplify vX.Y.Z`
-3. [`preview-website.yml`](../../.github/workflows/preview-website.yml) deploys to **https://pr-&lt;number&gt;.skills-website-staging.pages.dev** (one URL per open PR).
-4. Review diff:
-   - `.claude-plugin/marketplace.json` pin + marketplace patch bump
-   - `catalog/lock.json`
-   - `website/src/content/generated/**` for amplify
-   - `README.md`
-5. Merge PR → [`deploy-website.yml`](../../.github/workflows/deploy-website.yml) deploys **production** (https://skills.wezzard.com).
+### B. Plugin release
 
-### C. Verification
+1. Merge release PR (version bump in `plugin.json` or zelda `manifest.json`).
+2. `release.yml` runs shared workflow → tag `vX.Y.Z` + GitHub Release + `sync-plugin` dispatch.
 
-Run [smoke-test.md](./smoke-test.md) steps 3–4 after catalog PR merge.
+### C. Catalog sync (`WeZZard/skills`)
 
-### Recovery (tag push or dispatch failed)
+1. `catalog-sync.yml` opens bot PR.
+2. `pr_opened` callback → plugin `release-complete.yml` posts **pending** status on tag SHA.
+3. Preview: `https://pr-<number>.skills-website-staging.pages.dev`
+4. Merge catalog PR → production deploy.
+5. `catalog-sync-notify.yml` fires `merged` callback → plugin status **success**.
+
+### D. Verification
+
+Run [smoke-test.md](./smoke-test.md) after catalog PR merge.
+
+## Recovery
 
 **Catalog sync only** (tag already exists):
 
@@ -84,29 +62,43 @@ Run [smoke-test.md](./smoke-test.md) steps 3–4 after catalog PR merge.
 gh workflow run catalog-sync.yml \
   --repo WeZZard/skills \
   -f plugin=amplify \
-  -f tag=v1.2.62 \
-  -f version=1.2.62 \
+  -f tag=v1.2.63 \
+  -f version=1.2.63 \
   -f repo=WeZZard/amplify
 ```
 
-**Full release recovery** (validate passed but tag/dispatch failed):
+**Full release recovery**:
 
 ```bash
 gh workflow run release.yml \
   --repo WeZZard/amplify \
-  -f tag=v1.2.62 \
-  -f version=1.2.62
+  -f tag=v1.2.63 \
+  -f version=1.2.63
 ```
 
-Requires `AMPLIFY_RELEASE_TOKEN` on amplify. Or manually: `git tag` → `gh release create` → dispatch as above.
+**Rollback catalog pin** (does not delete plugin tag):
 
-## v1 exit checklist
+```bash
+gh workflow run rollback-catalog.yml \
+  --repo WeZZard/skills \
+  -f plugin=amplify \
+  -f tag=v1.2.62
+```
 
-- [x] Release cycle 1 complete (`v1.2.61` — manual tag/dispatch + `github` pin hotfix; smoke test passed)
-- [x] Release cycle 2 complete (`v1.2.62` — catalog chain automated via `repository_dispatch`; tag push recovered manually pending `AMPLIFY_RELEASE_TOKEN`)
-- [x] Website shows amplify content from generated JSON at pinned tag (`v1.2.62`)
-- [x] No callback workflow in v1 (plugin release succeeds on dispatch accept only)
+**Register plugin for website** (no pin change):
 
-## After v1 gate
+```bash
+gh workflow run register-plugin-website.yml \
+  --repo WeZZard/skills \
+  -f plugin=my-plugin \
+  -f repo=WeZZard/my-plugin
+```
 
-Proceed to v2: `WeZZard/workflows` repo, callbacks, preview deploy, LLM website path, skill-kit extract.
+## Pin shape
+
+| Plugin location | Marketplace `source` |
+|-----------------|------------------------|
+| Standalone repo | `github` with `repo`, `ref`, `sha` |
+| Monorepo subpath | `git-subdir` with `url`, `path`, `ref`, `sha` |
+
+Never use `git-subdir` + `path: "."` for standalone repos.

@@ -165,6 +165,25 @@ jobs:
             A **staging preview** will appear on this PR via the Preview Website workflow
             (`https://pr-<number>.skills-website-staging.pages.dev`).
 
+      - name: Dispatch pr_opened callback
+        if: steps.cpr.outputs.pull-request-url != ''
+        env:
+          PLUGIN_CALLBACK_TOKEN: ${{ secrets.PLUGIN_CALLBACK_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR_URL="${{ steps.cpr.outputs.pull-request-url }}"
+          PR_NUMBER=$(echo "$PR_URL" | sed -E 's#.*/pull/([0-9]+).*#\1#')
+          PREVIEW_URL="https://pr-${PR_NUMBER}.skills-website-staging.pages.dev"
+          node scripts/dispatch-plugin-callback.mjs \
+            --repo "${{ steps.inputs.outputs.repo }}" \
+            --plugin "${{ steps.inputs.outputs.plugin }}" \
+            --tag "${{ steps.inputs.outputs.tag }}" \
+            --status pr_opened \
+            --release_id "${{ steps.inputs.outputs.release_id }}" \
+            --sha "${{ steps.inputs.outputs.sha }}" \
+            --pr_url "$PR_URL" \
+            --preview_url "$PREVIEW_URL"
+
       - name: Summary
         if: always()
         run: |

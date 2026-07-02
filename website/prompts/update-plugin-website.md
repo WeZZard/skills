@@ -21,6 +21,9 @@ When TOML entries exist and skill hashes match committed JSON, skip regeneration
 
 When TOML changed or skills added/removed, regenerate JSON deterministically from TOML without LLM.
 
-## LLM path (v2+)
+## LLM path (Layer 3 CI)
 
-When TOML is stale relative to new `SKILL.md` files, invoke DeepSeek with this prompt and commit results after human review.
+When TOML entries are incomplete at the pinned tag, `update-plugin-website.mjs` reads `SKILL.md`
+and calls DeepSeek (`DEEPSEEK_API_KEY` on `WeZZard/skills`) to generate **JSON only**.
+
+TOML remains owned by the plugin release PR — catalog sync does not patch plugin TOML.

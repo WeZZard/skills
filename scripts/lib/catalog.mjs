@@ -41,6 +41,10 @@ export function loadWebsiteRegistry() {
   return readJson(WEBSITE_REGISTRY_PATH);
 }
 
+export function saveWebsiteRegistry(registry) {
+  writeJson(WEBSITE_REGISTRY_PATH, registry);
+}
+
 export function loadLock() {
   if (!existsSync(LOCK_PATH)) {
     return { generatedAt: null, plugins: {} };

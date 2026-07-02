@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { execSync } from "child_process";
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
@@ -20,6 +19,10 @@ import {
   SKILLS_OUTPUT_DIR,
   computeHash,
 } from "./lib/catalog.mjs";
+import {
+  generateSkillContentWithLlm,
+  skillTomlComplete,
+} from "./lib/website-llm.mjs";
 import TOML from "toml";
 
 const args = parseArgs(process.argv.slice(2));
@@ -57,7 +60,21 @@ function resolvePluginPath(pluginName) {
   };
 }
 
-function generatePluginJson(pluginName, pluginPath, marketplace) {
+async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
+  const skillToml = skillsToml.skills?.[skillName];
+  if (skillTomlComplete(skillToml)) {
+    return skillToml;
+  }
+
+  const skillMdPath = join(pluginPath, "skills", skillName, "SKILL.md");
+  const skillMdContent = readFileSync(skillMdPath, "utf8");
+  console.warn(
+    `Skill ${skillName}: incomplete website.skills.toml — using LLM JSON fallback`,
+  );
+  return generateSkillContentWithLlm(skillName, skillMdContent);
+}
+
+async function generatePluginJson(pluginName, pluginPath, marketplace) {
   const pluginTomlPath = join(pluginPath, "website.plugin.toml");
   const skillsTomlPath = join(pluginPath, "website.skills.toml");
   const pluginTomlRaw = readFileSync(pluginTomlPath, "utf8");
@@ -88,24 +105,24 @@ function generatePluginJson(pluginName, pluginPath, marketplace) {
   writeJson(join(PLUGINS_OUTPUT_DIR, `${pluginName}.json`), pluginOutput);
 
   for (const skillName of skillNames) {
-    const skillToml = skillsToml.skills?.[skillName];
-    if (!skillToml?.display_name) {
-      console.warn(`Skipping ${skillName}: missing website.skills.toml entry`);
+    const skillEntry = await resolveSkillEntry(skillName, pluginPath, skillsToml);
+    if (!skillEntry?.display_name) {
+      console.warn(`Skipping ${skillName}: no website content available`);
       continue;
     }
 
     const skillOutput = {
-      sourceHash: computeHash(JSON.stringify(skillToml)),
+      sourceHash: computeHash(JSON.stringify(skillEntry)),
       generatedAt: new Date().toISOString(),
       skill: {
         name: skillName,
-        displayName: skillToml.display_name,
+        displayName: skillEntry.display_name,
         pluginName,
-        tagline: skillToml.tagline,
-        shortSummary: skillToml.short_summary,
-        fullSummary: skillToml.full_summary,
-        highlights: skillToml.highlights,
-        workflow: { steps: skillToml.workflow },
+        tagline: skillEntry.tagline,
+        shortSummary: skillEntry.short_summary,
+        fullSummary: skillEntry.full_summary,
+        highlights: skillEntry.highlights,
+        workflow: { steps: skillEntry.workflow },
       },
     };
 
@@ -115,7 +132,7 @@ function generatePluginJson(pluginName, pluginPath, marketplace) {
   return { skillCount: skillNames.length };
 }
 
-function main() {
+async function main() {
   const pluginName = requireArg("plugin");
   const marketplace = loadMarketplace();
   const resolved = resolvePluginPath(pluginName);
@@ -141,11 +158,18 @@ function main() {
       return;
     }
 
-    const result = generatePluginJson(pluginName, resolved.pluginPath, marketplace);
+    const result = await generatePluginJson(
+      pluginName,
+      resolved.pluginPath,
+      marketplace,
+    );
     console.log(`Updated website JSON for ${pluginName} (${result.skillCount} skills)`);
   } finally {
     cleanupDir(resolved.cleanup);
   }
 }
 
-main();
+main().catch((error) => {
+  console.error(error.message ?? error);
+  process.exit(1);
+});
