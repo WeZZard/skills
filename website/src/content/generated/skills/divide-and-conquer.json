@@ -1,0 +1,59 @@
+{
+  "sourceHash": "cff078293595d7b1",
+  "generatedAt": "2026-07-02T11:35:52.626Z",
+  "skill": {
+    "name": "divide-and-conquer",
+    "displayName": "Divide and Conquer",
+    "pluginName": "amplify",
+    "tagline": "Break big jobs into parallel, subagent-driven task graphs",
+    "shortSummary": "Decomposes wide fan-out work into a folded task graph run across isolated subagent contexts, with only handles crossing the orchestrator.",
+    "fullSummary": "Divide and conquer turns a large job into a folded task graph of typed nodes — agent, fn, expand, and switch — executed on the amplify engine. Independent work fans out across isolated subagent contexts while values pass by reference so payload bytes never flood the orchestrator. It supports both human-reviewed decomposition of bare prompts and direct execution of skills that ship their own authored graphs.",
+    "highlights": [
+      {
+        "title": "Isolated Subagent Fan-Out",
+        "description": "Each parallel unit runs in its own subagent context, so wide fan-outs never degrade a single long context. One agent per unit means independent work scales horizontally instead of serially."
+      },
+      {
+        "title": "Typed Folded Task Graph",
+        "description": "Graphs compose from four node kinds — agent for non-deterministic work, fn for pure transforms, expand for fan-out, and switch for branching. Every node carries an explicit output_schema and the engine validates the whole shape before running."
+      },
+      {
+        "title": "Values by Reference, Never Bytes",
+        "description": "The orchestrator only handles ids and handles; payload bytes stay out of its context. Cross-node data flows through the value store, keeping the orchestrator lean and the contexts clean."
+      },
+      {
+        "title": "Two Entry Modes",
+        "description": "Mode A decomposes a bare prompt into a draft graph for human review and editing before running. Mode B loads and runs a skill that ships its own authored graph plus helper modules, with no review gate."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Decompose or Load",
+          "description": "Spawn a sub-agent to draft a graph, or load a skill's shipped graph.json.",
+          "details": "Mode A spawns one decomposition sub-agent that turns the bare prompt into a draft folded-graph declaration with a real expand fan-out and gather reducer. Mode B loads an authored graph plus its fn modules directly."
+        },
+        {
+          "name": "Validate the Graph",
+          "description": "Validate against the task-graph schema and dry-run init.",
+          "details": "Write the draft to a temp file, validate against task-graph.schema.json, and dry-run task.mjs init to exercise the engine's validateGraph — rejecting unknown types, dangling deps, and missing output_schema."
+        },
+        {
+          "name": "Human Review and Edit",
+          "description": "Present the validated draft for plan-mode review before running.",
+          "details": "Surface the fan-out width, per-unit work, and gather step via the plan gate. The human may edit nodes, prompts, the unit list, or schemas before approving. Re-validate after any edit. Mode B skips this gate."
+        },
+        {
+          "name": "Run the Scheduling Loop",
+          "description": "Drive the graph through the execute-plan scheduling loop.",
+          "details": "init captures the GRAPH_ID, then ready / dispatch agent in the background / exec-node for fn, expand, and switch, honoring the concurrency window and the single-writer commit lock."
+        },
+        {
+          "name": "Gather Results",
+          "description": "Reduce per-unit outputs with an all-resolved gather fn.",
+          "details": "An fn reducer with require all-resolved gathers successes even when some children fail, so partial results always collect and one failure never sinks the run. Present the gathered result to the user."
+        }
+      ]
+    }
+  }
+}
