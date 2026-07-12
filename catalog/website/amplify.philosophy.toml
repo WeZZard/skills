@@ -1,0 +1,160 @@
+# Amplify - Website Configuration
+# This file configures the plugin detail page content
+
+[philosophy]
+
+# ============================================================================
+# Diagram: Event markers on the rectangle edges
+# Each event has: id, edge (top/right/bottom/left), position (0-1), label
+# ============================================================================
+
+[[philosophy.events]]
+id = "SessionStart"
+edge = "top"
+position = 0.33
+label = "Session Start"
+
+[[philosophy.events]]
+id = "UserPromptSubmit"
+edge = "top"
+position = 0.67
+label = "User Prompt Submit"
+
+[[philosophy.events]]
+id = "PreToolUse"
+edge = "right"
+position = 0.25
+label = "Pre Tool Use"
+
+[[philosophy.events]]
+id = "PostToolUse"
+edge = "right"
+position = 0.5
+label = "Post Tool Use"
+
+[[philosophy.events]]
+id = "ExitPlanMode"
+edge = "bottom"
+position = 0.33
+label = "Exit Plan Mode"
+
+[[philosophy.events]]
+id = "EnterPlanMode"
+edge = "bottom"
+position = 0.67
+label = "Enter Plan Mode"
+
+[[philosophy.events]]
+id = "Stop"
+edge = "left"
+position = 0.25
+label = "Stop"
+
+[[philosophy.events]]
+id = "SubagentStop"
+edge = "left"
+position = 0.5
+label = "Subagent Stop"
+
+[[philosophy.events]]
+id = "SubagentSpawn"
+edge = "left"
+position = 0.75
+label = "Subagent Spawn"
+
+# ============================================================================
+# Philosophy sections
+# Each section defines: title, highlight, additions, related_skills
+# ============================================================================
+
+[[philosophy.sections]]
+title = "Ground Truth First"
+highlight_title = "Explore"
+highlight_content = "Emphasizes web search during exploration, injecting a chain-of-thought that checks ground truth source dates and resolves conflicts by recency."
+comparison_before_label = "Raw"
+comparison_before = "Codebase only"
+comparison_before_image = "/images/philosophies/ground-truth-first-raw.jpg"
+comparison_after_label = "Amplify"
+comparison_after = "Explore the web and codebase"
+comparison_after_image = "/images/philosophies/ground-truth-first-amplify.jpg"
+related_skills = ["brainstorming"]
+
+[[philosophy.sections]]
+title = "Clear Plan"
+highlight_title = "Plan"
+highlight_content = "Explains the plan with diagrams and before/after comparisons."
+comparison_before_label = "Raw"
+comparison_before = "Freeform"
+comparison_before_image = "/images/philosophies/clear-plan-raw.jpg"
+comparison_after_label = "Amplify"
+comparison_after = "Before/after comparison. Explicit diagrams for algorithms and workflow."
+comparison_after_image = "/images/philosophies/clear-plan-amplify.jpg"
+related_skills = ["write-plan"]
+
+[[philosophy.sections.additions]]
+id = "enter-plan-mode-structure"
+event = "ExitPlanMode"
+type = "hook"
+label = "Write Plan"
+description = "Triggers structured plan template when writing the plan file"
+effect = "Ensures plans follow a reviewable, consistent structure"
+
+[[philosophy.sections.additions]]
+id = "post-tool-plan-check"
+event = "PostToolUse"
+type = "hook"
+label = "Plan Writing Harness"
+description = "Enforces use of write-plan skill before writing plan files"
+effect = "Prevents ad-hoc planning by requiring template compliance"
+
+[[philosophy.sections]]
+title = "Parallelism"
+highlight_title = "Task"
+highlight_content = "Every user prompt triggers a reminder to spawn subagents for independent tasks, ensuring maximum throughput without manual orchestration."
+highlight_image = "/images/philosophies/parallelism.jpg"
+related_skills = ["execute-plan"]
+
+[[philosophy.sections.additions]]
+id = "user-prompt-parallelism"
+event = "UserPromptSubmit"
+type = "hook"
+label = "Parallelism Reminder"
+description = "Reminds to spawn subagents for independent tasks"
+effect = "Maximizes concurrent execution of independent work"
+
+[[philosophy.sections.additions]]
+id = "subagent-spawn-parallel"
+event = "ExitPlanMode"
+type = "event"
+label = "Parallelism Reminder"
+description = "Reminds to spawn subagents for independent tasks"
+effect = "Maximizes concurrent execution of independent work"
+
+[[philosophy.sections]]
+title = "Per-Task Audit"
+highlight_title = "Per-Task Implement-and-Audit"
+highlight_content = "Each task is implemented by one subagent and verified by a separate blind auditor against its acceptance criteria. Successors run only after the audit passes; failures are logged and surfaced in a final audit table."
+highlight_image = "/images/philosophies/plan-audit.jpg"
+related_skills = ["execute-plan"]
+
+[[philosophy.sections.additions]]
+id = "per-task-blind-audit"
+event = "SubagentSpawn"
+type = "event"
+label = "Blind Auditor"
+description = "Spawns a blind auditor subagent to verify each task before its successors run."
+effect = "Catches defects at task granularity instead of after the whole plan."
+
+# ============================================================================
+# Skill display order on the plugin detail page
+# Skills not listed here will appear after the ordered ones, alphabetically
+# ============================================================================
+
+[skills]
+order = [
+  "brainstorming",
+  "write-plan",
+  "execute-plan",
+  "be-thorough",
+  "same-page",
+]

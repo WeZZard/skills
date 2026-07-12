@@ -12,7 +12,7 @@ import {
   normalizeLocalSource,
   parseArgs,
   shallowClone,
-  writeJson,
+  writeJsonIfChanged,
   WORKFLOW_OUTPUT_DIR,
 } from "./lib/catalog.mjs";
 import { generateWorkflowDiagram } from "./lib/workflow-diagram.mjs";
@@ -84,10 +84,13 @@ function main() {
       return;
     }
 
-    writeJson(join(WORKFLOW_OUTPUT_DIR, `${pluginName}.json`), result.output);
-    console.log(
-      `Updated workflow JSON for ${pluginName} (hash ${result.output.sourceHash})`,
-    );
+    if (writeJsonIfChanged(join(WORKFLOW_OUTPUT_DIR, `${pluginName}.json`), result.output)) {
+      console.log(
+        `Updated workflow JSON for ${pluginName} (hash ${result.output.sourceHash})`,
+      );
+    } else {
+      console.log(`No workflow changes for ${pluginName} — sources unchanged`);
+    }
   } finally {
     cleanupDir(resolved.cleanup);
   }

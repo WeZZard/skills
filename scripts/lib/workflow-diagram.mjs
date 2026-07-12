@@ -1,7 +1,7 @@
-import { readFileSync, existsSync, readdirSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import TOML from "toml";
-import { computeHash } from "./catalog.mjs";
+import { computeHash, CATALOG_WEBSITE_DIR } from "./catalog.mjs";
 
 function toId(title) {
   return title
@@ -10,9 +10,23 @@ function toId(title) {
     .replace(/^-|-$/g, "");
 }
 
-function loadWebsiteConfig(pluginDir) {
-  const content = readFileSync(join(pluginDir, "website.philosophy.toml"), "utf8");
-  return TOML.parse(content);
+// Philosophy TOML lives in catalog/website/ like the rest of the website
+// content: the catalog copy wins, a legacy copy inside the plugin repo is
+// migrated verbatim on first resolve (hand-owned — philosophy content is
+// entirely hand-crafted, so no provenance hashes apply).
+function resolvePhilosophyPath(pluginName, pluginDir) {
+  const catalogPath = join(CATALOG_WEBSITE_DIR, `${pluginName}.philosophy.toml`);
+  if (existsSync(catalogPath)) {
+    return catalogPath;
+  }
+  const legacyPath = join(pluginDir, "website.philosophy.toml");
+  if (existsSync(legacyPath)) {
+    mkdirSync(CATALOG_WEBSITE_DIR, { recursive: true });
+    copyFileSync(legacyPath, catalogPath);
+    console.log(`Migrated philosophy TOML to ${catalogPath}`);
+    return catalogPath;
+  }
+  return null;
 }
 
 function discoverSkills(pluginDir) {
@@ -74,15 +88,15 @@ function buildHighlight(section) {
 
 export function generateWorkflowDiagram(pluginName, pluginDir) {
   const hooksJsonPath = join(pluginDir, "hooks/hooks.json");
-  const websiteTomlPath = join(pluginDir, "website.philosophy.toml");
+  const websiteTomlPath = resolvePhilosophyPath(pluginName, pluginDir);
 
-  if (!existsSync(websiteTomlPath)) {
-    return { skip: true, reason: "no website.philosophy.toml" };
+  if (!websiteTomlPath) {
+    return { skip: true, reason: "no philosophy TOML in catalog or plugin repo" };
   }
 
   const hooksRaw = existsSync(hooksJsonPath) ? readFileSync(hooksJsonPath, "utf8") : "{}";
   const websiteRaw = readFileSync(websiteTomlPath, "utf8");
-  const websiteConfig = loadWebsiteConfig(pluginDir);
+  const websiteConfig = TOML.parse(websiteRaw);
   const skills = discoverSkills(pluginDir);
 
   const tomlEvents = websiteConfig.philosophy?.events || [];

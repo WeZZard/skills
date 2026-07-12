@@ -15,6 +15,7 @@ import {
   parseArgs,
   shallowClone,
   writeJson,
+  writeJsonIfChanged,
   CATALOG_WEBSITE_DIR,
   PLUGINS_OUTPUT_DIR,
   SKILLS_OUTPUT_DIR,
@@ -71,24 +72,7 @@ function resolvePluginPath(pluginName) {
 
 
 
-// Skip the write when the file already holds the same content (ignoring the
-// generatedAt timestamp) — an internal-only plugin update must produce zero
-// website diff.
-function writeJsonIfChanged(path, output) {
-  if (existsSync(path)) {
-    try {
-      const existing = JSON.parse(readFileSync(path, "utf8"));
-      const stripped = (o) => JSON.stringify({ ...o, generatedAt: null });
-      if (stripped(existing) === stripped(output)) {
-        return false;
-      }
-    } catch {
-      // unreadable existing file — fall through and rewrite it
-    }
-  }
-  writeJson(path, output);
-  return true;
-}
+
 
 // Resolve one skill's TOML entry.
 //   entry absent                          → generate via OpenCode, stamp hashes
