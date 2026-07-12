@@ -63,29 +63,132 @@ function resolvePluginPath(pluginName) {
   };
 }
 
-async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
-  const skillToml = skillsToml.skills?.[skillName];
-  if (skillTomlHasBasics(skillToml)) {
-    return { entry: skillToml, generated: false };
-  }
+// ── Provenance fingerprints ─────────────────────────────────────────────────
+//
+// Every machine-generated TOML entry carries two hashes:
+//   source_hash  — fingerprint of the source it was derived from (a skill's
+//                  SKILL.md; the marketplace identity for the plugin level).
+//                  Drift here means the plugin visibly changed.
+//   content_hash — fingerprint of the entry's own generated content. Drift
+//                  here means a human edited the entry: it is preserved
+//                  forever and never regenerated (implicit edit detection).
+// Entries without hashes (hand-authored or migrated) count as hand-edited.
+// Deleting an entry opts it back into machine ownership.
 
+// Coerce to string and strip \r: the TOML emitter drops \r and a round
+// trip through the parser must reproduce the exact strings the fingerprint
+// was computed over, or entries get misclassified as hand-edited forever.
+const clean = (value) => String(value ?? "").replace(/\r/g, "");
+
+function canonicalSkillContent(entry) {
+  return {
+    display_name: clean(entry.display_name),
+    tagline: clean(entry.tagline),
+    short_summary: clean(entry.short_summary),
+    full_summary: clean(entry.full_summary),
+    highlights: (entry.highlights ?? []).map((h) => ({
+      title: clean(h.title),
+      description: clean(h.description),
+    })),
+    workflow: (entry.workflow ?? []).map((w) => ({
+      name: clean(w.name),
+      description: clean(w.description),
+      details: clean(w.details),
+    })),
+  };
+}
+
+const fingerprintSkillEntry = (entry) =>
+  computeHash(JSON.stringify(canonicalSkillContent(entry)));
+
+function canonicalPluginContent(pluginToml) {
+  return {
+    display_name: clean(pluginToml.display_name),
+    tagline: clean(pluginToml.tagline),
+    repo: clean(pluginToml.repo),
+  };
+}
+
+const fingerprintPluginToml = (pluginToml) =>
+  computeHash(JSON.stringify(canonicalPluginContent(pluginToml)));
+
+// Skip the write when the file already holds the same content (ignoring the
+// generatedAt timestamp) — an internal-only plugin update must produce zero
+// website diff.
+function writeJsonIfChanged(path, output) {
+  if (existsSync(path)) {
+    try {
+      const existing = JSON.parse(readFileSync(path, "utf8"));
+      const stripped = (o) => JSON.stringify({ ...o, generatedAt: null });
+      if (stripped(existing) === stripped(output)) {
+        return false;
+      }
+    } catch {
+      // unreadable existing file — fall through and rewrite it
+    }
+  }
+  writeJson(path, output);
+  return true;
+}
+
+// Resolve one skill's TOML entry.
+//   entry absent                          → generate via OpenCode, stamp hashes
+//   entry hand-edited (content drifted)   → preserve; warn when SKILL.md moved
+//   machine entry, SKILL.md unchanged     → keep as-is (zero diff)
+//   machine entry, SKILL.md drifted       → regenerate via OpenCode, restamp
+async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
   const skillMdPath = join(pluginPath, "skills", skillName, "SKILL.md");
   const skillMdContent = readFileSync(skillMdPath, "utf8");
+  const sourceHash = computeHash(skillMdContent);
+  const existing = skillsToml.skills?.[skillName];
 
-  if (!isWebsiteLlmAvailable()) {
+  if (skillTomlHasBasics(existing)) {
+    const handEdited =
+      !existing.content_hash ||
+      fingerprintSkillEntry(existing) !== existing.content_hash;
+    if (handEdited) {
+      if (existing.source_hash && existing.source_hash !== sourceHash) {
+        console.warn(
+          `Skill ${skillName}: SKILL.md changed but the entry is hand-edited — preserving it; update the copy manually if it went stale`,
+        );
+      }
+      return { entry: existing, changed: false };
+    }
+    if (existing.source_hash === sourceHash) {
+      return { entry: existing, changed: false };
+    }
     console.warn(
-      `Skipping ${skillName}: missing skills TOML entry (install OpenCode + provider auth for LLM fallback)`,
+      `Skill ${skillName}: SKILL.md changed — regenerating the entry via OpenCode`,
     );
-    return { entry: null, generated: false };
   }
 
-  console.warn(
-    `Skill ${skillName}: missing skills TOML entry — generating from SKILL.md via LLM`,
+  if (!isWebsiteLlmAvailable()) {
+    if (skillTomlHasBasics(existing)) {
+      console.warn(
+        `Skill ${skillName}: OpenCode unavailable — keeping the stale entry`,
+      );
+      return { entry: existing, changed: false };
+    }
+    console.warn(
+      `Skipping ${skillName}: no TOML entry and OpenCode unavailable (install OpenCode + provider auth)`,
+    );
+    return { entry: null, changed: false };
+  }
+
+  if (!skillTomlHasBasics(existing)) {
+    console.warn(
+      `Skill ${skillName}: missing skills TOML entry — generating from SKILL.md via OpenCode`,
+    );
+  }
+  const generated = canonicalSkillContent(
+    await generateSkillContentWithLlm(skillName, skillMdContent),
   );
-  return {
-    entry: await generateSkillContentWithLlm(skillName, skillMdContent),
-    generated: true,
+  const entry = {
+    ...generated,
+    source_hash: sourceHash,
+    content_hash: fingerprintSkillEntry(generated),
   };
+  return { entry, changed: true };
 }
 
 function titleCaseName(name) {
@@ -98,31 +201,74 @@ function titleCaseName(name) {
 // Website TOML lives in catalog/website/ (human ruled). Resolution order:
 // the catalog copy wins; a legacy copy inside the plugin repo is the
 // fallback; and when neither exists the content is synthesized (plugin
-// level: from the marketplace entry; skill level: from SKILL.md via LLM).
-// Whatever was resolved from outside the catalog is persisted INTO the
-// catalog, so the registration PR carries reviewable TOML and later runs
-// are deterministic.
+// level: from the marketplace entry, deterministically; skill level: from
+// SKILL.md via the OpenCode agent configured in CI). Whatever was resolved
+// from outside the catalog is persisted INTO the catalog, so the
+// registration PR carries reviewable TOML and later runs are deterministic.
 function resolvePluginToml(pluginName, pluginPath, marketplaceEntry) {
   const catalogPath = join(CATALOG_WEBSITE_DIR, `${pluginName}.plugin.toml`);
+  const repo = isRemoteGitSource(marketplaceEntry.source)
+    ? getRemotePluginRepo(marketplaceEntry.source)
+    : undefined;
+  const sourceHash = computeHash(
+    JSON.stringify({
+      name: pluginName,
+      description: marketplaceEntry.description ?? "",
+      repo: repo ?? "",
+    }),
+  );
+
+  const synthesize = () => {
+    const content = {
+      display_name: titleCaseName(pluginName),
+      tagline: marketplaceEntry.description ?? "",
+      ...(repo ? { repo } : {}),
+    };
+    return {
+      ...content,
+      source_hash: sourceHash,
+      content_hash: fingerprintPluginToml(content),
+    };
+  };
+
+  const persist = (pluginToml) => {
+    const pluginTomlRaw = emitPluginToml(pluginToml);
+    mkdirSync(CATALOG_WEBSITE_DIR, { recursive: true });
+    writeFileSync(catalogPath, pluginTomlRaw);
+    console.log(`Wrote ${catalogPath}`);
+    return { pluginToml, pluginTomlRaw };
+  };
+
   if (existsSync(catalogPath)) {
     const raw = readFileSync(catalogPath, "utf8");
-    return { pluginToml: TOML.parse(raw), pluginTomlRaw: raw };
+    const existing = TOML.parse(raw);
+    const handEdited =
+      !existing.content_hash ||
+      fingerprintPluginToml(existing) !== existing.content_hash;
+    if (handEdited) {
+      if (existing.source_hash && existing.source_hash !== sourceHash) {
+        console.warn(
+          `Plugin ${pluginName}: marketplace identity changed but the plugin TOML is hand-edited — preserving it`,
+        );
+      }
+      return { pluginToml: existing, pluginTomlRaw: raw };
+    }
+    if (existing.source_hash === sourceHash) {
+      return { pluginToml: existing, pluginTomlRaw: raw };
+    }
+    console.warn(
+      `Plugin ${pluginName}: marketplace identity changed — re-synthesizing the plugin TOML`,
+    );
+    return persist(synthesize());
   }
+
   const legacyPath = join(pluginPath, "website.plugin.toml");
-  const pluginToml = existsSync(legacyPath)
-    ? TOML.parse(readFileSync(legacyPath, "utf8"))
-    : {
-        display_name: titleCaseName(pluginName),
-        tagline: marketplaceEntry.description ?? "",
-        ...(isRemoteGitSource(marketplaceEntry.source)
-          ? { repo: getRemotePluginRepo(marketplaceEntry.source) }
-          : {}),
-      };
-  const pluginTomlRaw = emitPluginToml(pluginToml);
-  mkdirSync(CATALOG_WEBSITE_DIR, { recursive: true });
-  writeFileSync(catalogPath, pluginTomlRaw);
-  console.log(`Wrote ${catalogPath}`);
-  return { pluginToml, pluginTomlRaw };
+  if (existsSync(legacyPath)) {
+    // Migrated content is human-authored: persist without hashes so it
+    // counts as hand-edited and is never regenerated.
+    return persist(TOML.parse(readFileSync(legacyPath, "utf8")));
+  }
+  return persist(synthesize());
 }
 
 async function generatePluginJson(pluginName, pluginPath, marketplace) {
@@ -166,12 +312,15 @@ async function generatePluginJson(pluginName, pluginPath, marketplace) {
     },
   };
 
-  writeJson(join(PLUGINS_OUTPUT_DIR, `${pluginName}.json`), pluginOutput);
+  let wroteAnything = writeJsonIfChanged(
+    join(PLUGINS_OUTPUT_DIR, `${pluginName}.json`),
+    pluginOutput,
+  );
 
   const resolvedSkills = {};
-  let generatedAny = false;
+  let anyEntryChanged = false;
   for (const skillName of skillNames) {
-    const { entry: skillEntry, generated } = await resolveSkillEntry(
+    const { entry: skillEntry, changed } = await resolveSkillEntry(
       skillName,
       pluginPath,
       skillsToml,
@@ -181,10 +330,12 @@ async function generatePluginJson(pluginName, pluginPath, marketplace) {
       continue;
     }
     resolvedSkills[skillName] = skillEntry;
-    if (generated) generatedAny = true;
+    if (changed) anyEntryChanged = true;
 
     const skillOutput = {
-      sourceHash: computeHash(JSON.stringify(skillEntry)),
+      // Canonical fingerprint: a fresh entry and its TOML round-trip carry
+      // different key orders, and raw JSON.stringify would churn the hash.
+      sourceHash: fingerprintSkillEntry(skillEntry),
       generatedAt: new Date().toISOString(),
       skill: {
         name: skillName,
@@ -198,17 +349,22 @@ async function generatePluginJson(pluginName, pluginPath, marketplace) {
       },
     };
 
-    writeJson(join(SKILLS_OUTPUT_DIR, `${skillName}.json`), skillOutput);
+    if (
+      writeJsonIfChanged(join(SKILLS_OUTPUT_DIR, `${skillName}.json`), skillOutput)
+    ) {
+      wroteAnything = true;
+    }
   }
 
   const haveSkillContent = Object.keys(resolvedSkills).length > 0;
-  if (haveSkillContent && (!skillsFromCatalog || generatedAny)) {
+  if (haveSkillContent && (!skillsFromCatalog || anyEntryChanged)) {
     mkdirSync(CATALOG_WEBSITE_DIR, { recursive: true });
     writeFileSync(catalogSkillsPath, emitSkillsToml(resolvedSkills));
     console.log(`Wrote ${catalogSkillsPath}`);
+    wroteAnything = true;
   }
 
-  return { skillCount: skillNames.length };
+  return { skillCount: skillNames.length, wroteAnything };
 }
 
 async function main() {
@@ -242,7 +398,15 @@ async function main() {
       resolved.pluginPath,
       marketplace,
     );
-    console.log(`Updated website JSON for ${pluginName} (${result.skillCount} skills)`);
+    if (result.wroteAnything) {
+      console.log(
+        `Updated website content for ${pluginName} (${result.skillCount} skills)`,
+      );
+    } else {
+      console.log(
+        `No website changes for ${pluginName} — sources unchanged (${result.skillCount} skills)`,
+      );
+    }
   } finally {
     cleanupDir(resolved.cleanup);
   }

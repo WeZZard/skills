@@ -1,0 +1,67 @@
+name: Auto Register Plugin Website
+
+# Fills the registration gap: merging a marketplace PR that adds a new plugin
+# automatically dispatches Register Plugin Website for it, which generates the
+# website TOML via the OpenCode agent configured in this repository and opens
+# the PR carrying the artifacts. A plugin whose website-registry entry exists
+# (even with website: false) is never dispatched — presence means decided.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .claude-plugin/marketplace.json
+  workflow_dispatch: # Manual backfill / wiring check
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: auto-register-plugin-website
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Detect marketplace plugins absent from the website registry
+        id: detect
+        run: |
+          set -euo pipefail
+          node scripts/detect-unregistered-website-plugins.mjs > /tmp/unregistered.txt
+          echo "Unregistered plugins:"
+          cat /tmp/unregistered.txt
+          echo "count=$(grep -c . /tmp/unregistered.txt || true)" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch Register Plugin Website per new plugin
+        if: steps.detect.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          while read -r plugin repo; do
+            [ -z "$plugin" ] && continue
+            # An open registration PR means a dispatch already ran; a second
+            # one would reset the register-website/<plugin> branch and clobber
+            # review commits. Marketplace pushes happen on every catalog sync,
+            # so this window is routinely hit.
+            open_pr=$(gh pr list --repo "${{ github.repository }}" \
+              --head "register-website/$plugin" --state open \
+              --json number --jq 'length')
+            if [ "$open_pr" != "0" ]; then
+              echo "Skipping $plugin: registration PR already open (register-website/$plugin)"
+              continue
+            fi
+            echo "Dispatching register-plugin-website for $plugin ($repo)"
+            gh workflow run register-plugin-website.yml \
+              --repo "${{ github.repository }}" \
+              -f "plugin=$plugin" \
+              -f "repo=$repo"
+          done < /tmp/unregistered.txt
