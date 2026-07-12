@@ -1,0 +1,142 @@
+# Zelda Sounds - Website Configuration
+# This file configures the plugin detail page content
+
+[philosophy]
+
+# ============================================================================
+# Diagram: Event markers on the rectangle edges
+# Full set of Claude Code lifecycle events, matching Amplify's layout
+# Each event has: id, edge (top/right/bottom/left), position (0-1), label
+# ============================================================================
+
+[[philosophy.events]]
+id = "SessionStart"
+edge = "top"
+position = 0.33
+label = "Session Start"
+
+[[philosophy.events]]
+id = "UserPromptSubmit"
+edge = "top"
+position = 0.67
+label = "User Prompt Submit"
+
+[[philosophy.events]]
+id = "PreToolUse"
+edge = "right"
+position = 0.25
+label = "Pre Tool Use"
+
+[[philosophy.events]]
+id = "PostToolUse"
+edge = "right"
+position = 0.5
+label = "Post Tool Use"
+
+[[philosophy.events]]
+id = "PostToolUseFailure"
+edge = "right"
+position = 0.75
+label = "Post Tool Use Failure"
+
+[[philosophy.events]]
+id = "ExitPlanMode"
+edge = "bottom"
+position = 0.25
+label = "Exit Plan Mode"
+
+[[philosophy.events]]
+id = "AskUserQuestion"
+edge = "bottom"
+position = 0.5
+label = "Ask User Question"
+
+[[philosophy.events]]
+id = "EnterPlanMode"
+edge = "bottom"
+position = 0.75
+label = "Enter Plan Mode"
+
+[[philosophy.events]]
+id = "Stop"
+edge = "left"
+position = 0.25
+label = "Stop"
+
+[[philosophy.events]]
+id = "SubagentStop"
+edge = "left"
+position = 0.5
+label = "Subagent Stop"
+
+[[philosophy.events]]
+id = "SubagentSpawn"
+edge = "left"
+position = 0.75
+label = "Subagent Spawn"
+
+# ============================================================================
+# Philosophy sections
+# Each section defines: title, highlight, additions, related_skills
+#
+# Note: The diagram cannot fully illustrate the temporal sequence of
+# ExitPlanMode sounds. The actual flow is:
+#   PreToolUse/ExitPlanMode → Puzzle Solved (attention cue)
+#   → user approves →
+#   PostToolUse/ExitPlanMode → New Location (plan approved, new chapter)
+# The framework maps each addition to a single event node, so this
+# two-step flow around user confirmation is shown as separate additions.
+# ============================================================================
+
+[[philosophy.sections]]
+title = "Attention Cue"
+highlight_title = "Attention!"
+highlight_sound = "/sounds/zelda-sounds/Zelda-BotW-Puzzle-Solved.mp3"
+highlight_image = "/images/philosophies/zelda-sounds-attention-cue.jpg"
+related_skills = []
+
+[[philosophy.sections.additions]]
+id = "pre-ask-puzzle"
+event = "AskUserQuestion"
+type = "hook"
+label = "Puzzle Solved"
+description = "Plays the shrine-clear jingle before AskUserQuestion"
+effect = "Alerts you that Claude is about to request input"
+
+[[philosophy.sections.additions]]
+id = "pre-exit-puzzle"
+event = "ExitPlanMode"
+type = "hook"
+label = "Puzzle Solved"
+description = "Plays the shrine-clear jingle before ExitPlanMode"
+effect = "Signals that the plan is ready for your review"
+
+[[philosophy.sections]]
+title = "Plan Approval"
+highlight_title = "A New Oriental"
+highlight_sound = "/sounds/zelda-sounds/Zelda-BotW-New-Location.mp3"
+highlight_image = "/images/philosophies/zelda-sounds-completion-feedback.jpg"
+related_skills = []
+
+[[philosophy.sections.additions]]
+id = "post-exit-plan"
+event = "ExitPlanMode"
+type = "hook"
+label = "New Location"
+description = "Plays the discovery melody after plan approval"
+effect = "Marks the transition from planning to execution"
+
+[[philosophy.sections]]
+title = "Finale"
+highlight_title = "Triumph"
+highlight_sound = "/sounds/zelda-sounds/Zelda-BotW-High-Value-Item-Get.mp3"
+highlight_image = "/images/philosophies/zelda-sounds-session-finale.jpg"
+related_skills = []
+
+[[philosophy.sections.additions]]
+id = "stop-fanfare"
+event = "Stop"
+type = "hook"
+label = "High Value Item Get"
+description = "Plays the spirit-orb fanfare when the agent stops"
+effect = "Celebrates the completion of the entire work session"
