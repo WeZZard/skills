@@ -26,7 +26,13 @@ export function emitPluginToml(plugin) {
   return [
     GENERATED_HEADER,
     "",
-    ...emitFields(plugin, ["display_name", "tagline", "repo"]),
+    ...emitFields(plugin, [
+      "display_name",
+      "tagline",
+      "repo",
+      "source_hash",
+      "content_hash",
+    ]),
     "",
   ].join("\n");
 }
@@ -41,6 +47,8 @@ export function emitSkillsToml(skills) {
         "tagline",
         "short_summary",
         "full_summary",
+        "source_hash",
+        "content_hash",
       ]),
     );
     for (const highlight of entry.highlights ?? []) {
