@@ -12,6 +12,10 @@
     "zelda-sounds": {
       "website": true,
       "repo": "WeZZard/zelda-sounds"
+    },
+    "attune": {
+      "website": true,
+      "repo": "WeZZard/attune"
     }
   }
 }

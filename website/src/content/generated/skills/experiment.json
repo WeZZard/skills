@@ -1,0 +1,54 @@
+{
+  "sourceHash": "c4d1635e8b5d0de7",
+  "generatedAt": "2026-07-12T14:52:45.505Z",
+  "skill": {
+    "name": "experiment",
+    "displayName": "Experiment",
+    "pluginName": "attune",
+    "tagline": "Settle subjective questions by blind, evidence-driven comparison.",
+    "shortSummary": "Produce 2-4 candidate outputs, strip provenance, collect external judge verdicts, then let the user rule — no guessing.",
+    "fullSummary": "When a question can only be answered by trying (not by research or direct user knowledge), this skill runs a controlled experiment. It frames a single criterion, produces 2–4 candidates (at least one by the main agent, the rest by pinned external agents), blinds them by shuffling and stripping provenance, and sends them to 2–3 different external judges for ranking with justification. The user receives the anonymized candidates and verdicts, rules on the winner, and only then sees the provenance mapping. The experimental directory is deleted as cleanup.",
+    "highlights": [
+      {
+        "title": "Single Criterion",
+        "description": "Every experiment has exactly one criterion that the candidates compete on. A candidate set without a criterion is taste-polling, not an experiment."
+      },
+      {
+        "title": "Provenance Stripping",
+        "description": "Candidates are shuffled into letter-named files (A, B, …) with all provenance hints removed. The letter-to-producer mapping is written to mapping.txt and never shown before the ruling."
+      },
+      {
+        "title": "External Judge Panel",
+        "description": "2–3 different external agents, pinned by model, each receive the blinded candidates and criterion. Every judge ranks the candidates and justifies its ranking in two sentences."
+      },
+      {
+        "title": "Safe External Production",
+        "description": "External agents never write to a repo directly. When a future experiment needs repo access, a git worktree is created first; changes are collected via worktree diff, merging stays an explicit main-thread step."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Frame & Produce",
+          "description": "Name the experiment and write the criterion. Produce 2–4 candidates.",
+          "details": "Name the experiment (kebab-case) and define the single criterion. Render 2–4 candidates into a temp directory, producing at least one yourself and dispatching external-agent briefs for the rest."
+        },
+        {
+          "name": "Blind",
+          "description": "Shuffle, strip provenance, write mapping.",
+          "details": "Copy candidates to letter-named files (A, B, …) in shuffled order, stripping all provenance hints. Write the letter-to-producer mapping to mapping.txt."
+        },
+        {
+          "name": "Judge",
+          "description": "Send blinded candidates to 2–3 external judges in parallel.",
+          "details": "Each judge receives the letter-named candidates and the criterion via an external-agent brief (pinned by model, tagged auditing). Each ranks and justifies in two sentences."
+        },
+        {
+          "name": "Rule & Conclude",
+          "description": "Present verdicts, user rules, reveal mapping, clean up.",
+          "details": "Show the candidates and anonymized verdicts to the user. The user rules. Reveal the provenance mapping only after the ruling, report the outcome, then delete the experiment directory."
+        }
+      ]
+    }
+  }
+}

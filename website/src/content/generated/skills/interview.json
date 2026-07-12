@@ -1,0 +1,59 @@
+{
+  "sourceHash": "556992c7fcdcc49e",
+  "generatedAt": "2026-07-12T14:52:45.505Z",
+  "skill": {
+    "name": "interview",
+    "displayName": "Interview",
+    "pluginName": "attune",
+    "tagline": "Settle every unknown by the right oracle — research, ask, or experiment.",
+    "shortSummary": "Routes every open unknown to its correct source: research for facts, ask the user for preferences, experiment for the untried.",
+    "fullSummary": "Interview classifies every unknown as WORLD-owned (researchable fact), HUMAN-owned (user preference), or NOBODY-owned (unexplored). It eagerly launches parallel research for facts, asks the user a single decision-changing question at a time with a reasoned recommendation, and dispatches experiments for the untried — so discussions settle on evidence and rulings instead of assumptions.",
+    "highlights": [
+      {
+        "title": "Three-Oracle Routing",
+        "description": "Every unknown is classified as WORLD-owned, HUMAN-owned, or NOBODY-owned — facts are researched, preferences are asked, experiments are run. Never assume, never guess."
+      },
+      {
+        "title": "Eager Parallel Research",
+        "description": "The moment a WORLD-owned unknown is identified, multiple background research subagents launch in parallel. Each returns a compact validated brief — saving turns and keeping the conversation moving."
+      },
+      {
+        "title": "Precise Human Interview",
+        "description": "Ask exactly one decision-changing question at a time, always with a recommended answer and reasoning. Batch up to 4 independent forks in one call. Ration the ~4–6 questions per session on what truly changes outcomes."
+      },
+      {
+        "title": "Explicit Ruling Carry-Forward",
+        "description": "Every settled answer is stated explicitly and carried into the current artifact — the plan, document, or code it unblocks. An implicit ruling is not settled."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Classify Unknown",
+          "description": "Label each open unknown as WORLD, HUMAN, or NOBODY.",
+          "details": "Determine whether the answer lives in researchable fact, the user's head, or the unexplored. This classification drives everything that follows."
+        },
+        {
+          "name": "Research WORLD-owned",
+          "description": "Launch parallel Explore subagents with WebSearch.",
+          "details": "For every WORLD-owned unknown, dispatch one background subagent per candidate in a single message. Validate briefs for source credibility, dates, and conflict resolution."
+        },
+        {
+          "name": "Interview HUMAN-owned",
+          "description": "Ask one question at a time with a reasoned recommendation.",
+          "details": "Pick the single most decision-changing HUMAN-owned unknown. Use AskUserQuestion with your recommended answer. Ration to ~4–6 questions per session; batch independent forks."
+        },
+        {
+          "name": "Run Experiments",
+          "description": "Dispatch the attune:experiment skill for NOBODY-owned unknowns.",
+          "details": "When no one knows the answer until it is tried, launch an experiment. Its outcome returns as evidence for the user to rule on."
+        },
+        {
+          "name": "Carry Ruling Forward",
+          "description": "State the settled answer and apply it to the current artifact.",
+          "details": "Before asking the next question, explicitly state the ruling and carry it into the work it unblocks — the active plan, document, or code. An implicit ruling is not settled."
+        }
+      ]
+    }
+  }
+}

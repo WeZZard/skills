@@ -1,0 +1,17 @@
+{
+  "sourceHash": "6b7fdadb452dcfb9",
+  "generatedAt": "2026-07-12T14:52:45.504Z",
+  "plugin": {
+    "name": "attune",
+    "displayName": "Attune",
+    "tagline": "Inject your standing guidelines into every session: communication style, external agent routing, end-to-end verification",
+    "repo": "WeZZard/attune",
+    "skillCount": 2,
+    "skills": [
+      "experiment",
+      "interview"
+    ],
+    "marketplaceCommand": "/plugin marketplace add wezzard/skills",
+    "installCommand": "/plugin install attune@wezzard-skills"
+  }
+}
