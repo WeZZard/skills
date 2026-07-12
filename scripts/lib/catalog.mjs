@@ -17,6 +17,7 @@ export const REPO_ROOT = join(__dirname, "../..");
 export const MARKETPLACE_PATH = join(REPO_ROOT, ".claude-plugin/marketplace.json");
 export const LOCK_PATH = join(REPO_ROOT, "catalog/lock.json");
 export const WEBSITE_REGISTRY_PATH = join(REPO_ROOT, "catalog/website-registry.json");
+export const CATALOG_WEBSITE_DIR = join(REPO_ROOT, "catalog/website");
 export const PLUGINS_OUTPUT_DIR = join(REPO_ROOT, "website/src/content/generated/plugins");
 export const SKILLS_OUTPUT_DIR = join(REPO_ROOT, "website/src/content/generated/skills");
 export const WORKFLOW_OUTPUT_DIR = join(REPO_ROOT, "website/src/content/generated/workflow");

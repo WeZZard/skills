@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
   cleanupDir,
@@ -15,6 +15,7 @@ import {
   parseArgs,
   shallowClone,
   writeJson,
+  CATALOG_WEBSITE_DIR,
   PLUGINS_OUTPUT_DIR,
   SKILLS_OUTPUT_DIR,
   computeHash,
@@ -24,6 +25,7 @@ import {
   isWebsiteLlmAvailable,
   skillTomlHasBasics,
 } from "./lib/website-llm.mjs";
+import { emitPluginToml, emitSkillsToml } from "./lib/website-toml.mjs";
 import TOML from "toml";
 
 const args = parseArgs(process.argv.slice(2));
@@ -64,7 +66,7 @@ function resolvePluginPath(pluginName) {
 async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
   const skillToml = skillsToml.skills?.[skillName];
   if (skillTomlHasBasics(skillToml)) {
-    return skillToml;
+    return { entry: skillToml, generated: false };
   }
 
   const skillMdPath = join(pluginPath, "skills", skillName, "SKILL.md");
@@ -72,24 +74,77 @@ async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
 
   if (!isWebsiteLlmAvailable()) {
     console.warn(
-      `Skipping ${skillName}: missing website.skills.toml entry (install OpenCode + provider auth for LLM fallback)`,
+      `Skipping ${skillName}: missing skills TOML entry (install OpenCode + provider auth for LLM fallback)`,
     );
-    return null;
+    return { entry: null, generated: false };
   }
 
   console.warn(
-    `Skill ${skillName}: missing website.skills.toml entry — using LLM JSON fallback`,
+    `Skill ${skillName}: missing skills TOML entry — generating from SKILL.md via LLM`,
   );
-  return generateSkillContentWithLlm(skillName, skillMdContent);
+  return {
+    entry: await generateSkillContentWithLlm(skillName, skillMdContent),
+    generated: true,
+  };
+}
+
+function titleCaseName(name) {
+  return name
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+// Website TOML lives in catalog/website/ (human ruled). Resolution order:
+// the catalog copy wins; a legacy copy inside the plugin repo is the
+// fallback; and when neither exists the content is synthesized (plugin
+// level: from the marketplace entry; skill level: from SKILL.md via LLM).
+// Whatever was resolved from outside the catalog is persisted INTO the
+// catalog, so the registration PR carries reviewable TOML and later runs
+// are deterministic.
+function resolvePluginToml(pluginName, pluginPath, marketplaceEntry) {
+  const catalogPath = join(CATALOG_WEBSITE_DIR, `${pluginName}.plugin.toml`);
+  if (existsSync(catalogPath)) {
+    const raw = readFileSync(catalogPath, "utf8");
+    return { pluginToml: TOML.parse(raw), pluginTomlRaw: raw };
+  }
+  const legacyPath = join(pluginPath, "website.plugin.toml");
+  const pluginToml = existsSync(legacyPath)
+    ? TOML.parse(readFileSync(legacyPath, "utf8"))
+    : {
+        display_name: titleCaseName(pluginName),
+        tagline: marketplaceEntry.description ?? "",
+        ...(isRemoteGitSource(marketplaceEntry.source)
+          ? { repo: getRemotePluginRepo(marketplaceEntry.source) }
+          : {}),
+      };
+  const pluginTomlRaw = emitPluginToml(pluginToml);
+  mkdirSync(CATALOG_WEBSITE_DIR, { recursive: true });
+  writeFileSync(catalogPath, pluginTomlRaw);
+  console.log(`Wrote ${catalogPath}`);
+  return { pluginToml, pluginTomlRaw };
 }
 
 async function generatePluginJson(pluginName, pluginPath, marketplace) {
-  const pluginTomlPath = join(pluginPath, "website.plugin.toml");
-  const skillsTomlPath = join(pluginPath, "website.skills.toml");
-  const pluginTomlRaw = readFileSync(pluginTomlPath, "utf8");
-  const skillsTomlRaw = readFileSync(skillsTomlPath, "utf8");
-  const pluginToml = TOML.parse(pluginTomlRaw);
-  const skillsToml = TOML.parse(skillsTomlRaw);
+  const marketplaceEntry = findMarketplacePlugin(marketplace, pluginName);
+  const { pluginToml, pluginTomlRaw } = resolvePluginToml(
+    pluginName,
+    pluginPath,
+    marketplaceEntry,
+  );
+
+  const catalogSkillsPath = join(
+    CATALOG_WEBSITE_DIR,
+    `${pluginName}.skills.toml`,
+  );
+  const legacySkillsPath = join(pluginPath, "website.skills.toml");
+  const skillsFromCatalog = existsSync(catalogSkillsPath);
+  let skillsToml = { skills: {} };
+  if (skillsFromCatalog) {
+    skillsToml = TOML.parse(readFileSync(catalogSkillsPath, "utf8"));
+  } else if (existsSync(legacySkillsPath)) {
+    skillsToml = TOML.parse(readFileSync(legacySkillsPath, "utf8"));
+  }
   const skillNames = discoverPluginSkills(pluginPath);
 
   const ownerName = marketplace.owner.name;
@@ -113,12 +168,20 @@ async function generatePluginJson(pluginName, pluginPath, marketplace) {
 
   writeJson(join(PLUGINS_OUTPUT_DIR, `${pluginName}.json`), pluginOutput);
 
+  const resolvedSkills = {};
+  let generatedAny = false;
   for (const skillName of skillNames) {
-    const skillEntry = await resolveSkillEntry(skillName, pluginPath, skillsToml);
+    const { entry: skillEntry, generated } = await resolveSkillEntry(
+      skillName,
+      pluginPath,
+      skillsToml,
+    );
     if (!skillEntry?.display_name) {
       console.warn(`Skipping ${skillName}: no website content available`);
       continue;
     }
+    resolvedSkills[skillName] = skillEntry;
+    if (generated) generatedAny = true;
 
     const skillOutput = {
       sourceHash: computeHash(JSON.stringify(skillEntry)),
@@ -136,6 +199,13 @@ async function generatePluginJson(pluginName, pluginPath, marketplace) {
     };
 
     writeJson(join(SKILLS_OUTPUT_DIR, `${skillName}.json`), skillOutput);
+  }
+
+  const haveSkillContent = Object.keys(resolvedSkills).length > 0;
+  if (haveSkillContent && (!skillsFromCatalog || generatedAny)) {
+    mkdirSync(CATALOG_WEBSITE_DIR, { recursive: true });
+    writeFileSync(catalogSkillsPath, emitSkillsToml(resolvedSkills));
+    console.log(`Wrote ${catalogSkillsPath}`);
   }
 
   return { skillCount: skillNames.length };

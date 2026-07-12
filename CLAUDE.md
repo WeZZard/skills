@@ -1,6 +1,8 @@
 # CLAUDE.md
 
-When adding a new plugin, remember to also add it to `.claude-plugin/marketplace.json` and `catalog/website-registry.json` if it should have website pages.
+When adding a new plugin, add it to `.claude-plugin/marketplace.json`, then dispatch the **Register Plugin Website** workflow (`gh workflow run register-plugin-website.yml -f plugin=<name>`) if it should have website pages — the workflow registers it in `catalog/website-registry.json`, generates its website TOML, and opens a PR with the artifacts.
+
+Website TOML lives in `catalog/website/<plugin>.{plugin,skills}.toml` (human ruled) — the catalog copy wins; a `website.*.toml` inside the plugin repo is a legacy fallback that `scripts/update-plugin-website.mjs` migrates into the catalog on its next run. Skill entries missing from the TOML are generated from `SKILL.md` via the OpenCode LLM and persisted to the catalog, so the registration PR carries reviewable TOML.
 
 ## External plugins
 
