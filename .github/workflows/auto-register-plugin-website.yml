@@ -48,6 +48,17 @@ jobs:
           set -euo pipefail
           while read -r plugin repo; do
             [ -z "$plugin" ] && continue
+            # An open registration PR means a dispatch already ran; a second
+            # one would reset the register-website/<plugin> branch and clobber
+            # review commits. Marketplace pushes happen on every catalog sync,
+            # so this window is routinely hit.
+            open_pr=$(gh pr list --repo "${{ github.repository }}" \
+              --head "register-website/$plugin" --state open \
+              --json number --jq 'length')
+            if [ "$open_pr" != "0" ]; then
+              echo "Skipping $plugin: registration PR already open (register-website/$plugin)"
+              continue
+            fi
             echo "Dispatching register-plugin-website for $plugin ($repo)"
             gh workflow run register-plugin-website.yml \
               --repo "${{ github.repository }}" \

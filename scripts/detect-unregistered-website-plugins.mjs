@@ -11,7 +11,6 @@
 
 import {
   getRemotePluginRepo,
-  isRemoteGitSource,
   loadMarketplace,
   loadWebsiteRegistry,
 } from "./lib/catalog.mjs";
@@ -21,8 +20,11 @@ const registry = loadWebsiteRegistry();
 
 for (const entry of marketplace.plugins) {
   if (registry.plugins?.[entry.name] !== undefined) continue;
-  const repo = isRemoteGitSource(entry.source)
-    ? getRemotePluginRepo(entry.source)
-    : `WeZZard/${entry.name}`;
-  console.log(`${entry.name} ${repo}`);
+  if (entry.source?.source !== "github") {
+    console.error(
+      `${entry.name}: non-github source (${entry.source?.source}) — register for the website manually`,
+    );
+    continue;
+  }
+  console.log(`${entry.name} ${getRemotePluginRepo(entry.source)}`);
 }

@@ -75,20 +75,25 @@ function resolvePluginPath(pluginName) {
 // Entries without hashes (hand-authored or migrated) count as hand-edited.
 // Deleting an entry opts it back into machine ownership.
 
+// Coerce to string and strip \r: the TOML emitter drops \r and a round
+// trip through the parser must reproduce the exact strings the fingerprint
+// was computed over, or entries get misclassified as hand-edited forever.
+const clean = (value) => String(value ?? "").replace(/\r/g, "");
+
 function canonicalSkillContent(entry) {
   return {
-    display_name: entry.display_name ?? "",
-    tagline: entry.tagline ?? "",
-    short_summary: entry.short_summary ?? "",
-    full_summary: entry.full_summary ?? "",
+    display_name: clean(entry.display_name),
+    tagline: clean(entry.tagline),
+    short_summary: clean(entry.short_summary),
+    full_summary: clean(entry.full_summary),
     highlights: (entry.highlights ?? []).map((h) => ({
-      title: h.title ?? "",
-      description: h.description ?? "",
+      title: clean(h.title),
+      description: clean(h.description),
     })),
     workflow: (entry.workflow ?? []).map((w) => ({
-      name: w.name ?? "",
-      description: w.description ?? "",
-      details: w.details ?? "",
+      name: clean(w.name),
+      description: clean(w.description),
+      details: clean(w.details),
     })),
   };
 }
@@ -98,9 +103,9 @@ const fingerprintSkillEntry = (entry) =>
 
 function canonicalPluginContent(pluginToml) {
   return {
-    display_name: pluginToml.display_name ?? "",
-    tagline: pluginToml.tagline ?? "",
-    repo: pluginToml.repo ?? "",
+    display_name: clean(pluginToml.display_name),
+    tagline: clean(pluginToml.tagline),
+    repo: clean(pluginToml.repo),
   };
 }
 
