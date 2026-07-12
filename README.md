@@ -20,6 +20,7 @@ Install the plugins
 /plugin install amplify@wezzard-skills # Amplify
 /plugin install zelda-sounds@wezzard-skills # Zelda-Sounds
 /plugin install skill-kit@wezzard-skills # Skill-Kit
+/plugin install attune@wezzard-skills # Attune
 ```
 
 ## Claude Code Plugins
@@ -47,6 +48,10 @@ Zelda BotW and TotK sound cues for Claude Code lifecycle events, with a GUI conf
 
 Tools for auditing and improving Claude Code skill definitions. Run `/skill-kit:skill-lint --agent <agent> <path>` to lint skill files for structural and schema issues.
 
+
+### attune
+
+Inject your standing guidelines into every session: communication style, external agent routing, end-to-end verification
 
 ## License
 
