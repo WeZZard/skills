@@ -1,0 +1,59 @@
+{
+  "sourceHash": "18fa880958e39b04",
+  "generatedAt": "2026-07-16T18:56:31.329Z",
+  "skill": {
+    "name": "explore",
+    "displayName": "Explore Unknowns by Oracle",
+    "pluginName": "attune",
+    "tagline": "Route every open question to its rightful source — world, human, or experiment.",
+    "shortSummary": "Settle discussion unknowns by classifying each as world-, human-, or nobody-owned and dispatching it to its oracle for an evidence-backed ruling.",
+    "fullSummary": "Explore keeps discussions honest by refusing to let unknowns pass as assumptions. Each open question is routed to exactly one oracle — research for world fact, interview for human preference, experiment for untried unknowns — so decisions land on evidence and explicit rulings. The conversation only proceeds once every blocking unknown is settled.",
+    "highlights": [
+      {
+        "title": "Three-Source Oracle Routing",
+        "description": "Every unknown is classified as WORLD-, HUMAN-, or NOBODY-owned and settled by exactly one method: research, interview, or experiment. Misclassification is prevented by hard boundaries — never ask the world, never assume the human, never guess the experiment."
+      },
+      {
+        "title": "Parallel Grounded Research",
+        "description": "WORLD-owned unknowns launch one background explorer per question, each armed with web search and a strict brief template requiring dated sources, conflict notes, and confidence. The main thread waits for all briefs, then reports once — never a partial drip."
+      },
+      {
+        "title": "Rationed Decision Interviews",
+        "description": "HUMAN-owned unknowns are settled one decision-changing question at a time, each carrying a recommended answer and its reason. Related forks batch into a single call, keeping a session to roughly 4–6 questions and turning answers into explicit rulings."
+      },
+      {
+        "title": "Experiments for Untried Unknowns",
+        "description": "When nobody yet knows the answer, Explore dispatches the attune experiment skill. Its outcome returns as evidence the user still rules on, carried forward like any other settled decision."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Announce and Classify",
+          "description": "Announce the skill, then triage each open unknown by owner.",
+          "details": "State the explore skill is active, then sort every unknown into WORLD-, HUMAN-, or NOBODY-owned so each has exactly one settlement path."
+        },
+        {
+          "name": "Spawn Parallel Research",
+          "description": "Launch one grounded explorer per WORLD-owned unknown.",
+          "details": "Send one message with multiple tool calls, each carrying the full response contract, MUST/MUST NOT lists, and the brief template requiring dated sources."
+        },
+        {
+          "name": "Validate and Report Briefs",
+          "description": "Wait for all briefs, validate each, report once.",
+          "details": "Check source credibility and dates, resolve conflicts by authority and recency, then relay every brief verbatim in a single consolidated report."
+        },
+        {
+          "name": "Interview the Human",
+          "description": "Ask decision-changing HUMAN-owned questions one at a time.",
+          "details": "Pick the most decision-changing unknown, ask with a recommended answer and reason, state the ruling explicitly, and batch up to 4 independent forks per call."
+        },
+        {
+          "name": "Dispatch Experiments",
+          "description": "Send NOBODY-owned unknowns to the experiment skill.",
+          "details": "Hand off to attune experiment, accept its outcome as evidence, let the user rule on it, and carry the ruling into the active task artifact."
+        }
+      ]
+    }
+  }
+}
