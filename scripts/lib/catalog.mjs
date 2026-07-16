@@ -114,6 +114,23 @@ export function normalizeLocalSource(source) {
   throw new Error(`Unsupported plugin source: ${JSON.stringify(source)}`);
 }
 
+// Pick out the commit a tag points at from `git ls-remote` output.
+//
+// ls-remote sorts by refname and ignores the order the patterns were passed, so
+// an annotated tag always advertises `refs/tags/<tag>` before its peeled
+// `refs/tags/<tag>^{}` — the plain ref is a prefix of the peeled one and sorts
+// first. The first line is therefore the *tag object* for an annotated tag, not
+// the commit. Prefer the peeled line, which is always the commit; a lightweight
+// tag advertises no peeled line and its only line is already the commit.
+//
+// release-plugin.yml in WeZZard/workflows resolves the same value on the
+// producer side and must agree with this — keep the two in step.
+export function selectTagSha(out) {
+  const lines = out.split("\n").filter(Boolean);
+  const peeled = lines.find((line) => line.endsWith("^{}"));
+  return (peeled ?? lines[0]).split("\t")[0];
+}
+
 export function getRemoteSha(repo, tag) {
   const out = execSync(
     `git ls-remote https://github.com/${repo}.git "refs/tags/${tag}^{}" "refs/tags/${tag}"`,
@@ -122,8 +139,7 @@ export function getRemoteSha(repo, tag) {
   if (!out) {
     throw new Error(`Tag not found on ${repo}: ${tag}`);
   }
-  const line = out.split("\n")[0];
-  return line.split("\t")[0];
+  return selectTagSha(out);
 }
 
 export function shallowClone(repo, tag) {
