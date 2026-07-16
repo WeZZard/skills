@@ -2,6 +2,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "test": "node --test \"scripts/**/*.test.mjs\"",
     "catalog:resolve": "node scripts/resolve-plugin.mjs",
     "catalog:sync": "node scripts/sync-plugin.mjs",
     "catalog:website": "node scripts/update-plugin-website.mjs",
