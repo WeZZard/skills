@@ -1,6 +1,6 @@
 {
-  "sourceHash": "6b7fdadb452dcfb9",
-  "generatedAt": "2026-07-12T14:52:45.504Z",
+  "sourceHash": "3a780e8f457f70ea",
+  "generatedAt": "2026-07-16T11:40:10.159Z",
   "plugin": {
     "name": "attune",
     "displayName": "Attune",
@@ -9,7 +9,7 @@
     "skillCount": 2,
     "skills": [
       "experiment",
-      "interview"
+      "explore"
     ],
     "marketplaceCommand": "/plugin marketplace add wezzard/skills",
     "installCommand": "/plugin install attune@wezzard-skills"

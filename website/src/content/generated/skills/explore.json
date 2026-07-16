@@ -1,0 +1,59 @@
+{
+  "sourceHash": "e36482b761c73a80",
+  "generatedAt": "2026-07-16T11:40:24.726Z",
+  "skill": {
+    "name": "explore",
+    "displayName": "Explore",
+    "pluginName": "attune",
+    "tagline": "Settle every unknown by oracle — world, human, or experiment.",
+    "shortSummary": "Route each open question to its rightful source — research, interview, or experiment — so discussions settle on evidence and rulings instead of assumptions.",
+    "fullSummary": "Explore classifies every open unknown into one of three sources: WORLD-owned questions go to parallel research subagents, HUMAN-owned questions go to targeted interviews, and NOBODY-owned questions go to experiments. The conversation continues while research runs, then reports once with validated, sourced briefs — keeping discussions grounded in evidence and explicit rulings rather than silent assumptions.",
+    "highlights": [
+      {
+        "title": "Three-Source Oracle Routing",
+        "description": "Every unknown is classified as world, human, or nobody-owned, then settled by its matching source — research, interview, or experiment — so no question is silently assumed or misrouted."
+      },
+      {
+        "title": "Eager Parallel Research",
+        "description": "Background Explore subagents launch per unknown with WebSearch grounding, run in parallel while the conversation continues, and report back together as compact, validated briefs with dated sources."
+      },
+      {
+        "title": "Rationed Human Interviews",
+        "description": "HUMAN-owned unknowns go through AskUserQuestion one at a time, each carrying a recommended answer and reason, with roughly 4-6 questions per session and forks batched when independent."
+      },
+      {
+        "title": "Validated, Sourced Briefs",
+        "description": "Every research brief carries claims, evidence, dated sources, conflicts, and a confidence line. Stale facts are discarded and conflicts resolved by authority and recency before a ruling is made."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Announce and Classify",
+          "description": "Announce the skill, then classify each open unknown by owner.",
+          "details": "At the start, declare the skill is active. For each unknown that surfaces, decide whether the world, the human, or nobody holds the answer."
+        },
+        {
+          "name": "Spawn Parallel Research",
+          "description": "Launch one Explore subagent per WORLD-owned unknown, in parallel.",
+          "details": "Send multiple tool calls in one message, each grounded with WebSearch and carrying the full response contract and required brief template."
+        },
+        {
+          "name": "Wait and Validate Briefs",
+          "description": "Wait for all explorers, then validate every brief once.",
+          "details": "Never report partial; wait for every spawned explorer. Check source credibility, discard stale facts, resolve conflicts by authority and recency."
+        },
+        {
+          "name": "Interview the Human",
+          "description": "Ask one decision-changing HUMAN-owned question at a time.",
+          "details": "Use AskUserQuestion with a recommended answer and reason, state the settled ruling explicitly, and carry it into the current task before the next question."
+        },
+        {
+          "name": "Dispatch and Integrate",
+          "description": "Send NOBODY-owned unknowns to the experiment skill and carry rulings forward.",
+          "details": "Dispatch attune:experiment for unknowns no one knows yet. Treat each outcome as evidence, let the user rule on it, and fold the ruling into the work at hand."
+        }
+      ]
+    }
+  }
+}
