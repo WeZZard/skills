@@ -1,0 +1,13 @@
+{
+  "name": "wezzard-skills",
+  "plugins": [
+    {
+      "name": "attune",
+      "description": "Inject your standing guidelines into every session: communication style, external agent routing, end-to-end verification",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/WeZZard/attune.git"
+      }
+    }
+  ]
+}
