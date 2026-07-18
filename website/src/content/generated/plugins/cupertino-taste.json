@@ -1,0 +1,16 @@
+{
+  "sourceHash": "1a4692b30243d78d",
+  "generatedAt": "2026-07-18T13:30:43.853Z",
+  "plugin": {
+    "name": "cupertino-taste",
+    "displayName": "Cupertino Taste",
+    "tagline": "Distilled by WeZZard in China, Assembled from WWDC.",
+    "repo": "WeZZard/cupertino-taste",
+    "skillCount": 1,
+    "skills": [
+      "design-fluid-interface"
+    ],
+    "marketplaceCommand": "/plugin marketplace add wezzard/skills",
+    "installCommand": "/plugin install cupertino-taste@wezzard-skills"
+  }
+}
