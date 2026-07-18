@@ -16,6 +16,10 @@
     "attune": {
       "website": true,
       "repo": "WeZZard/attune"
+    },
+    "cupertino-taste": {
+      "website": true,
+      "repo": "WeZZard/cupertino-taste"
     }
   }
 }
