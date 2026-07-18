@@ -16,6 +16,7 @@ All marketplace plugins are standalone repos pinned via **`github`** in `.claude
 | zelda-sounds | [WeZZard/zelda-sounds](https://github.com/WeZZard/zelda-sounds) |
 | skill-kit | [WeZZard/skill-kit](https://github.com/WeZZard/skill-kit) |
 | attune | [WeZZard/attune](https://github.com/WeZZard/attune) |
+| cupertino-taste | [WeZZard/cupertino-taste](https://github.com/WeZZard/cupertino-taste) |
 
 ## Catalog scripts
 

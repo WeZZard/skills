@@ -21,6 +21,8 @@ Install the plugins
 /plugin install zelda-sounds@wezzard-skills # Zelda-Sounds
 /plugin install skill-kit@wezzard-skills # Skill-Kit
 /plugin install attune@wezzard-skills # Attune
+/plugin install dispatch@wezzard-skills # Dispatch
+/plugin install cupertino-taste@wezzard-skills # Cupertino-Taste
 ```
 
 ## Claude Code Plugins
@@ -52,6 +54,14 @@ Tools for auditing and improving Claude Code skill definitions. Run `/skill-kit:
 ### attune
 
 Inject your standing guidelines into every session: communication style, external agent routing, end-to-end verification
+
+### dispatch
+
+Delegate tasks to external agent CLIs through one router and one brief contract: probed facts, write isolation, a multi-model audit panel, and concurrent image generation with failure memory
+
+### cupertino-taste
+
+Distilled by WeZZard in China, Assembled from WWDC.
 
 ## License
 

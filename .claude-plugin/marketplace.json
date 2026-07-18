@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "owner": {
     "name": "WeZZard"
   },
@@ -53,6 +53,16 @@
         "repo": "WeZZard/dispatch",
         "ref": "v0.1.0",
         "sha": "4a9d01449144dbff41477267143ce1233e47f2ef"
+      }
+    },
+    {
+      "name": "cupertino-taste",
+      "description": "Distilled by WeZZard in China, Assembled from WWDC.",
+      "source": {
+        "source": "github",
+        "repo": "WeZZard/cupertino-taste",
+        "ref": "v0.1.0",
+        "sha": "907270d29c32e4ff5d1552d26cba58d1fb4ec845"
       }
     }
   ]
