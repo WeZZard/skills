@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.18",
+  "version": "1.0.20",
   "owner": {
     "name": "WeZZard"
   },
@@ -41,8 +41,18 @@
       "source": {
         "source": "github",
         "repo": "WeZZard/attune",
-        "ref": "v0.8.0",
-        "sha": "de7f1dafae251756f92f721a94380bf4a8d12fd7"
+        "ref": "v0.9.0",
+        "sha": "6e6e1aad7158536bb17871fbf78bb3ffff42a386"
+      }
+    },
+    {
+      "name": "dispatch",
+      "description": "Delegate tasks to external agent CLIs through one router and one brief contract: probed facts, write isolation, a multi-model audit panel, and concurrent image generation with failure memory",
+      "source": {
+        "source": "github",
+        "repo": "WeZZard/dispatch",
+        "ref": "v0.1.0",
+        "sha": "4a9d01449144dbff41477267143ce1233e47f2ef"
       }
     }
   ]
