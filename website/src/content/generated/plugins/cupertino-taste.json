@@ -1,14 +1,15 @@
 {
-  "sourceHash": "1a4692b30243d78d",
-  "generatedAt": "2026-07-18T13:30:43.853Z",
+  "sourceHash": "8e71299b2698ed85",
+  "generatedAt": "2026-07-18T14:47:11.046Z",
   "plugin": {
     "name": "cupertino-taste",
     "displayName": "Cupertino Taste",
     "tagline": "Distilled by WeZZard in China, Assembled from WWDC.",
     "repo": "WeZZard/cupertino-taste",
-    "skillCount": 1,
+    "skillCount": 2,
     "skills": [
-      "design-fluid-interface"
+      "design-fluid-interface",
+      "maintain-current-apple-guidance"
     ],
     "marketplaceCommand": "/plugin marketplace add wezzard/skills",
     "installCommand": "/plugin install cupertino-taste@wezzard-skills"

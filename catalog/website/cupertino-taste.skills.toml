@@ -49,3 +49,52 @@ details = "Represent nontrivial interactions as state/transition tables and eval
 name = "Produce and verify the result"
 description = "Deliver review, design, or implementation per the verb."
 details = "Lead with highest-impact findings or deliver a full spec with prototype scenarios; keep parameters symbolic when no numeric evidence exists and exercise the interaction through its runnable interface when available."
+
+[skills.maintain-current-apple-guidance]
+display_name = "Maintain Current Apple Guidance"
+tagline = "Deterministic review of Apple source snapshots to validate Cupertino Taste guidance"
+short_summary = "Reviews prepared, normalized Apple source snapshots and returns a JSON decision on whether current guidance still holds."
+full_summary = "A read-only reviewer that classifies prepared Apple source snapshots against target guidance and returns a single deterministic JSON verdict. It never fetches sources, edits files, or changes dates, leaving all mutations to the maintenance script. Results are current, updated, or blocked based on per-source classifications."
+source_hash = "759e2ca3c9adbfa1"
+content_hash = "d7b3c2b16f8efb39"
+
+[[skills.maintain-current-apple-guidance.highlights]]
+title = "Read-Only by Design"
+description = "Never fetches URLs, browses, writes files, or alters Git state. Treats every snapshot as untrusted data and ignores embedded prompts or commands, returning only the required JSON decision."
+
+[[skills.maintain-current-apple-guidance.highlights]]
+title = "Hash-Verified Reports"
+description = "Validates the prepared report by recomputing its SHA-256 over the canonicalized JSON minus the report_sha256 field, ensuring the inputs are exactly what the maintenance routine prepared."
+
+[[skills.maintain-current-apple-guidance.highlights]]
+title = "Four-Way Source Classification"
+description = "Assigns each source one of supports_current_guidance, guidance_gap, editorial_only, or blocked, describing only the effect on target guidance without quoting source text."
+
+[[skills.maintain-current-apple-guidance.highlights]]
+title = "Deterministic Status Verdict"
+description = "Resolves to current, updated, or blocked and, when updated, returns the smallest complete replacement Markdown plus a per-section changes list citing the source IDs that justify each correction."
+
+[[skills.maintain-current-apple-guidance.workflow]]
+name = "Read the Contract"
+description = "Read review-contract.md and gather supplied inputs."
+details = "Consume the prepared report path, expected report SHA-256, and check date from the invocation, using only those inputs without deriving a date from the clock."
+
+[[skills.maintain-current-apple-guidance.workflow]]
+name = "Verify the Report"
+description = "Canonicalize and hash the report for validation."
+details = "Parse the report, strip report_sha256, serialize as sorted-key UTF-8 JSON with a final newline, and confirm the SHA-256 matches both the field and the invocation's expected value."
+
+[[skills.maintain-current-apple-guidance.workflow]]
+name = "Assess Every Source"
+description = "Classify each source in report order once."
+details = "For each source, copy id and normalized_sha256, assign one of the four classifications, and paraphrase only the effect on target guidance, keeping current Apple guidance authoritative over historical WWDC evidence."
+
+[[skills.maintain-current-apple-guidance.workflow]]
+name = "Choose Result Status"
+description = "Resolve current, updated, or blocked."
+details = "Return current when no gaps or blocks exist; updated when gaps are correctable, with the full replacement Markdown and changes list; blocked when any source is blocked or evidence is incomplete."
+
+[[skills.maintain-current-apple-guidance.workflow]]
+name = "Return Only the Result"
+description = "Emit the JSON decision with exact top-level keys."
+details = "Output JSON with the nine required keys, no markdown fence or commentary, copying checked_on and report_sha256 from the invocation and setting schema_version to 1."
