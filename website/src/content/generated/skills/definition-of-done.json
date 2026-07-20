@@ -1,0 +1,59 @@
+{
+  "sourceHash": "672cca8cb919cdda",
+  "generatedAt": "2026-07-20T19:07:04.740Z",
+  "skill": {
+    "name": "definition-of-done",
+    "displayName": "Definition of Done",
+    "pluginName": "attune",
+    "tagline": "A result is done only when it has survived its real use path, driven the way its consumer drives it.",
+    "shortSummary": "Sets a universal standard for done-claims: every done rests on observed evidence from the result's use path, sized to the change's blast radius.",
+    "fullSummary": "Holds every done, fixed, or working declaration to a single universal standard: the result must have survived its use path, driven through its real interface the way its real consumer drives it. Sizing scales with blast radius — Contained, User-facing, or Downstream — so effort matches risk while the happy path is always driven. Honest reporting separates verified forks from unverified ones, naming what could not be driven and why.",
+    "highlights": [
+      {
+        "title": "Blast-Radius Sizing",
+        "description": "Every pass is sized first by the outermost circle a failure would reach — Contained, User-facing, or Downstream — so the depth of verification scales with the change's real risk. Sizing never skips the pass; even the smallest change drives its happy path."
+      },
+      {
+        "title": "Driven, Not Reasoned",
+        "description": "What should happen is a hypothesis, not an observation. Each fork is actually driven through its real interface and the output, state, and side effects recorded. Reading source to reason about runtime behavior is never driving — running it is."
+      },
+      {
+        "title": "Three Execution Routes",
+        "description": "Route 1 drives in-session when tools reach the interface; Route 2 autonomously re-checks load-bearing recalls against their primary source; Route 3 stops short of done when the interface is out of reach, reporting unverified with what could drive it."
+      },
+      {
+        "title": "Honest Reporting by Fork",
+        "description": "Verified and unverified are reported as different things, fork by fork. Re-checked claims are backed by quotes from their primary source, not restated conclusions. A fork that could not be driven is named with its reason and partial evidence."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Announce and Size",
+          "description": "Announce the standard; size the pass by blast radius before designing the use path.",
+          "details": "Declare \"Holding this to the definition of done,\" then judge the change's blast radius — Contained, User-facing, or Downstream — from the change itself, never its forks, taking the larger circle when two fit."
+        },
+        {
+          "name": "Design the Use Path",
+          "description": "Name the consumer, interface, and value; consult the matching domain playbook.",
+          "details": "Identify who drives the result and through what interface, let the happy path demonstrate the value gained, and load the matching references/use-paths playbook if the domain has one; follow it, or draft a new one when none exists."
+        },
+        {
+          "name": "Drive the Forks",
+          "description": "Walk each fork the size calls for through the real interface, recording what happened.",
+          "details": "Drive the happy path at every size; add internal forks at User-facing; add boundary forks at Downstream. Drive destructive and error paths against disposable state, or stop and report blocked when no safe target exists."
+        },
+        {
+          "name": "Re-Check Load-Bearing Claims",
+          "description": "Route 2 any recalled fact or inference the done-claim leans on, against its primary source.",
+          "details": "For claims not established by driving — a recalled API default, an inference, a carried conclusion — re-check against the originating artifact or vendor doc, quoting the source, autonomously via the audit skill when installed."
+        },
+        {
+          "name": "Report Honestly by Fork",
+          "description": "State what was driven and observed, and what stayed unverified with its reason.",
+          "details": "Report verified and unverified as distinct, fork by fork; back re-checked claims with primary-source quotes; name any undriven fork with the reason and partial evidence, including playbook honest limits and Route 3 out-of-reach interfaces."
+        }
+      ]
+    }
+  }
+}

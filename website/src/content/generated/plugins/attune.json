@@ -1,13 +1,15 @@
 {
-  "sourceHash": "3a780e8f457f70ea",
-  "generatedAt": "2026-07-16T18:56:18.683Z",
+  "sourceHash": "9111386554a3e67e",
+  "generatedAt": "2026-07-20T19:06:40.967Z",
   "plugin": {
     "name": "attune",
     "displayName": "Attune",
     "tagline": "Inject your standing guidelines into every session: communication style, external agent routing, end-to-end verification",
     "repo": "WeZZard/attune",
-    "skillCount": 2,
+    "skillCount": 4,
     "skills": [
+      "ask-wezzard",
+      "definition-of-done",
       "experiment",
       "explore"
     ],
