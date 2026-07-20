@@ -1,0 +1,59 @@
+{
+  "sourceHash": "2e946c4fb3d6c618",
+  "generatedAt": "2026-07-20T19:15:47.432Z",
+  "skill": {
+    "name": "use-external-agents",
+    "displayName": "Use External Agents",
+    "pluginName": "dispatch",
+    "tagline": "One router, one brief — delegate tasks to external agent CLIs safely.",
+    "shortSummary": "Dispatch tasks to external agent CLIs through a single router using a self-contained task brief, with facts probed in one matrix call and outputs returned as evidence.",
+    "fullSummary": "Use External Agents gives the main conversation a single, disciplined path for delegating work to external agent CLIs — the dispatch external-agent router. You compose one self-contained task brief that pins the exact agents, gather every agent fact in a single matrix probe, and treat returned output as evidence while synthesis stays with you and the human. Write isolation via worktrees keeps repository delegations safe and reviewable.",
+    "highlights": [
+      {
+        "title": "One Router, One Brief Contract",
+        "description": "All external agent work flows through the dispatch:external-agent router subagent, launched once per task brief. The brief carries metadata, a pinned AGENTS line, a fully self-contained task prompt, and a response shape — the external agent sees nothing else."
+      },
+      {
+        "title": "Facts Probed in One Matrix Call",
+        "description": "A single `external-agents.sh matrix` call reports which agents are installed, usable, and capable against the registry. The marker path is passed in the brief so the router never re-probes, and volatile capability is treated as a fresh fact that fails closed."
+      },
+      {
+        "title": "Write Isolation Through Worktrees",
+        "description": "Repository-writing delegations run inside a created git worktree. Changes are collected as evidence, merged or discarded explicitly in the main conversation, and the worktree is removed — external agents never write to the repo directly."
+      },
+      {
+        "title": "Output as Evidence, Not Decisions",
+        "description": "External CLI output is returned verbatim and treated as evidence. Synthesis and every ruling stay in the main conversation with the human, and launch parameters are derived from the registry baseline verified against fresh --help output."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Announce and Resolve Root",
+          "description": "Announce the router and resolve ATTUNE_ROOT.",
+          "details": "Announce dispatching through the router, then resolve ATTUNE_ROOT to the absolute path two directories above this skill's directory before running any command."
+        },
+        {
+          "name": "Probe Agent Facts in One Matrix Call",
+          "description": "Run the matrix probe once, pick a marker path.",
+          "details": "Run `external-agents.sh matrix <marker.json>` to learn installed, usable, and capable agents in a single call; the marker persists facts for free re-render later."
+        },
+        {
+          "name": "Compose the Task Brief",
+          "description": "Write the self-contained brief in the main conversation.",
+          "details": "Fill the brief contract: GOAL, TAGS, pinned AGENTS, the CAPABILITIES_MARKER path, a fully self-contained External Agent Task Prompt, and the Response shape including artifact paths."
+        },
+        {
+          "name": "Dispatch Through the Router",
+          "description": "Launch the router subagent once with the brief.",
+          "details": "Launch dispatch:external-agent with the whole brief as its prompt; for repository writes, first create a worktree and point the agent there, then collect changes via worktree.sh diff as evidence."
+        },
+        {
+          "name": "Synthesize From Evidence",
+          "description": "Treat output as evidence, merge or discard explicitly.",
+          "details": "Receive the router's response verbatim as evidence, synthesize and rule in the main conversation with the human, merge or discard worktree changes explicitly, then remove the worktree."
+        }
+      ]
+    }
+  }
+}
