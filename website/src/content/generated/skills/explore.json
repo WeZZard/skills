@@ -1,57 +1,57 @@
 {
-  "sourceHash": "18fa880958e39b04",
-  "generatedAt": "2026-07-16T18:56:31.329Z",
+  "sourceHash": "4438f555480e881f",
+  "generatedAt": "2026-07-20T19:07:16.902Z",
   "skill": {
     "name": "explore",
-    "displayName": "Explore Unknowns by Oracle",
+    "displayName": "Explore",
     "pluginName": "attune",
-    "tagline": "Route every open question to its rightful source — world, human, or experiment.",
-    "shortSummary": "Settle discussion unknowns by classifying each as world-, human-, or nobody-owned and dispatching it to its oracle for an evidence-backed ruling.",
-    "fullSummary": "Explore keeps discussions honest by refusing to let unknowns pass as assumptions. Each open question is routed to exactly one oracle — research for world fact, interview for human preference, experiment for untried unknowns — so decisions land on evidence and explicit rulings. The conversation only proceeds once every blocking unknown is settled.",
+    "tagline": "A four-move design discussion the model drives, the user rules.",
+    "shortSummary": "Explore turns design talk into a disciplined four-move pass — Ask, Sort, Research, Experiment — where the model raises the hard questions and the user spends only judgment.",
+    "fullSummary": "Explore runs a structured design discussion through Ask, Sort, Research, and Experiment. The model investigates purpose, generates real alternatives, hunts for shortcuts, and settles world facts through the cheapest sufficient source — bringing the user only their own facts and rulings, so decisions rest on evidence and taste, never assumptions.",
     "highlights": [
       {
-        "title": "Three-Source Oracle Routing",
-        "description": "Every unknown is classified as WORLD-, HUMAN-, or NOBODY-owned and settled by exactly one method: research, interview, or experiment. Misclassification is prevented by hard boundaries — never ask the world, never assume the human, never guess the experiment."
+        "title": "Four Moves, Each Gated",
+        "description": "Ask raises purpose, alternative, and shortcut questions aimed at the model itself. Sort classifies each as world fact, user-held fact, or judgment. Research settles world facts through memory, machine, then web. Experiment builds the answer nothing existing holds."
       },
       {
-        "title": "Parallel Grounded Research",
-        "description": "WORLD-owned unknowns launch one background explorer per question, each armed with web search and a strict brief template requiring dated sources, conflict notes, and confidence. The main thread waits for all briefs, then reports once — never a partial drip."
+        "title": "The Model Drives, The User Rules",
+        "description": "The model does the legwork — climbing the request's five levels, generating alternatives that differ in mechanism, and seeking shorter paths — so the user spends judgment on taste, priorities, and risk, never on research they could have done themselves."
       },
       {
-        "title": "Rationed Decision Interviews",
-        "description": "HUMAN-owned unknowns are settled one decision-changing question at a time, each carrying a recommended answer and its reason. Related forks batch into a single call, keeping a session to roughly 4–6 questions and turning answers into explicit rulings."
+        "title": "Cheapest Sufficient Source",
+        "description": "Most questions end at memory or this machine without touching the web. Volatile facts are never treated as stable, load-bearing recalls are verified before the recommendation rests, and the web is gated behind a single scouting pass per settled intent."
       },
       {
-        "title": "Experiments for Untried Unknowns",
-        "description": "When nobody yet knows the answer, Explore dispatches the attune experiment skill. Its outcome returns as evidence the user still rules on, carried forward like any other settled decision."
+        "title": "An Evidence Trail You Can Read",
+        "description": "Web researchers write dated briefs to disk as the evidence trail; the thread carries only the compiled digest. Conflicts are resolved by authority and recency, unopened sources are marked unverified, and trials run against the real artifact — never a stub from memory."
       }
     ],
     "workflow": {
       "steps": [
         {
-          "name": "Announce and Classify",
-          "description": "Announce the skill, then triage each open unknown by owner.",
-          "details": "State the explore skill is active, then sort every unknown into WORLD-, HUMAN-, or NOBODY-owned so each has exactly one settlement path."
+          "name": "Ask",
+          "description": "Raise purpose, alternatives, and shortcut questions aimed at the model.",
+          "details": "Investigate what the user is ultimately trying to make happen, climb the request's five levels, generate alternatives that differ in mechanism, and seek a shorter path — adding every question to a visible open list."
         },
         {
-          "name": "Spawn Parallel Research",
-          "description": "Launch one grounded explorer per WORLD-owned unknown.",
-          "details": "Send one message with multiple tool calls, each carrying the full response contract, MUST/MUST NOT lists, and the brief template requiring dated sources."
+          "name": "Sort",
+          "description": "Classify each open question once, before any work proceeds.",
+          "details": "Mark each question as a world fact, a user-held fact, or a judgment; route user-held facts and judgments to the user, and decompose compound questions so each part is routed on its own."
         },
         {
-          "name": "Validate and Report Briefs",
-          "description": "Wait for all briefs, validate each, report once.",
-          "details": "Check source credibility and dates, resolve conflicts by authority and recency, then relay every brief verbatim in a single consolidated report."
+          "name": "Research",
+          "description": "Settle world facts through the cheapest sufficient source.",
+          "details": "Move through memory, this machine, then the web — escalating only when a source cannot settle the question — and verify each load-bearing recalled fact before the pass presents its recommendation."
         },
         {
-          "name": "Interview the Human",
-          "description": "Ask decision-changing HUMAN-owned questions one at a time.",
-          "details": "Pick the most decision-changing unknown, ask with a recommended answer and reason, state the ruling explicitly, and batch up to 4 independent forks per call."
+          "name": "Experiment",
+          "description": "Build the answer nothing existing holds.",
+          "details": "When research finds nothing or sources conflict on an observable claim, run the smallest rig that yields the observation against the real artifact, recording every trial's command and output as created evidence."
         },
         {
-          "name": "Dispatch Experiments",
-          "description": "Send NOBODY-owned unknowns to the experiment skill.",
-          "details": "Hand off to attune experiment, accept its outcome as evidence, let the user rule on it, and carry the ruling into the active task artifact."
+          "name": "Present",
+          "description": "Deliver the pass's understanding, alternatives, and recommendation.",
+          "details": "State purpose and intent, the alternatives explored, the strongest shortcut, the recommendation with rationale, and what remains unverified, assumed, or parked — each labeled as what it is."
         }
       ]
     }

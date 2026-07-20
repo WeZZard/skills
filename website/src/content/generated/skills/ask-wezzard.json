@@ -1,0 +1,54 @@
+{
+  "sourceHash": "3fa7d795e0bed174",
+  "generatedAt": "2026-07-20T19:06:51.944Z",
+  "skill": {
+    "name": "ask-wezzard",
+    "displayName": "Ask WeZZard",
+    "pluginName": "attune",
+    "tagline": "Report attune plugin failures as scrubbed issues in one step.",
+    "shortSummary": "Classify, collect, and file a scrubbed attune failure report against the attune repository.",
+    "fullSummary": "Ask WeZZard turns a broken attune skill or guideline into a structured GitHub issue, automatically scrubbing user-side detail and quoting the failing agent output verbatim. It distinguishes communication failures that feed the improvement loop from skill failures that name the broken protocol step. When gh is unavailable, the filled template prints in-session so no report is ever lost.",
+    "highlights": [
+      {
+        "title": "Two failure channels",
+        "description": "Communication failures carry the extraction template the collect-feedback-and-improve loop consumes; skill failures carry the general template plus the skill and step that failed. Each lands under its own label."
+      },
+      {
+        "title": "Verbatim, scrubbed reports",
+        "description": "Your own failing output is quoted word-for-word, while the user's reaction is paraphrased and no project code, secrets, or paths outside the plugin are included. Reports stay useful without leaking context."
+      },
+      {
+        "title": "Authoritative model detection",
+        "description": "Reads the exact model ID from your system prompt on claude-code, or from attune's session-model store on codex and pi, with a rollout-file fallback. It writes unknown only when every source yields nothing."
+      },
+      {
+        "title": "Never-silent failure",
+        "description": "If gh is missing, unauthenticated, or offline, the filled template prints in the conversation instead of being discarded. The report always reaches a human reviewable form."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Classify the failure",
+          "description": "Decide communication vs. skill failure.",
+          "details": "Determine whether a reply broke the communication guidelines or another attune skill or guideline behaved wrongly, since each type takes a different template and label."
+        },
+        {
+          "name": "Collect context",
+          "description": "Gather quotes, reaction, repair, and session info.",
+          "details": "Quote your failing output verbatim, paraphrase the reader's reaction in one line, propose a repair, and record language, platform, and model from the authoritative source for your platform."
+        },
+        {
+          "name": "File the issue",
+          "description": "Create one labeled issue per failure.",
+          "details": "Run gh issue create against WeZZard/attune with the matching template and label, one issue per distinct failure so nothing is bundled or dropped."
+        },
+        {
+          "name": "Report back or fall back",
+          "description": "Share the URL, or print the template.",
+          "details": "Give the user the issue URL; if gh fails for any reason, print the filled template in the conversation so the report is never lost silently."
+        }
+      ]
+    }
+  }
+}
