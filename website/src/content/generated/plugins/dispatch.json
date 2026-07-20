@@ -1,0 +1,18 @@
+{
+  "sourceHash": "b4bee50c71e2f42d",
+  "generatedAt": "2026-07-20T19:15:11.991Z",
+  "plugin": {
+    "name": "dispatch",
+    "displayName": "Dispatch",
+    "tagline": "Delegate tasks to external agent CLIs through one router and one brief contract: probed facts, write isolation, a multi-model audit panel, and concurrent image generation with failure memory",
+    "repo": "WeZZard/dispatch",
+    "skillCount": 3,
+    "skills": [
+      "audit",
+      "image-generation",
+      "use-external-agents"
+    ],
+    "marketplaceCommand": "/plugin marketplace add wezzard/skills",
+    "installCommand": "/plugin install dispatch@wezzard-skills"
+  }
+}

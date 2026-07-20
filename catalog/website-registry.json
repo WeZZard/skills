@@ -20,6 +20,10 @@
     "cupertino-taste": {
       "website": true,
       "repo": "WeZZard/cupertino-taste"
+    },
+    "dispatch": {
+      "website": true,
+      "repo": "WeZZard/dispatch"
     }
   }
 }

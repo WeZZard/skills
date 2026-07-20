@@ -1,0 +1,59 @@
+{
+  "sourceHash": "6e5230a88c718cd4",
+  "generatedAt": "2026-07-20T19:15:21.546Z",
+  "skill": {
+    "name": "audit",
+    "displayName": "Audit Work With Panel",
+    "pluginName": "dispatch",
+    "tagline": "Cross-check completed work with a parallel panel of external models.",
+    "shortSummary": "Dispatch a self-contained audit brief to Codex and Kimi in parallel, collect file-backed reports, and compile a digest of agreements and disagreements for the user to rule on.",
+    "fullSummary": "The same audit brief goes to Codex and Kimi — two external agent CLIs with different biases — in one parallel dispatch. Their verbatim reports land on disk, then a compiled digest surfaces agreements as strong signals, splits as judgment calls, and every cited finding carries its report's path. The user rules before any finding is acted on.",
+    "highlights": [
+      {
+        "title": "Diverse-Model Panel",
+        "description": "Codex and Kimi review the same work in parallel. Each model misses different things, so findings they agree on are strong signals while splits mark judgment calls worth your attention."
+      },
+      {
+        "title": "One Identical Brief",
+        "description": "A single self-contained brief — with material inlined or readable paths cited — goes to every auditor. Identical input is what makes agreement and disagreement meaningful."
+      },
+      {
+        "title": "File-Backed Reports",
+        "description": "Each auditor's report is written verbatim to the audit directory, and every cited finding in the digest carries its report's file path — a backtrace you can reopen at any time."
+      },
+      {
+        "title": "User Rules, Agent Waits",
+        "description": "The digest presents findings and your assessment of the unique ones, but no finding is acted on until you rule. Disagreements are flagged for your judgment, never silently dropped."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Load Dispatch Interface",
+          "description": "Invoke the use-external-agents skill for the router and brief contract.",
+          "details": "This skill builds on the external-agents router, the task brief contract, and the matrix call that reports which panel agents are installed and usable right now."
+        },
+        {
+          "name": "Scope The Audit",
+          "description": "Name the audit and state what is being audited and the questions.",
+          "details": "Pick a kebab-case name; describe the diff, document, or decision under review; and list the specific questions the auditors must answer."
+        },
+        {
+          "name": "Compose The Brief",
+          "description": "Write one self-contained brief tagged for the codex-kimi panel.",
+          "details": "Inline the material or point at readable paths, set TAGS: auditing and AGENTS: codex kimi, and require each auditor's full report with claim, evidence, and severity per finding."
+        },
+        {
+          "name": "Dispatch And Persist",
+          "description": "Send the brief once; write each verbatim report to the audit directory.",
+          "details": "One router call launches the panel in parallel and returns each report; write them verbatim to ${TMPDIR:-/tmp}/dispatch-audit/<name>/<agent>.md before compiling."
+        },
+        {
+          "name": "Compile And Wait For Ruling",
+          "description": "Report agreements, unique findings, and disagreements; then stop.",
+          "details": "Surface agreements first, unique findings with your assessment, and splits flagged for the user's judgment — every finding carries its report path. Act only after the user rules."
+        }
+      ]
+    }
+  }
+}

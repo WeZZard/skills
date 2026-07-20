@@ -1,0 +1,59 @@
+{
+  "sourceHash": "494261034358a50c",
+  "generatedAt": "2026-07-20T19:15:33.634Z",
+  "skill": {
+    "name": "image-generation",
+    "displayName": "Image Generation",
+    "pluginName": "dispatch",
+    "tagline": "Dispatch one brief to every image-capable agent concurrently and pick from the options.",
+    "shortSummary": "Generate images by fanning a single brief across all usable image-capable agents concurrently, presenting each result as a candidate with artifact paths.",
+    "fullSummary": "This skill sends one self-contained image brief to every available image-capable external agent in parallel, collecting their results as candidate options with explicit artifact paths. It maintains a failure record so any agent that hits a login or quota issue is never retried until the user clears it, preventing repeated dead-ends.",
+    "highlights": [
+      {
+        "title": "Concurrent Multi-Agent Dispatch",
+        "description": "One brief reaches every usable image-capable agent at once, returning several candidate images per request instead of a single take-it-or-leave-it output."
+      },
+      {
+        "title": "Failure Memory",
+        "description": "Login and quota failures are recorded to a JSON file, and recorded agents are skipped on every subsequent dispatch until the user clears the record."
+      },
+      {
+        "title": "Verbatim Artifact Paths",
+        "description": "Every ARTIFACT_PATH line from each agent is passed through untouched, so the user sees exact on-disk paths labeled by the agent that produced each image."
+      },
+      {
+        "title": "User Picks, Agent Never Picks",
+        "description": "The skill presents all generated options and never selects a best image itself, leaving the choice entirely to the user."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Load the Dispatch Interface",
+          "description": "Invoke the plugin's use-external-agents skill first.",
+          "details": "Builds on the router, task brief contract, and facts-before-use matrix call that use-external-agents defines, without restating them."
+        },
+        {
+          "name": "Check the Failure Record",
+          "description": "Read the failures.json file and skip recorded agents.",
+          "details": "Reads the JSON array of agent failure entries; a missing file is an empty record. If no agent remains, the skill reports and stops for the user to clear."
+        },
+        {
+          "name": "Compose the Brief",
+          "description": "Write one self-contained image prompt with AGENTS and Response sections.",
+          "details": "Crafts a fully self-contained prompt tagged image-generation, listing the image-capable agents not in the failure record, and demanding explicit ARTIFACT_PATH lines back."
+        },
+        {
+          "name": "Dispatch Concurrently",
+          "description": "Send the brief to the router for parallel agent launches.",
+          "details": "The router launches all listed agents in parallel and returns each agent's reply together with its artifact paths."
+        },
+        {
+          "name": "Record Failures and Present",
+          "description": "Append any login or quota failure, then show every image.",
+          "details": "Login and quota failures are appended to the record before anything else, then every generated image is shown by its artifact path, labeled by producing agent for the user to pick."
+        }
+      ]
+    }
+  }
+}
