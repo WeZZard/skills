@@ -6,7 +6,7 @@
  * (the pinned SKILL.md it corresponds to) and content_hash (its own current
  * content). From then on the drift rules in update-plugin-website.mjs
  * govern the entry — unchanged SKILL.md means zero diff; a drifted SKILL.md
- * regenerates the entry via OpenCode in the sync PR. A later hand edit
+ * regenerates the entry via Pi in the site-building PR. A later hand edit
  * re-locks the entry automatically (content_hash mismatch).
  *
  * Plugin-level TOML is NOT adopted by default: legacy taglines are crafted

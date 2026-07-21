@@ -19,13 +19,16 @@ Unified prompt for bootstrap and release updates.
 
 When TOML entries exist with `display_name`, regenerate JSON deterministically from TOML.
 
-## OpenCode path (fallback)
+## Pi path
 
-When TOML is missing entries for a skill, `update-plugin-website.mjs` invokes **OpenCode**
-(`opencode run`) with [`generate-skill-website-content.md`](generate-skill-website-content.md)
-to generate **JSON only**.
+The site-building queue invokes `update-plugin-website.mjs` after a catalog,
+registration, or rollback pull request merges. When TOML is missing or a
+machine-owned entry is stale, the script invokes **Pi** with the repository's
+`site-building` skill and this prompt to generate JSON only.
 
-Requires OpenCode CLI + provider auth locally, or `OPENCODE_AUTH_JSON` in CI.
-Semver proposal uses the same OpenCode stack via `WeZZard/workflows`.
+The queue uses `DEEPSEEK_API_KEY`, provider `deepseek`, model
+`deepseek-v4-pro`, and thinking level `high`. Deployment and preview workflows
+only consume committed content and never invoke Pi.
 
-TOML remains owned by the plugin release PR — catalog sync does not patch plugin TOML.
+The site-building pull request owns generated TOML and JSON. Catalog sync does
+not wait for this pull request before completing a plugin release.

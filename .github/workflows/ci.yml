@@ -4,13 +4,17 @@ on:
   pull_request:
     paths:
       - "scripts/**"
+      - ".pi/**"
       - "package.json"
+      - ".github/workflows/site-building.yml"
       - ".github/workflows/ci.yml"
   push:
     branches: [main]
     paths:
       - "scripts/**"
+      - ".pi/**"
       - "package.json"
+      - ".github/workflows/site-building.yml"
       - ".github/workflows/ci.yml"
 
 jobs:
@@ -21,10 +25,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.19.0
 
       - name: Install root dependencies
-        run: npm install
+        run: npm ci
 
       - name: Run catalog script tests
         run: npm test

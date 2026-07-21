@@ -50,11 +50,8 @@ jobs:
         working-directory: website
         run: npm ci
 
-      # LLM content generation is a LOCAL-ONLY step.
-      # Generated JSON files are committed to git after human review.
-      # In CI, generate:all is a no-op (hash match) for existing content.
-      # New skills without TOML entries are gracefully skipped — the site
-      # builds with whatever content is already committed.
+      # The site-building worker commits generated content after review.
+      # Deployment only renders committed TOML and JSON; it never invokes Pi.
       - name: Generate content & build
         working-directory: website
         run: npm run build

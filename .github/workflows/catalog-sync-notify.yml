@@ -1,4 +1,4 @@
-name: Catalog Sync Notify
+name: Catalog Merge Follow-up
 
 on:
   pull_request:
@@ -7,39 +7,85 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   merged:
     runs-on: ubuntu-latest
     if: |
       github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.head.ref, 'catalog-sync/')
+      (startsWith(github.event.pull_request.head.ref, 'catalog-sync/') ||
+       startsWith(github.event.pull_request.head.ref, 'catalog-rollback/') ||
+       startsWith(github.event.pull_request.head.ref, 'register-website/'))
+    outputs:
+      plugin: ${{ steps.meta.outputs.plugin }}
+      repo: ${{ steps.meta.outputs.repo }}
+      website_enabled: ${{ steps.website.outputs.enabled }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
 
-      - name: Parse catalog sync branch
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Resolve merged catalog operation
         id: meta
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           set -euo pipefail
-          REST="${HEAD_REF#catalog-sync/}"
-          TAG="v${REST##*-v}"
-          PLUGIN="${REST%-${TAG}}"
-          if [ -z "$PLUGIN" ] || [ -z "$TAG" ]; then
-            echo "Could not parse plugin/tag from $HEAD_REF" >&2
+          KIND=""
+          PLUGIN=""
+          TAG=""
+          case "$HEAD_REF" in
+            catalog-sync/*)
+              KIND="sync"
+              REST="${HEAD_REF#catalog-sync/}"
+              ;;
+            catalog-rollback/*)
+              KIND="rollback"
+              REST="${HEAD_REF#catalog-rollback/}"
+              ;;
+            register-website/*)
+              KIND="registration"
+              PLUGIN="${HEAD_REF#register-website/}"
+              REST=""
+              ;;
+            *)
+              echo "Unsupported branch: $HEAD_REF" >&2
+              exit 1
+              ;;
+          esac
+
+          if [ -n "$REST" ]; then
+            if [[ "$REST" =~ ^(.+)-(v[0-9]+\.[0-9]+\.[0-9]+.*)$ ]]; then
+              PLUGIN="${BASH_REMATCH[1]}"
+              TAG="${BASH_REMATCH[2]}"
+            else
+              echo "Could not parse plugin/tag from $HEAD_REF" >&2
+              exit 1
+            fi
+          fi
+          if [ -z "$PLUGIN" ]; then
+            echo "Could not parse plugin from $HEAD_REF" >&2
             exit 1
           fi
-          echo "plugin=$PLUGIN" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "repo=WeZZard/${PLUGIN}" >> "$GITHUB_OUTPUT"
-          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          REPO=$(jq -r --arg p "$PLUGIN" '.plugins[$p].repo // empty' catalog/website-registry.json)
+          if [ -z "$REPO" ]; then REPO="WeZZard/${PLUGIN}"; fi
+          {
+            echo "kind=$KIND"
+            echo "plugin=$PLUGIN"
+            echo "tag=$TAG"
+            echo "repo=$REPO"
+            echo "pr_url=$PR_URL"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Read lock metadata
+      - name: Read release metadata
         id: lock
+        if: steps.meta.outputs.kind == 'sync'
         run: |
           set -euo pipefail
           PLUGIN="${{ steps.meta.outputs.plugin }}"
@@ -48,7 +94,8 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "release_id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch merged callback
+      - name: Complete plugin release after catalog merge
+        if: steps.meta.outputs.kind == 'sync'
         continue-on-error: true
         env:
           PLUGIN_CALLBACK_TOKEN: ${{ secrets.PLUGIN_CALLBACK_TOKEN }}
@@ -66,3 +113,41 @@ jobs:
             --release_id "${{ steps.lock.outputs.release_id }}" \
             --sha "${{ steps.lock.outputs.sha }}" \
             --pr_url "${{ steps.meta.outputs.pr_url }}"
+
+      - name: Check website registration
+        id: website
+        env:
+          PLUGIN: ${{ steps.meta.outputs.plugin }}
+        run: |
+          if jq -e --arg p "$PLUGIN" '.plugins[$p].website == true' catalog/website-registry.json >/dev/null; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "$PLUGIN is not registered for website generation"
+          fi
+
+  # Keep enqueue create-only and outside the worker concurrency group. GitHub
+  # Actions retains only one pending member of a concurrency group, so putting
+  # merge notifications there could discard an older request.
+  enqueue:
+    needs: merged
+    if: needs.merged.outputs.website_enabled == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Queue website content after merge
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PLUGIN: ${{ needs.merged.outputs.plugin }}
+          PLUGIN_REPO: ${{ needs.merged.outputs.repo }}
+        run: |
+          node scripts/site-building-queue.mjs enqueue \
+            --plugin "$PLUGIN" \
+            --repo "$PLUGIN_REPO"

@@ -41,8 +41,6 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    env:
-      OPENCODE_MODEL: ${{ secrets.OPENCODE_MODEL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -51,17 +49,7 @@ jobs:
           node-version: 22
 
       - name: Install root dependencies
-        run: npm install
-
-      - name: Install website dependencies (for toml via hoisting)
-        working-directory: website
         run: npm ci
-
-      - name: Setup OpenCode
-        uses: ./.github/actions/setup-opencode
-        env:
-          OPENCODE_AUTH_JSON: ${{ secrets.OPENCODE_AUTH_JSON }}
-          OPENCODE_MODEL: ${{ secrets.OPENCODE_MODEL }}
 
       - name: Resolve sync inputs
         id: inputs
@@ -130,9 +118,6 @@ jobs:
           fi
           node scripts/sync-plugin.mjs "${ARGS[@]}"
 
-      - name: Update website JSON
-        run: node scripts/update-plugin-website.mjs --plugin "${{ steps.inputs.outputs.plugin }}"
-
       - name: Update workflow JSON
         run: node scripts/update-plugin-workflow.mjs --plugin "${{ steps.inputs.outputs.plugin }}"
 
@@ -165,10 +150,11 @@ jobs:
             ## Files
             - `.claude-plugin/marketplace.json`
             - `catalog/lock.json`
-            - `website/src/content/generated/**` (registered plugins)
+            - `website/src/content/generated/workflow/**` (registered plugins)
             - `README.md`
 
-            Merge to publish pin + deploy production website.
+            Merge to publish the pin and complete the plugin release. The merge
+            queues a separate website-content pull request when content changed.
 
             A **staging preview** will appear on this PR via the Preview Website workflow
             (`https://pr-<number>.skills-website-staging.pages.dev`).

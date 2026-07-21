@@ -81,5 +81,6 @@ website/screenshots/
 # Session-viewer scan reports (may capture secrets from scanned transcripts; never track)
 apps/session-viewer/reports/
 
+# Legacy local credential export; never commit it even though OpenCode is retired.
 .opencode-auth.json
 .probe-token-impact-runs.json

@@ -10,6 +10,8 @@
     "catalog:readme": "node scripts/generate-readme.mjs",
     "catalog:validate-pins": "node scripts/validate-pins.mjs",
     "catalog:register-website": "node scripts/register-plugin-website.mjs",
+    "site-building:queue": "node scripts/site-building-queue.mjs",
+    "site-building:work": "node scripts/site-building-worker.mjs",
     "secrets:probe": "node scripts/probe-token-impact.mjs"
   },
   "devDependencies": {

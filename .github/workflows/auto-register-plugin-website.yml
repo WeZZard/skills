@@ -1,9 +1,9 @@
 name: Auto Register Plugin Website
 
 # Fills the registration gap: merging a marketplace PR that adds a new plugin
-# automatically dispatches Register Plugin Website for it, which generates the
-# website TOML via the OpenCode agent configured in this repository and opens
-# the PR carrying the artifacts. A plugin whose website-registry entry exists
+# automatically dispatches Register Plugin Website for it. That workflow opens
+# a deterministic registration PR; its merge queues the Pi site-building task.
+# A plugin whose website-registry entry exists
 # (even with website: false) is never dispatched — presence means decided.
 
 on:
