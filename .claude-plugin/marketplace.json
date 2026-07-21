@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.24",
+  "version": "1.0.25",
   "owner": {
     "name": "WeZZard"
   },
@@ -61,8 +61,8 @@
       "source": {
         "source": "github",
         "repo": "WeZZard/cupertino-taste",
-        "ref": "v1.0.0",
-        "sha": "ea3e581f1311e0e9f7642d9976778f0e659de40b"
+        "ref": "v0.2.1",
+        "sha": "9cc0cbb1c16f06ed97e1a81050f4189439c4425c"
       }
     }
   ]
