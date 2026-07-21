@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-21T21:59:33.521Z",
+  "generatedAt": "2026-07-21T23:34:40.182Z",
   "plugins": {
     "amplify": {
       "repo": "WeZZard/amplify",
@@ -43,11 +43,11 @@
     },
     "cupertino-taste": {
       "repo": "WeZZard/cupertino-taste",
-      "tag": "v1.0.0",
-      "sha": "ea3e581f1311e0e9f7642d9976778f0e659de40b",
-      "version": "1.0.0",
-      "releaseId": "820fea4f-1e32-44a9-b92d-b2bf53e71d86",
-      "resolvedAt": "2026-07-21T21:59:33.521Z"
+      "tag": "v0.2.1",
+      "sha": "9cc0cbb1c16f06ed97e1a81050f4189439c4425c",
+      "version": "0.2.1",
+      "releaseId": "3832255f-d259-43fb-9e75-3344ad772eae",
+      "resolvedAt": "2026-07-21T23:34:40.182Z"
     }
   }
 }
