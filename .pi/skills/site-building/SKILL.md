@@ -1,11 +1,18 @@
 ---
 name: site-building
-description: Generates structured website copy for one plugin skill from its SKILL.md source. Use only for the queued skills-website content job.
+description: Generates structured website copy for one published plugin skill from its supplied SKILL.md source. Use only for the queued skills-website content job.
 ---
 
 # Site-Building Content
 
 Generate accurate website copy from the supplied `SKILL.md` content.
+
+## Input contract
+
+- The caller discovers published skills only at the plugin root under `skills/<name>/SKILL.md`.
+- The caller supplies exactly one discovered `SKILL.md` per request.
+- Treat the supplied skill as published. Do not inspect repository paths or classify whether the skill should be published.
+- Repository-only skills under `.agents/skills/` are outside this process and are never supplied.
 
 ## Rules
 

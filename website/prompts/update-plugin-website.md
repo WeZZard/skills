@@ -7,13 +7,19 @@ Unified prompt for bootstrap and release updates.
 - Fetched plugin tree at pinned tag (or local path during transition)
 - `website.plugin.toml`, `website.skills.toml`
 - Existing generated JSON under `website/src/content/generated/`
-- `SKILL.md` file list and hashes
+- Published skill list and hashes, discovered only from plugin-root
+  `skills/<name>/SKILL.md` files
 
 ## Outputs
 
 - `website/src/content/generated/plugins/<name>.json`
 - `website/src/content/generated/skills/<skill>.json`
-- TOML patches when skill set changes (plugin release PR only — not skills catalog PR)
+- TOML patches when the published skill set changes
+
+The script removes entries and plugin-owned generated JSON for skills that are
+no longer present at the plugin root. It ignores `.agents/skills/`, which holds
+repository-only skills. Pi receives one already-discovered published skill and
+does not classify publication.
 
 ## Fast path (CI default)
 
