@@ -1,14 +1,10 @@
 #!/usr/bin/env node
 
-/**
- * CLI wrapper: generate skill website JSON via OpenCode.
- *
- * Usage:
- *   node scripts/opencode-generate-skill.mjs --skill my-skill --skill-md-file path/to/SKILL.md
- */
+/** Generate one skill's website JSON through the repository's bounded Pi runner. */
 
-import { readFileSync } from "fs";
-import { parseArgs } from "util";
+import { readFileSync } from "node:fs";
+import { parseArgs } from "node:util";
+
 import { generateSkillContentWithLlm } from "./lib/website-llm.mjs";
 
 const { values: args } = parseArgs({
@@ -24,8 +20,10 @@ async function main() {
   if (!skill || !skillMdFile) {
     throw new Error("Usage: --skill NAME --skill-md-file PATH");
   }
-  const skillMd = readFileSync(skillMdFile, "utf8");
-  const result = await generateSkillContentWithLlm(skill, skillMd);
+  const result = await generateSkillContentWithLlm(
+    skill,
+    readFileSync(skillMdFile, "utf8"),
+  );
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 

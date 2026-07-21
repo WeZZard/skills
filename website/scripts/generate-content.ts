@@ -1,8 +1,7 @@
 import { createHash } from "crypto";
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, appendFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { execSync } from "child_process";
 import TOML from "toml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -141,114 +140,6 @@ function discoverPlugins(): Array<{ name: string; path: string; skillNames: stri
   return plugins;
 }
 
-// --- AI generation for skill website content ---
-
-/**
- * Generates website content for a skill using OpenCode.
- */
-function generateSkillContent(skillName: string, skillMdPath: string): SkillTomlEntry {
-  const script = join(REPO_ROOT, "scripts/opencode-generate-skill.mjs");
-  const output = execSync(
-    `node "${script}" --skill "${skillName}" --skill-md-file "${skillMdPath}"`,
-    { encoding: "utf-8", cwd: REPO_ROOT },
-  );
-  const result = JSON.parse(output.trim());
-  return {
-    display_name: result.display_name,
-    tagline: result.tagline,
-    short_summary: result.short_summary,
-    full_summary: result.full_summary,
-    highlights: result.highlights,
-    workflow: result.workflow,
-  };
-}
-
-/**
- * Serializes a SkillTomlEntry and appends it to the skills TOML file.
- */
-function appendSkillToToml(skillsTomlPath: string, skillName: string, entry: SkillTomlEntry): void {
-  let block = `\n[skills.${skillName}]\n`;
-  block += `display_name = ${JSON.stringify(entry.display_name)}\n`;
-  block += `tagline = ${JSON.stringify(entry.tagline)}\n`;
-  block += `short_summary = ${JSON.stringify(entry.short_summary)}\n`;
-  block += `full_summary = ${JSON.stringify(entry.full_summary)}\n`;
-
-  for (const highlight of entry.highlights) {
-    block += `\n[[skills.${skillName}.highlights]]\n`;
-    block += `title = ${JSON.stringify(highlight.title)}\n`;
-    block += `description = ${JSON.stringify(highlight.description)}\n`;
-  }
-
-  for (const step of entry.workflow) {
-    block += `\n[[skills.${skillName}.workflow]]\n`;
-    block += `name = ${JSON.stringify(step.name)}\n`;
-    block += `description = ${JSON.stringify(step.description)}\n`;
-    if (step.details) {
-      block += `details = ${JSON.stringify(step.details)}\n`;
-    }
-  }
-
-  appendFileSync(skillsTomlPath, block);
-}
-
-/**
- * Checks for skills that exist on disk but are missing from website.skills.toml,
- * and generates content for them via OpenCode.
- * Returns true if any new content was generated (so the caller can re-read the TOML).
- */
-async function generateMissingSkillContent(
-  plugin: { name: string; path: string; skillNames: string[] },
-  skillsTomlPath: string,
-  skillsToml: SkillsTomlConfig,
-): Promise<boolean> {
-  const missingSkills: string[] = [];
-  for (const skillName of plugin.skillNames) {
-    const entry = skillsToml.skills?.[skillName];
-    if (!entry || !entry.display_name || !entry.tagline || !entry.full_summary) {
-      missingSkills.push(skillName);
-    }
-  }
-
-  if (missingSkills.length === 0) {
-    return false;
-  }
-
-  console.log(`  ⚡ Found ${missingSkills.length} skill(s) missing from website.skills.toml: ${missingSkills.join(", ")}`);
-
-  try {
-    execSync("opencode --version", { stdio: "ignore" });
-  } catch {
-    console.log(
-      "  ℹ OpenCode CLI not available — skipping LLM content generation.\n" +
-      "    Install OpenCode and configure provider auth to generate missing entries.\n" +
-      "    Skills without content will be omitted from the website: " + missingSkills.join(", "),
-    );
-    return false;
-  }
-
-  let generated = false;
-
-  for (const skillName of missingSkills) {
-    const skillMdPath = join(plugin.path, "skills", skillName, "SKILL.md");
-    if (!existsSync(skillMdPath)) {
-      console.error(`  ✗ ${skillName}: SKILL.md not found`);
-      continue;
-    }
-
-    console.log(`  ⟳ ${skillName}: generating content via OpenCode...`);
-    try {
-      const entry = generateSkillContent(skillName, skillMdPath);
-      appendSkillToToml(skillsTomlPath, skillName, entry);
-      console.log(`  ✓ ${skillName}: generated and appended to website.skills.toml`);
-      generated = true;
-    } catch (error) {
-      console.error(`  ✗ ${skillName}: generation failed -`, error);
-    }
-  }
-
-  return generated;
-}
-
 // --- Main ---
 
 async function main() {
@@ -277,21 +168,7 @@ async function main() {
       console.log(`  ℹ Created empty ${skillsTomlPath}`);
     }
 
-    // --- Generate missing skill content (any plugin) via DeepSeek ---
-    {
-      const earlyTomlRaw = readFileSync(skillsTomlPath, "utf-8");
-      const earlyToml = TOML.parse(earlyTomlRaw) as unknown as SkillsTomlConfig;
-      if (!earlyToml.skills) {
-        (earlyToml as any).skills = {};
-      }
-
-      const didGenerate = await generateMissingSkillContent(plugin, skillsTomlPath, earlyToml);
-      if (didGenerate) {
-        console.log(`  ℹ Re-reading website.skills.toml after generation...`);
-      }
-    }
-
-    // --- Read TOML (may have been updated by generation above) ---
+    // --- Read committed TOML. LLM generation runs only in the site-building queue. ---
     const pluginTomlRaw = readFileSync(pluginTomlPath, "utf-8");
     const skillsTomlRaw = readFileSync(skillsTomlPath, "utf-8");
     const pluginToml = TOML.parse(pluginTomlRaw) as unknown as PluginTomlConfig;

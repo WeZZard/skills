@@ -75,10 +75,10 @@ function resolvePluginPath(pluginName) {
 
 
 // Resolve one skill's TOML entry.
-//   entry absent                          → generate via OpenCode, stamp hashes
+//   entry absent                          → generate via Pi, stamp hashes
 //   entry hand-edited (content drifted)   → preserve; warn when SKILL.md moved
 //   machine entry, SKILL.md unchanged     → keep as-is (zero diff)
-//   machine entry, SKILL.md drifted       → regenerate via OpenCode, restamp
+//   machine entry, SKILL.md drifted       → regenerate via Pi, restamp
 async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
   const skillMdPath = join(pluginPath, "skills", skillName, "SKILL.md");
   const skillMdContent = readFileSync(skillMdPath, "utf8");
@@ -101,26 +101,19 @@ async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
       return { entry: existing, changed: false };
     }
     console.warn(
-      `Skill ${skillName}: SKILL.md changed — regenerating the entry via OpenCode`,
+      `Skill ${skillName}: SKILL.md changed — regenerating the entry via Pi`,
     );
   }
 
   if (!isWebsiteLlmAvailable()) {
-    if (skillTomlHasBasics(existing)) {
-      console.warn(
-        `Skill ${skillName}: OpenCode unavailable — keeping the stale entry`,
-      );
-      return { entry: existing, changed: false };
-    }
-    console.warn(
-      `Skipping ${skillName}: no TOML entry and OpenCode unavailable (install OpenCode + provider auth)`,
+    throw new Error(
+      `Pi CLI is required to generate website content for ${skillName}`,
     );
-    return { entry: null, changed: false };
   }
 
   if (!skillTomlHasBasics(existing)) {
     console.warn(
-      `Skill ${skillName}: missing skills TOML entry — generating from SKILL.md via OpenCode`,
+      `Skill ${skillName}: missing skills TOML entry — generating from SKILL.md via Pi`,
     );
   }
   const generated = canonicalSkillContent(
@@ -145,7 +138,7 @@ function titleCaseName(name) {
 // the catalog copy wins; a legacy copy inside the plugin repo is the
 // fallback; and when neither exists the content is synthesized (plugin
 // level: from the marketplace entry, deterministically; skill level: from
-// SKILL.md via the OpenCode agent configured in CI). Whatever was resolved
+// SKILL.md via the bounded Pi agent in the site-building worker). Whatever was resolved
 // from outside the catalog is persisted INTO the catalog, so the
 // registration PR carries reviewable TOML and later runs are deterministic.
 function resolvePluginToml(pluginName, pluginPath, marketplaceEntry) {
@@ -357,5 +350,5 @@ async function main() {
 
 main().catch((error) => {
   console.error(error.message ?? error);
-  process.exit(1);
+  process.exit(error?.name === "SiteBuildingWindowError" ? 75 : 1);
 });

@@ -1,0 +1,71 @@
+name: Site Building
+
+on:
+  schedule:
+    - cron: "17 0-7,12,18-23 * * *"
+      timezone: "Asia/Taipei"
+  workflow_dispatch:
+    inputs:
+      reset_issue:
+        description: "Blocked issue number to reset before processing (optional)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  reset:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.reset_issue != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+
+      - name: Reset blocked task
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RESET_ISSUE: ${{ github.event.inputs.reset_issue }}
+        run: node scripts/site-building-queue.mjs reset --issue "$RESET_ISSUE"
+
+  build:
+    needs: reset
+    if: always() && (needs.reset.result == 'success' || needs.reset.result == 'skipped')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: site-building-worker
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.CATALOG_SYNC_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+
+      - name: Install repository dependencies
+        run: npm ci
+
+      - name: Install pinned Pi
+        run: npm install --global @earendil-works/pi-coding-agent@0.81.1
+
+      - name: Run queued site-building tasks
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CATALOG_SYNC_TOKEN }}
+          PI_CODING_AGENT_DIR: ${{ runner.temp }}/pi-agent
+          PI_SKIP_VERSION_CHECK: "1"
+          PI_TELEMETRY: "0"
+        run: node scripts/site-building-worker.mjs

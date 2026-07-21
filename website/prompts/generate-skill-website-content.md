@@ -1,4 +1,4 @@
-# Generate skill website content (OpenCode)
+# Generate skill website content (Pi)
 
 Generate website marketing content for a Claude Code plugin skill from its `SKILL.md`.
 
