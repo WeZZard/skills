@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "fs";
+import { join, resolve } from "path";
+import { fileURLToPath } from "url";
 import {
   cleanupDir,
   discoverPluginSkills,
@@ -14,7 +22,6 @@ import {
   normalizeLocalSource,
   parseArgs,
   shallowClone,
-  writeJson,
   writeJsonIfChanged,
   CATALOG_WEBSITE_DIR,
   PLUGINS_OUTPUT_DIR,
@@ -35,9 +42,7 @@ import {
 } from "./lib/website-content.mjs";
 import TOML from "toml";
 
-const args = parseArgs(process.argv.slice(2));
-
-function requireArg(name) {
+function requireArg(args, name) {
   const value = args[name];
   if (!value) {
     throw new Error(`Missing required argument: --${name}`);
@@ -79,7 +84,15 @@ function resolvePluginPath(pluginName) {
 //   entry hand-edited (content drifted)   → preserve; warn when SKILL.md moved
 //   machine entry, SKILL.md unchanged     → keep as-is (zero diff)
 //   machine entry, SKILL.md drifted       → regenerate via Pi, restamp
-async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
+async function resolveSkillEntry(
+  skillName,
+  pluginPath,
+  skillsToml,
+  {
+    isLlmAvailable = isWebsiteLlmAvailable,
+    generateSkillContent = generateSkillContentWithLlm,
+  } = {},
+) {
   const skillMdPath = join(pluginPath, "skills", skillName, "SKILL.md");
   const skillMdContent = readFileSync(skillMdPath, "utf8");
   const sourceHash = computeHash(skillMdContent);
@@ -105,7 +118,7 @@ async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
     );
   }
 
-  if (!isWebsiteLlmAvailable()) {
+  if (!isLlmAvailable()) {
     throw new Error(
       `Pi CLI is required to generate website content for ${skillName}`,
     );
@@ -117,7 +130,7 @@ async function resolveSkillEntry(skillName, pluginPath, skillsToml) {
     );
   }
   const generated = canonicalSkillContent(
-    await generateSkillContentWithLlm(skillName, skillMdContent),
+    await generateSkillContent(skillName, skillMdContent),
   );
   const entry = {
     ...generated,
@@ -141,8 +154,13 @@ function titleCaseName(name) {
 // SKILL.md via the bounded Pi agent in the site-building worker). Whatever was resolved
 // from outside the catalog is persisted INTO the catalog, so the
 // registration PR carries reviewable TOML and later runs are deterministic.
-function resolvePluginToml(pluginName, pluginPath, marketplaceEntry) {
-  const catalogPath = join(CATALOG_WEBSITE_DIR, `${pluginName}.plugin.toml`);
+function resolvePluginToml(
+  pluginName,
+  pluginPath,
+  marketplaceEntry,
+  catalogWebsiteDir,
+) {
+  const catalogPath = join(catalogWebsiteDir, `${pluginName}.plugin.toml`);
   const repo = isRemoteGitSource(marketplaceEntry.source)
     ? getRemotePluginRepo(marketplaceEntry.source)
     : undefined;
@@ -169,7 +187,7 @@ function resolvePluginToml(pluginName, pluginPath, marketplaceEntry) {
 
   const persist = (pluginToml) => {
     const pluginTomlRaw = emitPluginToml(pluginToml);
-    mkdirSync(CATALOG_WEBSITE_DIR, { recursive: true });
+    mkdirSync(catalogWebsiteDir, { recursive: true });
     writeFileSync(catalogPath, pluginTomlRaw);
     console.log(`Wrote ${catalogPath}`);
     return { pluginToml, pluginTomlRaw };
@@ -207,16 +225,59 @@ function resolvePluginToml(pluginName, pluginPath, marketplaceEntry) {
   return persist(synthesize());
 }
 
-async function generatePluginJson(pluginName, pluginPath, marketplace) {
+function removeUnpublishedSkillJson(
+  pluginName,
+  publishedSkillNames,
+  skillsOutputDir,
+) {
+  if (!existsSync(skillsOutputDir)) return [];
+
+  const published = new Set(publishedSkillNames);
+  const removed = [];
+  for (const entry of readdirSync(skillsOutputDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    const skillName = entry.name.slice(0, -".json".length);
+    if (published.has(skillName)) continue;
+
+    const outputPath = join(skillsOutputDir, entry.name);
+    let output;
+    try {
+      output = JSON.parse(readFileSync(outputPath, "utf8"));
+    } catch {
+      // An unreadable file cannot prove ownership. Preserve it for review.
+      continue;
+    }
+    if (output?.skill?.pluginName !== pluginName) continue;
+
+    rmSync(outputPath);
+    removed.push(skillName);
+    console.log(`Removed unpublished website skill ${outputPath}`);
+  }
+  return removed.sort();
+}
+
+export async function generatePluginJson(
+  pluginName,
+  pluginPath,
+  marketplace,
+  {
+    catalogWebsiteDir = CATALOG_WEBSITE_DIR,
+    pluginsOutputDir = PLUGINS_OUTPUT_DIR,
+    skillsOutputDir = SKILLS_OUTPUT_DIR,
+    isLlmAvailable = isWebsiteLlmAvailable,
+    generateSkillContent = generateSkillContentWithLlm,
+  } = {},
+) {
   const marketplaceEntry = findMarketplacePlugin(marketplace, pluginName);
   const { pluginToml, pluginTomlRaw } = resolvePluginToml(
     pluginName,
     pluginPath,
     marketplaceEntry,
+    catalogWebsiteDir,
   );
 
   const catalogSkillsPath = join(
-    CATALOG_WEBSITE_DIR,
+    catalogWebsiteDir,
     `${pluginName}.skills.toml`,
   );
   const legacySkillsPath = join(pluginPath, "website.skills.toml");
@@ -228,6 +289,10 @@ async function generatePluginJson(pluginName, pluginPath, marketplace) {
     skillsToml = TOML.parse(readFileSync(legacySkillsPath, "utf8"));
   }
   const skillNames = discoverPluginSkills(pluginPath);
+  const publishedSkills = new Set(skillNames);
+  const removedTomlSkills = Object.keys(skillsToml.skills ?? {})
+    .filter((skillName) => !publishedSkills.has(skillName))
+    .sort();
 
   const ownerName = marketplace.owner.name;
   const marketplaceCommand = `/plugin marketplace add ${ownerName.toLowerCase()}/skills`;
@@ -249,7 +314,7 @@ async function generatePluginJson(pluginName, pluginPath, marketplace) {
   };
 
   let wroteAnything = writeJsonIfChanged(
-    join(PLUGINS_OUTPUT_DIR, `${pluginName}.json`),
+    join(pluginsOutputDir, `${pluginName}.json`),
     pluginOutput,
   );
 
@@ -260,6 +325,7 @@ async function generatePluginJson(pluginName, pluginPath, marketplace) {
       skillName,
       pluginPath,
       skillsToml,
+      { isLlmAvailable, generateSkillContent },
     );
     if (!skillEntry?.display_name) {
       console.warn(`Skipping ${skillName}: no website content available`);
@@ -286,25 +352,41 @@ async function generatePluginJson(pluginName, pluginPath, marketplace) {
     };
 
     if (
-      writeJsonIfChanged(join(SKILLS_OUTPUT_DIR, `${skillName}.json`), skillOutput)
+      writeJsonIfChanged(join(skillsOutputDir, `${skillName}.json`), skillOutput)
     ) {
       wroteAnything = true;
     }
   }
 
   const haveSkillContent = Object.keys(resolvedSkills).length > 0;
-  if (haveSkillContent && (!skillsFromCatalog || anyEntryChanged)) {
-    mkdirSync(CATALOG_WEBSITE_DIR, { recursive: true });
+  const shouldPersistSkills = skillsFromCatalog
+    ? anyEntryChanged || removedTomlSkills.length > 0
+    : haveSkillContent;
+  if (shouldPersistSkills) {
+    mkdirSync(catalogWebsiteDir, { recursive: true });
     writeFileSync(catalogSkillsPath, emitSkillsToml(resolvedSkills));
     console.log(`Wrote ${catalogSkillsPath}`);
     wroteAnything = true;
   }
 
-  return { skillCount: skillNames.length, wroteAnything };
+  const removedSkillJson = removeUnpublishedSkillJson(
+    pluginName,
+    skillNames,
+    skillsOutputDir,
+  );
+  if (removedSkillJson.length > 0) wroteAnything = true;
+
+  return {
+    skillCount: skillNames.length,
+    wroteAnything,
+    removedTomlSkills,
+    removedSkillJson,
+  };
 }
 
-async function main() {
-  const pluginName = requireArg("plugin");
+async function main(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
+  const pluginName = requireArg(args, "plugin");
   const marketplace = loadMarketplace();
   const resolved = resolvePluginPath(pluginName);
 
@@ -348,7 +430,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error.message ?? error);
-  process.exit(error?.name === "SiteBuildingWindowError" ? 75 : 1);
-});
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  main().catch((error) => {
+    console.error(error.message ?? error);
+    process.exit(error?.name === "SiteBuildingWindowError" ? 75 : 1);
+  });
+}

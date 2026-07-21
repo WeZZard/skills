@@ -1,6 +1,11 @@
 # Generate skill website content (Pi)
 
-Generate website marketing content for a Claude Code plugin skill from its `SKILL.md`.
+Generate website content for one published Claude Code plugin skill from the supplied `SKILL.md`.
+
+The caller discovers published skills only at the plugin root under
+`skills/<name>/SKILL.md`. It supplies exactly one discovered file per request.
+Treat that input as published. Do not inspect repository paths or classify
+publication. The caller excludes repository-only skills under `.agents/skills/`.
 
 ## Output
 
