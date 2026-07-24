@@ -23,6 +23,7 @@ All marketplace plugins are standalone repos pinned via **`github`** in `.claude
 | skill-kit | [WeZZard/skill-kit](https://github.com/WeZZard/skill-kit) |
 | attune | [WeZZard/attune](https://github.com/WeZZard/attune) |
 | cupertino-taste | [WeZZard/cupertino-taste](https://github.com/WeZZard/cupertino-taste) |
+| workflows | [WeZZard/workflows](https://github.com/WeZZard/workflows) |
 
 ## Catalog scripts
 

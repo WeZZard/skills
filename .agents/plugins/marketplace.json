@@ -8,6 +8,14 @@
         "source": "url",
         "url": "https://github.com/WeZZard/attune.git"
       }
+    },
+    {
+      "name": "workflows",
+      "description": "Run shared WeZZard workflows from local coding agents without copying workflow infrastructure into each repository.",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/WeZZard/workflows.git"
+      }
     }
   ]
 }

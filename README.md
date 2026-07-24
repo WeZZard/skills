@@ -23,6 +23,7 @@ Install the plugins
 /plugin install attune@wezzard-skills # Attune
 /plugin install dispatch@wezzard-skills # Dispatch
 /plugin install cupertino-taste@wezzard-skills # Cupertino-Taste
+/plugin install workflows@wezzard-skills # Workflows
 ```
 
 ## Claude Code Plugins
@@ -57,11 +58,15 @@ Inject your standing guidelines into every session: communication style, externa
 
 ### dispatch
 
-Delegate tasks to external agent CLIs through one router and one brief contract: probed facts, write isolation, a multi-model audit panel, and concurrent image generation with failure memory
+Delegate tasks to external agent CLIs through one router and one brief contract — probed facts before use, write isolation through worktrees, a multi-model audit panel, and concurrent image generation with failure memory.
 
 ### cupertino-taste
 
 Distilled by WeZZard in China, Assembled from WWDC.
+
+### workflows
+
+Run shared WeZZard workflows from local coding agents without copying workflow infrastructure into each repository.
 
 ## License
 
