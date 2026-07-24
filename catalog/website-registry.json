@@ -24,6 +24,10 @@
     "dispatch": {
       "website": true,
       "repo": "WeZZard/dispatch"
+    },
+    "workflows": {
+      "website": false,
+      "repo": "WeZZard/workflows"
     }
   }
 }

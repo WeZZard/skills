@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "owner": {
     "name": "WeZZard"
   },
@@ -63,6 +63,16 @@
         "repo": "WeZZard/cupertino-taste",
         "ref": "v0.2.1",
         "sha": "9cc0cbb1c16f06ed97e1a81050f4189439c4425c"
+      }
+    },
+    {
+      "name": "workflows",
+      "description": "Run shared WeZZard workflows from local coding agents without copying workflow infrastructure into each repository.",
+      "source": {
+        "source": "github",
+        "repo": "WeZZard/workflows",
+        "ref": "v2.1.0",
+        "sha": "25b53b65689ceada200dfae8eaf3220b710e0798"
       }
     }
   ]
