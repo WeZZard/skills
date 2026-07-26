@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.30",
+  "version": "1.0.32",
   "owner": {
     "name": "WeZZard"
   },
@@ -81,8 +81,8 @@
       "source": {
         "source": "github",
         "repo": "WeZZard/pi-x-articles",
-        "ref": "v0.1.0",
-        "sha": "3fd55ca0a0b39f0a20f0bcd541549d8534b058c3"
+        "ref": "v0.1.1",
+        "sha": "6a29ce37f030f4ec4661148ee2cb527743ebfaac"
       }
     }
   ]
