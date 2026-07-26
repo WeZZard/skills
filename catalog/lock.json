@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-26T03:24:39.447Z",
+  "generatedAt": "2026-07-26T05:12:45.474Z",
   "plugins": {
     "amplify": {
       "repo": "WeZZard/amplify",
@@ -59,11 +59,11 @@
     },
     "x-articles": {
       "repo": "WeZZard/pi-x-articles",
-      "tag": "v0.1.1",
-      "sha": "6a29ce37f030f4ec4661148ee2cb527743ebfaac",
-      "version": "0.1.1",
+      "tag": "v0.1.2",
+      "sha": "3089df7a741e28998c436fe1e198604c7e1834e8",
+      "version": "0.1.2",
       "releaseId": null,
-      "resolvedAt": "2026-07-26T03:24:39.447Z"
+      "resolvedAt": "2026-07-26T05:12:45.474Z"
     }
   }
 }
