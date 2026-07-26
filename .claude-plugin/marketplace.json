@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.28",
+  "version": "1.0.30",
   "owner": {
     "name": "WeZZard"
   },
@@ -73,6 +73,16 @@
         "repo": "WeZZard/workflows",
         "ref": "v2.1.0",
         "sha": "25b53b65689ceada200dfae8eaf3220b710e0798"
+      }
+    },
+    {
+      "name": "x-articles",
+      "description": "Publish Markdown files as X Articles via XMCP and the official X API v2 Articles endpoints — deterministic conversion, image upload, draft-then-publish with a human checkpoint.",
+      "source": {
+        "source": "github",
+        "repo": "WeZZard/pi-x-articles",
+        "ref": "v0.1.0",
+        "sha": "3fd55ca0a0b39f0a20f0bcd541549d8534b058c3"
       }
     }
   ]

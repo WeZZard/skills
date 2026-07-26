@@ -24,6 +24,7 @@ Install the plugins
 /plugin install dispatch@wezzard-skills # Dispatch
 /plugin install cupertino-taste@wezzard-skills # Cupertino-Taste
 /plugin install workflows@wezzard-skills # Workflows
+/plugin install x-articles@wezzard-skills # X-Articles
 ```
 
 ## Claude Code Plugins
@@ -67,6 +68,10 @@ Distilled by WeZZard in China, Assembled from WWDC.
 ### workflows
 
 Run shared WeZZard workflows from local coding agents without copying workflow infrastructure into each repository.
+
+### x-articles
+
+Publish Markdown files as X Articles via XMCP and the official X API v2 Articles endpoints — deterministic conversion, image upload, draft-then-publish with a human checkpoint.
 
 ## License
 
