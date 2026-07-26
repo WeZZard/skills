@@ -28,6 +28,10 @@
     "workflows": {
       "website": false,
       "repo": "WeZZard/workflows"
+    },
+    "x-articles": {
+      "website": true,
+      "repo": "WeZZard/pi-x-articles"
     }
   }
 }
