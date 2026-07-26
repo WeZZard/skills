@@ -1,0 +1,59 @@
+{
+  "sourceHash": "fd081d0296ee555f",
+  "generatedAt": "2026-07-26T14:46:16.022Z",
+  "skill": {
+    "name": "x-articles",
+    "displayName": "Publish X Articles",
+    "pluginName": "x-articles",
+    "tagline": "Publish Markdown documents as long-form X Articles using the official X API",
+    "shortSummary": "Convert Markdown files to X (Twitter) Articles, upload images, and publish through XMCP.",
+    "fullSummary": "This skill turns a Markdown file into a published X Article (long-form post) using the official X API v2 Articles endpoints. It deterministically converts Markdown to content_state, uploads images, creates a draft, and only publishes after your explicit approval. A built-in sensitive-information scanner keeps credentials and personal data safe before any content reaches X’s servers.",
+    "highlights": [
+      {
+        "title": "Sensitive data protection",
+        "description": "A deterministic scanner detects credentials, financial figures, and personal data in text and images, ensuring nothing sensitive leaves your machine before you approve or redact it."
+      },
+      {
+        "title": "Deterministic Markdown conversion",
+        "description": "A script converts Markdown to X’s native content_state format, supporting headings, lists, code blocks, tables, links, and embedded posts—with all content degradations reported upfront."
+      },
+      {
+        "title": "Image upload with media mapping",
+        "description": "Images are uploaded via XMCP’s chunked upload API and re‑mapped into the draft; cover images are supported. Remote images are also downloaded and re‑uploaded."
+      },
+      {
+        "title": "Draft-first, publish‑later",
+        "description": "Articles are created as drafts only, giving you full review in the X composer before you decide to publish. There is no update; regenerating creates a new draft."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Pre‑flight sensitive scan",
+          "description": "Scan text and images for credentials, financial data, and personal info before any API call.",
+          "details": "Run a deterministic scanner on the Markdown file and every referenced image. Show all findings and wait for your decision before proceeding."
+        },
+        {
+          "name": "Convert Markdown to X draft",
+          "description": "Run the Markdown‑to‑content‑state converter; review reported degradations.",
+          "details": "Convert headings, bold/italic, links, code blocks, tables, and images. Flattened nested lists, dropped HTML blocks, or heading clamping are surfaced as warnings—never silently lost."
+        },
+        {
+          "name": "Upload images",
+          "description": "Upload each required image via chunked media upload; build the media map.",
+          "details": "For each image source, initialize, append, and finalize the upload using XMCP tools, then re‑run the converter with the media map, so `media_id`s are embedded correctly."
+        },
+        {
+          "name": "Create X Article draft",
+          "description": "Submit the draft via `articleCreateDraft`; review in the X composer.",
+          "details": "Post the title and content_state (optionally with a cover image). Receive the article ID and editor URL. The draft remains private and can be discarded at any time."
+        },
+        {
+          "name": "Publish on explicit approval",
+          "description": "Call `articlePublish` only after you say “publish”.",
+          "details": "Publishing is irreversible. Once you confirm, the API publishes the draft and returns the post ID and public URL for the published Article."
+        }
+      ]
+    }
+  }
+}
