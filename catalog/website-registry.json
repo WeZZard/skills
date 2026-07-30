@@ -32,6 +32,10 @@
     "x-articles": {
       "website": true,
       "repo": "WeZZard/pi-x-articles"
+    },
+    "additive": {
+      "website": false,
+      "repo": "WeZZard/additive"
     }
   }
 }
