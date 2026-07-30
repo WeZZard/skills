@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-30T05:22:38.591Z",
+  "generatedAt": "2026-07-30T05:56:40.084Z",
   "plugins": {
     "amplify": {
       "repo": "WeZZard/amplify",
@@ -64,6 +64,14 @@
       "version": "0.1.2",
       "releaseId": null,
       "resolvedAt": "2026-07-26T05:12:45.474Z"
+    },
+    "additive": {
+      "repo": "WeZZard/additive",
+      "tag": "v0.1.0",
+      "sha": "75d002269b2e6f396e76bec04c1e284e85491017",
+      "version": "0.1.0",
+      "releaseId": null,
+      "resolvedAt": "2026-07-30T05:56:40.084Z"
     }
   }
 }

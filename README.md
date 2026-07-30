@@ -25,6 +25,7 @@ Install the plugins
 /plugin install cupertino-taste@wezzard-skills # Cupertino-Taste
 /plugin install workflows@wezzard-skills # Workflows
 /plugin install x-articles@wezzard-skills # X-Articles
+/plugin install additive@wezzard-skills # Additive
 ```
 
 ## Claude Code Plugins
@@ -72,6 +73,10 @@ Run shared WeZZard workflows from local coding agents without copying workflow i
 ### x-articles
 
 Publish Markdown files as X Articles via XMCP and the official X API v2 Articles endpoints — deterministic conversion, image upload, draft-then-publish with a human checkpoint.
+
+### additive
+
+Additive agentic engineering — make each increment leave the system more verifiable than it found it. Design documents settle before code is written, transient ADRs fold into code comments and are deleted, and the permanent corpus is checked against the implementation rather than against prose style. Also carries the standing communication guidelines, selected by platform, model, and reply language.
 
 ## License
 
