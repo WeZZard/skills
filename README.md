@@ -76,7 +76,7 @@ Publish Markdown files as X Articles via XMCP and the official X API v2 Articles
 
 ### additive
 
-Additive agentic engineering — make each increment leave the system more verifiable than it found it. Design documents settle before code is written, transient ADRs fold into code comments and are deleted, and the permanent corpus is checked against the implementation rather than against prose style. Also carries the standing communication guidelines, selected by platform, model, and reply language.
+Additive agentic engineering — make each increment leave the system more verifiable than it found it. Design documents settle before code is written, architecture decisions live permanently in docs/adrs/ and are superseded rather than edited, and the permanent corpus is checked against the implementation rather than against prose style. Also carries the standing communication guidelines, selected by platform, model, and reply language.
 
 ## License
 
