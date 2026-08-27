@@ -56,7 +56,7 @@ Tools for auditing and improving Claude Code skill definitions. Run `/skill-kit:
 
 ### attune
 
-Inject your standing guidelines into every session: communication style, external agent routing, end-to-end verification
+George Orwell's rules on writing well, injected into every session so they govern replies and documents alike, plus two user-invoked skills: explore drives a design discussion, experiment settles a question by blind comparison.
 
 ### dispatch
 
