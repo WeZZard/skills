@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.39",
+  "version": "1.0.40",
   "owner": {
     "name": "WeZZard"
   },
@@ -37,12 +37,12 @@
     },
     {
       "name": "attune",
-      "description": "Inject your standing guidelines into every session: communication style, external agent routing, end-to-end verification",
+      "description": "George Orwell's rules on writing well, injected into every session so they govern replies and documents alike, plus two user-invoked skills: explore drives a design discussion, experiment settles a question by blind comparison.",
       "source": {
         "source": "github",
         "repo": "WeZZard/attune",
-        "ref": "v0.13.0",
-        "sha": "e5d8f91f69965593f54e769568d9dd27e0851264"
+        "ref": "v0.14.0",
+        "sha": "bc74dfe832c3ede48817af1e72faa065d9f35e39"
       }
     },
     {
