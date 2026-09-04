@@ -3,7 +3,7 @@
   "plugins": [
     {
       "name": "attune",
-      "description": "Inject your standing guidelines into every session: communication style, external agent routing, end-to-end verification",
+      "description": "George Orwell's rules on writing well, injected at session start to govern every reply and every document the agent writes, plus two user-invoked skills for the questions a discussion turns on: explore drives the design conversation and brings the user only what only they can settle; experiment settles by blind comparison.",
       "source": {
         "source": "url",
         "url": "https://github.com/WeZZard/attune.git"
