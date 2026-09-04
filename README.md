@@ -56,7 +56,7 @@ Tools for auditing and improving Claude Code skill definitions. Run `/skill-kit:
 
 ### attune
 
-George Orwell's rules on writing well, injected into every session so they govern replies and documents alike, plus two user-invoked skills: explore drives a design discussion, experiment settles a question by blind comparison.
+George Orwell's rules on writing well, injected at session start to govern every reply and every document the agent writes, plus two user-invoked skills for the questions a discussion turns on: explore drives the design conversation and brings the user only what only they can settle; experiment settles by blind comparison.
 
 ### dispatch
 
