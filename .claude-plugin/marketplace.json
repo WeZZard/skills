@@ -1,6 +1,6 @@
 {
   "name": "wezzard-skills",
-  "version": "1.0.41",
+  "version": "1.0.42",
   "owner": {
     "name": "WeZZard"
   },
@@ -41,8 +41,8 @@
       "source": {
         "source": "github",
         "repo": "WeZZard/attune",
-        "ref": "v0.15.0",
-        "sha": "070971e3482c868fd2c2c8db98782c7e18e7e05e"
+        "ref": "v0.16.0",
+        "sha": "5222554787bfaf559d5e8931cec428ee43222783"
       }
     },
     {
