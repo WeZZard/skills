@@ -1,15 +1,17 @@
 {
-  "sourceHash": "3a780e8f457f70ea",
-  "generatedAt": "2026-09-04T14:26:09.866Z",
+  "sourceHash": "012672a61ef0f58c",
+  "generatedAt": "2026-09-05T11:21:44.469Z",
   "plugin": {
     "name": "attune",
     "displayName": "Attune",
-    "tagline": "Inject your standing guidelines into every session: communication style, external agent routing, end-to-end verification",
+    "tagline": "George Orwell's rules on writing well, injected at session start to govern every reply and every document the agent writes, plus two user-invoked skills for the questions a discussion turns on: explore drives the design conversation and brings the user only what only they can settle; experiment settles by blind comparison.",
     "repo": "WeZZard/attune",
-    "skillCount": 2,
+    "skillCount": 4,
     "skills": [
       "experiment",
-      "explore"
+      "explore",
+      "fix-issues",
+      "review-doc"
     ],
     "marketplaceCommand": "/plugin marketplace add wezzard/skills",
     "installCommand": "/plugin install attune@wezzard-skills"

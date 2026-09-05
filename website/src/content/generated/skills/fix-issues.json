@@ -1,0 +1,59 @@
+{
+  "sourceHash": "8d82020b5fcad8fe",
+  "generatedAt": "2026-09-05T11:22:22.869Z",
+  "skill": {
+    "name": "fix-issues",
+    "displayName": "Fix Issues",
+    "pluginName": "attune",
+    "tagline": "Apply review fixes mechanically and route judgment calls to the user.",
+    "shortSummary": "Applies mechanical findings from a review, asks the user to rule on judgment findings, and records every outcome in the review.",
+    "fullSummary": "Fix Issues takes a review produced by the attune review-doc skill and resolves every pending finding. It applies mechanical fixes through exact quote replacement, groups overlapping judgment findings for the user to rule on with AskUserQuestion, and marks stale findings. The skill writes each outcome back into the review and reports final counts and rulings.",
+    "highlights": [
+      {
+        "title": "Mechanical Fixes Stay Precise",
+        "description": "Mechanical findings are applied by exact match against the quoted text, without touching anything outside the quote."
+      },
+      {
+        "title": "Judgment Calls Go to the User",
+        "description": "Judgment findings are asked in batches through AskUserQuestion, ordered by severity, with each proposed fix and a Keep as it is option."
+      },
+      {
+        "title": "Findings Are Sorted First",
+        "description": "Overlapping findings are grouped, ambiguous mechanical fixes are reclassified toward judgment, and stale findings are marked when their quote no longer appears."
+      },
+      {
+        "title": "Every Outcome Is Recorded",
+        "description": "Each finding's Outcome is set to fixed, kept, changed, superseded, or stale; the review's Outcomes line is rewritten and the counts and rulings are reported."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Resolve the Review",
+          "description": "Confirm the review path from $ARGUMENTS.",
+          "details": "Stop and ask if empty; otherwise use the existing path, the .reviews/ file, or the newest matching review."
+        },
+        {
+          "name": "Read and Sort Findings",
+          "description": "Read the review and source, skip non-pending findings, and sort them.",
+          "details": "Group overlapping quotes, reclassify only toward judgment, and mark stale when a quote no longer appears."
+        },
+        {
+          "name": "Apply Mechanical Findings",
+          "description": "Replace each exact quote with its fix.",
+          "details": "Touch nothing outside the quoted text; do not alter the finding's wording."
+        },
+        {
+          "name": "Ask Judgment Findings",
+          "description": "Ask via AskUserQuestion in batches of four, ordered by severity.",
+          "details": "Put the finding id in the header; include quote, issue, and proposed fix; offer Apply the proposed fix and Keep as it is."
+        },
+        {
+          "name": "Record and Report Outcomes",
+          "description": "Set every handled finding's Outcome and rewrite the Outcomes line.",
+          "details": "Use fixed, kept, changed, superseded, or stale; report counts and every ruling with the review path."
+        }
+      ]
+    }
+  }
+}

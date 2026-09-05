@@ -1,0 +1,59 @@
+{
+  "sourceHash": "047396638f26d094",
+  "generatedAt": "2026-09-05T11:22:52.909Z",
+  "skill": {
+    "name": "review-doc",
+    "displayName": "Document Review",
+    "pluginName": "attune",
+    "tagline": "Blind expert review, section by section, with a whole-document editor",
+    "shortSummary": "Splits a document into sections and runs blind expert reviews plus a senior editor pass, writing findings to .reviews/.",
+    "fullSummary": "Review-doc orchestrates a full review by splitting a document at its own headings, briefing one blind expert per section with the section's 5W1H, and running all experts in parallel alongside a senior editor that reviews the whole document. Each expert sees only its own section and brief, keeping reviews independent. Findings are written to a timestamped .reviews/ file with exact quotes, issues, fixes, kinds, severities, and pending outcomes.",
+    "highlights": [
+      {
+        "title": "Blind section experts",
+        "description": "One expert per section sees only its section and a 5W1H brief, so no section review leaks context from the rest of the document."
+      },
+      {
+        "title": "Whole-document senior editor",
+        "description": "A separate editor reviews order, repetition, contradictions, missing sections, and whether the opening promise is delivered."
+      },
+      {
+        "title": "Structured findings file",
+        "description": "Findings are written to .reviews/ with exact quotes, issue, fix, kind, severity, and pending outcome for later triage."
+      },
+      {
+        "title": "Faithful workflow fallback",
+        "description": "When the Workflow tool is absent, the same prompts run as background Fable agent calls per section plus the whole document."
+      }
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "name": "Resolve the document",
+          "description": "Ask for a file if none is supplied and resolve the path.",
+          "details": "Stops on empty argument, uses paths as given, searches bare names from project root via git ls-files or find, and puts multiple matches to the user."
+        },
+        {
+          "name": "Split the document",
+          "description": "Read the full document and split at its headings.",
+          "details": "Merge fragments shorter than a paragraph, record each section's title and line range, and merge smallest neighboring sections when the count exceeds the session workflow guideline."
+        },
+        {
+          "name": "Brief each section",
+          "description": "Write Who, What, When, Where, Why, How, and the required expert.",
+          "details": "Describe audience, claims, reader position, file path/lines, purpose, form and evidence, then choose a technical editor, domain specialist, or both."
+        },
+        {
+          "name": "Run the experts",
+          "description": "Call the Workflow tool with the pinned script and section briefs.",
+          "details": "One blind Fable expert per section plus a whole-document senior editor run in parallel; fall back to background agent calls when the Workflow tool is absent, and wait for completion."
+        },
+        {
+          "name": "Write the review",
+          "description": "Stamp and write findings to .reviews/.",
+          "details": "Use date -u, write .reviews/<stamp>-<stem>.md, number section findings and whole-document findings, mark every finding pending, and report the path and counts."
+        }
+      ]
+    }
+  }
+}
