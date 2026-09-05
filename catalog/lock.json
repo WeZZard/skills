@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-04T12:07:36.973Z",
+  "generatedAt": "2026-09-05T03:47:55.121Z",
   "plugins": {
     "amplify": {
       "repo": "WeZZard/amplify",
@@ -27,11 +27,11 @@
     },
     "attune": {
       "repo": "WeZZard/attune",
-      "tag": "v0.16.0",
-      "sha": "5222554787bfaf559d5e8931cec428ee43222783",
-      "version": "0.16.0",
+      "tag": "v0.17.0",
+      "sha": "3f0af1e3be9ef843ccaf9133224fd92cb8a04f02",
+      "version": "0.17.0",
       "releaseId": null,
-      "resolvedAt": "2026-09-04T12:07:36.973Z"
+      "resolvedAt": "2026-09-05T03:47:55.121Z"
     },
     "dispatch": {
       "repo": "WeZZard/dispatch",
